@@ -114,6 +114,7 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
   const trackLayerStyle: LineLayer = {
     id: 'flight-track',
     type: 'line',
+    source: 'flight-track',
     paint: {
       'line-color': '#00A0DC',
       'line-width': 3,
@@ -124,6 +125,7 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
   const altitudeLayerStyle: CircleLayer = {
     id: 'altitude-points',
     type: 'circle',
+    source: 'altitude-points',
     paint: {
       'circle-radius': 3,
       'circle-opacity': 0.8,
@@ -167,7 +169,7 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
           'sky-atmosphere-sun': [0.0, 0.0],
           'sky-atmosphere-sun-intensity': 10,
         },
-      });
+      } as any);
     }
 
     map.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.4 });

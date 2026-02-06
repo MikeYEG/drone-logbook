@@ -41,24 +41,24 @@ export function FlightStats({ data }: FlightStatsProps) {
               {flight.droneModel}
             </p>
           )}
-          <p className="text-sm text-gray-400">
+          <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2">
             {formatDateTime(flight.startTime)}
             {flight.aircraftName && (
-              <span className="ml-2 text-gray-500">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-dji-primary/40 text-dji-primary bg-dji-primary/10">
                 Device: {flight.aircraftName}
               </span>
             )}
             {flight.droneSerial && (
-              <span className="ml-2 text-gray-500">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-gray-600/60 text-gray-400 bg-dji-surface/60">
                 SN: {flight.droneSerial}
               </span>
             )}
             {flight.batterySerial && (
-              <span className="ml-2 text-gray-500">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-dji-accent/40 text-dji-accent bg-dji-accent/10">
                 Battery SN: {flight.batterySerial}
               </span>
             )}
-          </p>
+          </div>
         </div>
 
         <div className="text-right">

@@ -44,10 +44,13 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     (typeof localStorage !== 'undefined' &&
       (localStorage.getItem('unitSystem') as 'metric' | 'imperial')) ||
     'metric',
-  themeMode:
-    (typeof localStorage !== 'undefined' &&
-      (localStorage.getItem('themeMode') as 'system' | 'dark' | 'light')) ||
-    'system',
+  themeMode: (() => {
+    if (typeof localStorage === 'undefined') return 'system';
+    const stored = localStorage.getItem('themeMode');
+    return stored === 'dark' || stored === 'light' || stored === 'system'
+      ? stored
+      : 'system';
+  })(),
 
   // Load all flights from database
   loadFlights: async () => {

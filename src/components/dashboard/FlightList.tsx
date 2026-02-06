@@ -3,9 +3,17 @@
  * Displays all imported flights with selection
  */
 
-import { useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useFlightStore } from '@/stores/flightStore';
 import { formatDuration, formatDateTime, formatDistance } from '@/lib/utils';
+import { DayPicker, type DateRange } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 
 export function FlightList() {
   const {
@@ -19,6 +27,127 @@ export function FlightList() {
     useFlightStore();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const [dateAnchor, setDateAnchor] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const [selectedDrone, setSelectedDrone] = useState('');
+  const [selectedBattery, setSelectedBattery] = useState('');
+  const dateButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+    []
+  );
+  const today = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+
+  const dateRangeLabel = useMemo(() => {
+    if (!dateRange?.from && !dateRange?.to) return 'Any date';
+    if (dateRange?.from && !dateRange?.to) {
+      return `From ${dateFormatter.format(dateRange.from)}`;
+    }
+    if (dateRange?.from && dateRange?.to) {
+      return `${dateFormatter.format(dateRange.from)} – ${dateFormatter.format(
+        dateRange.to
+      )}`;
+    }
+    return 'Any date';
+  }, [dateFormatter, dateRange]);
+
+  const updateDateAnchor = useCallback(() => {
+    const rect = dateButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setDateAnchor({ top: rect.bottom + 8, left: rect.left, width: rect.width });
+  }, []);
+
+  useEffect(() => {
+    if (!isDateOpen) return;
+    updateDateAnchor();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsDateOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', updateDateAnchor);
+    window.addEventListener('scroll', updateDateAnchor, true);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('resize', updateDateAnchor);
+      window.removeEventListener('scroll', updateDateAnchor, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDateOpen, updateDateAnchor]);
+
+  const droneOptions = useMemo(() => {
+    const entries = flights
+      .map((flight) => ({
+        key: `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`,
+        label: `${flight.aircraftName || flight.droneModel || 'Unknown'}${
+          flight.droneSerial ? ` : ${flight.droneSerial}` : ''
+        }`,
+      }))
+      .filter((entry) => entry.label.trim().length > 0);
+
+    const unique = new Map<string, string>();
+    entries.forEach((entry) => {
+      if (!unique.has(entry.key)) {
+        unique.set(entry.key, entry.label);
+      }
+    });
+
+    return Array.from(unique.entries()).map(([key, label]) => ({ key, label }));
+  }, [flights]);
+
+  const batteryOptions = useMemo(() => {
+    const unique = new Set<string>();
+    flights.forEach((flight) => {
+      if (flight.batterySerial) {
+        unique.add(flight.batterySerial);
+      }
+    });
+    return Array.from(unique);
+  }, [flights]);
+
+  const filteredFlights = useMemo(() => {
+    const start = dateRange?.from ?? null;
+    const end = dateRange?.to ? new Date(dateRange.to) : null;
+    if (end) end.setHours(23, 59, 59, 999);
+
+    return flights.filter((flight) => {
+      if (start || end) {
+        if (!flight.startTime) return false;
+        const flightDate = new Date(flight.startTime);
+        if (start && flightDate < start) return false;
+        if (end && flightDate > end) return false;
+      }
+
+      if (selectedDrone) {
+        const key = `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`;
+        if (key !== selectedDrone) return false;
+      }
+
+      if (selectedBattery) {
+        if (flight.batterySerial !== selectedBattery) return false;
+      }
+
+      return true;
+    });
+  }, [dateRange, flights, selectedBattery, selectedDrone]);
 
   if (flights.length === 0) {
     return (
@@ -33,7 +162,118 @@ export function FlightList() {
 
   return (
     <div className="divide-y divide-gray-700/50">
-      {flights.map((flight) => (
+      <div className="p-3 border-b border-gray-700 space-y-3">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Date range</label>
+          <button
+            ref={dateButtonRef}
+            type="button"
+            onClick={() => setIsDateOpen((open) => !open)}
+            className="input w-full text-xs h-8 px-3 py-1.5 flex items-center justify-between gap-2"
+          >
+            <span
+              className={
+                dateRange?.from || dateRange?.to ? 'text-gray-100' : 'text-gray-400'
+              }
+            >
+              {dateRangeLabel}
+            </span>
+            <CalendarIcon />
+          </button>
+          {isDateOpen && dateAnchor && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setIsDateOpen(false)}
+              />
+              <div
+                className="fixed z-50 rounded-xl border border-gray-700 bg-dji-surface p-3 shadow-xl"
+                style={{
+                  top: dateAnchor.top,
+                  left: dateAnchor.left,
+                  width: Math.max(320, dateAnchor.width),
+                }}
+              >
+                <DayPicker
+                  mode="range"
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    setDateRange(range);
+                    if (range?.from && range?.to) {
+                      setIsDateOpen(false);
+                    }
+                  }}
+                  disabled={{ after: today }}
+                  weekStartsOn={1}
+                  numberOfMonths={1}
+                  className="rdp-theme"
+                />
+                <div className="mt-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setDateRange(undefined)}
+                    className="text-xs text-gray-400 hover:text-white"
+                  >
+                    Clear range
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsDateOpen(false)}
+                    className="text-xs text-gray-200 hover:text-white"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Drone</label>
+          <select
+            value={selectedDrone}
+            onChange={(e) => setSelectedDrone(e.target.value)}
+            className="input w-full text-xs h-8 px-3 py-0 leading-[1.2]"
+          >
+            <option value="">All drones</option>
+            {droneOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Battery serial</label>
+          <select
+            value={selectedBattery}
+            onChange={(e) => setSelectedBattery(e.target.value)}
+            className="input w-full text-xs h-8 px-3 py-0 leading-[1.2]"
+          >
+            <option value="">All batteries</option>
+            {batteryOptions.map((serial) => (
+              <option key={serial} value={serial}>
+                {serial}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          onClick={() => {
+            setDateRange(undefined);
+            setSelectedDrone('');
+            setSelectedBattery('');
+          }}
+          className="text-xs text-gray-400 hover:text-white"
+        >
+          Clear filters
+        </button>
+      </div>
+
+      {filteredFlights.map((flight) => (
         <div
           key={flight.id}
           onClick={() => selectFlight(flight.id)}
@@ -148,6 +388,11 @@ export function FlightList() {
           </div>
         </div>
       ))}
+      {filteredFlights.length === 0 && (
+        <div className="p-4 text-center text-gray-500 text-xs">
+          No flights match the selected filters.
+        </div>
+      )}
     </div>
   );
 }
@@ -215,6 +460,28 @@ function EditIcon() {
         strokeWidth={2}
         d="M11 5h2m-1 0v14m-7 0h14"
       />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-gray-400"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   );
 }

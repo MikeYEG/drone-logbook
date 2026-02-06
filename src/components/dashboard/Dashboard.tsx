@@ -186,7 +186,7 @@ export function Dashboard() {
       )}
 
       {isSidebarHidden && (
-        <aside className="w-6 bg-dji-secondary border-r border-gray-700 flex items-start justify-center relative">
+        <aside className="w-[1.8rem] bg-dji-secondary border-r border-gray-700 flex items-start justify-center relative">
           <button
             onClick={() => setIsSidebarHidden(false)}
             className="mt-4 bg-dji-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white"
@@ -232,8 +232,9 @@ export function Dashboard() {
                 </div>
                 <div className="flex-1 p-2 overflow-auto">
                   <TelemetryCharts
-                    data={currentFlightData.telemetry}
+                    data={currentFlightData!.telemetry}
                     unitSystem={unitSystem}
+                    startTime={currentFlightData!.flight.startTime}
                   />
                 </div>
               </div>
@@ -251,7 +252,7 @@ export function Dashboard() {
                   <h2 className="font-semibold text-white">Flight Path</h2>
                 </div>
                 <div className="flex-1">
-                  <FlightMap track={currentFlightData.track} themeMode={themeMode} />
+                  <FlightMap track={currentFlightData!.track} themeMode={themeMode} />
                 </div>
               </div>
             </div>

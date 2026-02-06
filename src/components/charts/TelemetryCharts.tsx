@@ -9,15 +9,39 @@ import ReactECharts from 'echarts-for-react';
 import type { EChartsOption, ECharts } from 'echarts';
 import type { TelemetryData } from '@/types';
 import type { UnitSystem } from '@/lib/utils';
+import { useFlightStore } from '@/stores/flightStore';
 
 interface TelemetryChartsProps {
   data: TelemetryData;
   unitSystem: UnitSystem;
+  startTime?: string | null;
 }
 
-export function TelemetryCharts({ data, unitSystem }: TelemetryChartsProps) {
+export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryChartsProps) {
   const chartsRef = useRef<ECharts[]>([]);
   const isSyncingRef = useRef(false);
+  const themeMode = useFlightStore((state) => state.themeMode);
+  const resolvedTheme = useMemo(() => resolveThemeMode(themeMode), [themeMode]);
+  const splitLineColor = resolvedTheme === 'light' ? '#e2e8f0' : '#2a2a4e';
+  const tooltipFormatter = useMemo(
+    () => createTooltipFormatter(startTime ?? null, resolvedTheme),
+    [resolvedTheme, startTime]
+  );
+  const tooltipColors = useMemo(
+    () =>
+      resolvedTheme === 'light'
+        ? {
+            background: '#ffffff',
+            border: '#e2e8f0',
+            text: '#0f172a',
+          }
+        : {
+            background: '#16213e',
+            border: '#4a4e69',
+            text: '#ffffff',
+          },
+    [resolvedTheme]
+  );
 
   const resetZoom = useCallback(() => {
     chartsRef.current.forEach((chart) => {
@@ -68,13 +92,32 @@ export function TelemetryCharts({ data, unitSystem }: TelemetryChartsProps) {
 
   // Memoize chart options to prevent unnecessary re-renders
   const altitudeSpeedOption = useMemo(
-    () => createAltitudeSpeedChart(data, unitSystem),
-    [data, unitSystem]
+    () =>
+      createAltitudeSpeedChart(
+        data,
+        unitSystem,
+        splitLineColor,
+        tooltipFormatter,
+        tooltipColors
+      ),
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem]
   );
-  const batteryOption = useMemo(() => createBatteryChart(data), [data]);
-  const attitudeOption = useMemo(() => createAttitudeChart(data), [data]);
-  const rcSignalOption = useMemo(() => createRcSignalChart(data), [data]);
-  const gpsOption = useMemo(() => createGpsChart(data), [data]);
+  const batteryOption = useMemo(
+    () => createBatteryChart(data, splitLineColor, tooltipFormatter, tooltipColors),
+    [data, splitLineColor, tooltipColors, tooltipFormatter]
+  );
+  const attitudeOption = useMemo(
+    () => createAttitudeChart(data, splitLineColor, tooltipFormatter, tooltipColors),
+    [data, splitLineColor, tooltipColors, tooltipFormatter]
+  );
+  const rcSignalOption = useMemo(
+    () => createRcSignalChart(data, splitLineColor, tooltipFormatter, tooltipColors),
+    [data, splitLineColor, tooltipColors, tooltipFormatter]
+  );
+  const gpsOption = useMemo(
+    () => createGpsChart(data, splitLineColor, tooltipFormatter, tooltipColors),
+    [data, splitLineColor, tooltipColors, tooltipFormatter]
+  );
 
   return (
     <div className="space-y-4">
@@ -109,7 +152,7 @@ export function TelemetryCharts({ data, unitSystem }: TelemetryChartsProps) {
       </div>
 
       {/* Attitude Chart */}
-      <div className="h-48">
+      <div className="h-60">
         <ReactECharts
           option={attitudeOption}
           style={{ height: '100%', width: '100%' }}
@@ -131,7 +174,7 @@ export function TelemetryCharts({ data, unitSystem }: TelemetryChartsProps) {
       </div>
 
       {/* GPS Satellites Chart */}
-      <div className="h-40">
+      <div className="h-[200px]">
         <ReactECharts
           option={gpsOption}
           style={{ height: '100%', width: '100%' }}
@@ -149,19 +192,22 @@ const baseChartConfig: Partial<EChartsOption> = {
   animation: false, // Disable for large datasets
   grid: {
     left: 50,
-    right: 20,
+    right: 46,
     top: 30,
     bottom: 50,
+    containLabel: true,
   },
   tooltip: {
     trigger: 'axis',
+    renderMode: 'html',
     backgroundColor: '#16213e',
     borderColor: '#4a4e69',
     textStyle: {
       color: '#fff',
     },
     axisPointer: {
-      type: 'cross',
+      type: 'line',
+      axis: 'x',
       lineStyle: {
         color: '#4a4e69',
       },
@@ -224,7 +270,10 @@ const baseChartConfig: Partial<EChartsOption> = {
 
 function createAltitudeSpeedChart(
   data: TelemetryData,
-  unitSystem: UnitSystem
+  unitSystem: UnitSystem,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors
 ): EChartsOption {
   const hasHeight = data.height.some((val) => val !== null);
   const fallbackHeight = data.altitude ?? [];
@@ -240,24 +289,37 @@ function createAltitudeSpeedChart(
   const speedSeries =
     unitSystem === 'imperial'
       ? data.speed.map((val) => (val === null ? null : val * 2.236936))
-      : data.speed;
+      : data.speed.map((val) => (val === null ? null : val * 3.6));
   const heightUnit = unitSystem === 'imperial' ? 'ft' : 'm';
-  const speedUnit = unitSystem === 'imperial' ? 'mph' : 'm/s';
+  const speedUnit = unitSystem === 'imperial' ? 'mph' : 'km/h';
+  const heightRange = computeRange([
+    ...heightSeries,
+    ...vpsHeightSeries,
+  ]);
+  const speedRange = computeRange(speedSeries);
 
   return {
     ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
     legend: {
       ...baseChartConfig.legend,
       data: ['Height', 'VPS Height', 'Speed'],
     },
     xAxis: {
-      ...baseChartConfig.xAxis,
-      data: data.time.map((t) => t.toFixed(1)),
+      ...createTimeAxis(data.time),
     },
     yAxis: [
       {
         type: 'value',
         name: `Height (${heightUnit})`,
+        min: heightRange.min,
+        max: heightRange.max,
         nameTextStyle: {
           color: '#00A0DC',
         },
@@ -271,13 +333,15 @@ function createAltitudeSpeedChart(
         },
         splitLine: {
           lineStyle: {
-            color: '#2a2a4e',
+            color: splitLineColor,
           },
         },
       },
       {
         type: 'value',
         name: `Speed (${speedUnit})`,
+        min: speedRange.min,
+        max: speedRange.max,
         nameTextStyle: {
           color: '#00D4AA',
         },
@@ -357,23 +421,37 @@ function createAltitudeSpeedChart(
   };
 }
 
-function createBatteryChart(data: TelemetryData): EChartsOption {
+function createBatteryChart(
+  data: TelemetryData,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors
+): EChartsOption {
+  const batteryRange = computeRange(data.battery, { clampMin: 0, clampMax: 100 });
+  const voltageRange = computeRange(data.batteryVoltage);
+  const tempRange = computeRange(data.batteryTemp);
   return {
     ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
     legend: {
       ...baseChartConfig.legend,
       data: ['Battery %', 'Voltage', 'Temperature'],
     },
     xAxis: {
-      ...baseChartConfig.xAxis,
-      data: data.time.map((t) => t.toFixed(1)),
+      ...createTimeAxis(data.time),
     },
     yAxis: [
       {
         type: 'value',
         name: 'Battery %',
-        min: 0,
-        max: 100,
+        min: batteryRange.min,
+        max: batteryRange.max,
         axisLine: {
           lineStyle: {
             color: '#f59e0b',
@@ -384,17 +462,19 @@ function createBatteryChart(data: TelemetryData): EChartsOption {
         },
         splitLine: {
           lineStyle: {
-            color: '#2a2a4e',
+            color: splitLineColor,
           },
         },
       },
       {
         type: 'value',
-        name: 'Voltage (V)',
+        name: 'Temp (°C)',
         position: 'right',
+        min: tempRange.min,
+        max: tempRange.max,
         axisLine: {
           lineStyle: {
-            color: '#38bdf8',
+            color: '#a855f7',
           },
         },
         axisLabel: {
@@ -406,16 +486,18 @@ function createBatteryChart(data: TelemetryData): EChartsOption {
       },
       {
         type: 'value',
-        name: 'Temp (°C)',
         position: 'right',
-        offset: 50,
-        axisLine: {
-          lineStyle: {
-            color: '#a855f7',
-          },
-        },
+        offset: 44,
+        min: voltageRange.min,
+        max: voltageRange.max,
         axisLabel: {
-          color: '#9ca3af',
+          show: false,
+        },
+        axisLine: {
+          show: false,
+        },
+        axisTick: {
+          show: false,
         },
         splitLine: {
           show: false,
@@ -449,28 +531,19 @@ function createBatteryChart(data: TelemetryData): EChartsOption {
             ],
           },
         },
-        markLine: {
+        markArea: {
           silent: true,
-          data: [
-            {
-              yAxis: 20,
-              lineStyle: {
-                color: '#ef4444',
-                type: 'dashed',
-              },
-              label: {
-                formatter: 'Low Battery',
-                color: '#ef4444',
-              },
-            },
-          ],
+          itemStyle: {
+            color: 'rgba(239, 68, 68, 0.18)',
+          },
+          data: [[{ yAxis: 0 }, { yAxis: 20 }]],
         },
       },
       {
         name: 'Voltage',
         type: 'line',
         data: data.batteryVoltage,
-        yAxisIndex: 1,
+        yAxisIndex: 2,
         smooth: true,
         symbol: 'none',
         itemStyle: {
@@ -485,7 +558,7 @@ function createBatteryChart(data: TelemetryData): EChartsOption {
         name: 'Temperature',
         type: 'line',
         data: data.batteryTemp,
-        yAxisIndex: 2,
+        yAxisIndex: 1,
         smooth: true,
         symbol: 'none',
         itemStyle: {
@@ -500,23 +573,44 @@ function createBatteryChart(data: TelemetryData): EChartsOption {
   };
 }
 
-function createAttitudeChart(data: TelemetryData): EChartsOption {
+function createAttitudeChart(
+  data: TelemetryData,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors
+): EChartsOption {
+  const attitudeRange = computeRange([
+    ...data.pitch,
+    ...data.roll,
+    ...data.yaw,
+  ]);
   return {
     ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
     legend: {
       ...baseChartConfig.legend,
       data: ['Pitch', 'Roll', 'Yaw'],
     },
     xAxis: {
-      ...baseChartConfig.xAxis,
-      data: data.time.map((t) => t.toFixed(1)),
+      ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: 'Degrees',
+      name: 'Rotations',
+      nameTextStyle: {
+        color: '#8b5cf6',
+      },
+      min: attitudeRange.min,
+      max: attitudeRange.max,
       axisLine: {
         lineStyle: {
-          color: '#4a4e69',
+          color: '#8b5cf6',
         },
       },
       axisLabel: {
@@ -524,7 +618,7 @@ function createAttitudeChart(data: TelemetryData): EChartsOption {
       },
       splitLine: {
         lineStyle: {
-          color: '#2a2a4e',
+          color: splitLineColor,
         },
       },
     },
@@ -575,20 +669,34 @@ function createAttitudeChart(data: TelemetryData): EChartsOption {
   };
 }
 
-function createRcSignalChart(data: TelemetryData): EChartsOption {
+function createRcSignalChart(
+  data: TelemetryData,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors
+): EChartsOption {
   return {
     ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
     legend: {
       ...baseChartConfig.legend,
       data: ['RC Signal'],
     },
     xAxis: {
-      ...baseChartConfig.xAxis,
-      data: data.time.map((t) => t.toFixed(1)),
+      ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
       name: 'RC Signal',
+          min: 0,
+          max: 100,
+          interval: 50,
       axisLine: {
         lineStyle: {
           color: '#22c55e',
@@ -596,10 +704,11 @@ function createRcSignalChart(data: TelemetryData): EChartsOption {
       },
       axisLabel: {
         color: '#9ca3af',
+        formatter: (value: number) => (value % 50 === 0 ? String(value) : ''),
       },
       splitLine: {
         lineStyle: {
-          color: '#2a2a4e',
+          color: splitLineColor,
         },
       },
     },
@@ -622,20 +731,34 @@ function createRcSignalChart(data: TelemetryData): EChartsOption {
   };
 }
 
-function createGpsChart(data: TelemetryData): EChartsOption {
+function createGpsChart(
+  data: TelemetryData,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors
+): EChartsOption {
+  const gpsRange = computeRange(data.satellites, { clampMin: 0 });
   return {
     ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
     legend: {
       ...baseChartConfig.legend,
       data: ['GPS Satellites'],
     },
     xAxis: {
-      ...baseChartConfig.xAxis,
-      data: data.time.map((t) => t.toFixed(1)),
+      ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
       name: 'Satellites',
+      min: gpsRange.min,
+      max: gpsRange.max,
       axisLine: {
         lineStyle: {
           color: '#0ea5e9',
@@ -646,7 +769,7 @@ function createGpsChart(data: TelemetryData): EChartsOption {
       },
       splitLine: {
         lineStyle: {
-          color: '#2a2a4e',
+          color: splitLineColor,
         },
       },
     },
@@ -667,4 +790,185 @@ function createGpsChart(data: TelemetryData): EChartsOption {
       },
     ],
   };
+}
+
+function computeRange(
+  values: Array<number | null | undefined>,
+  options: { clampMin?: number; clampMax?: number; paddingRatio?: number } = {}
+): { min?: number; max?: number } {
+  const cleaned = values.filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value)
+  );
+  if (cleaned.length === 0) return {};
+
+  let min = Math.min(...cleaned);
+  let max = Math.max(...cleaned);
+  if (min === max) {
+    const delta = min === 0 ? 1 : Math.abs(min) * 0.1;
+    min -= delta;
+    max += delta;
+  }
+
+  const paddingRatio = options.paddingRatio ?? 0.08;
+  const padding = (max - min) * paddingRatio;
+  min -= padding;
+  max += padding;
+
+  if (typeof options.clampMin === 'number') {
+    min = Math.max(min, options.clampMin);
+  }
+  if (typeof options.clampMax === 'number') {
+    max = Math.min(max, options.clampMax);
+  }
+
+  min = roundAxisValue(min);
+  max = roundAxisValue(max);
+
+  if (min === max) {
+    const bump = min === 0 ? 1 : Math.abs(min) * 0.1;
+    min = roundAxisValue(min - bump);
+    max = roundAxisValue(max + bump);
+  }
+
+  return { min, max };
+}
+
+function roundAxisValue(value: number): number {
+  if (Math.abs(value) < 0.0001) return 0;
+  const abs = Math.abs(value);
+  const decimals = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  return Number(value.toFixed(decimals));
+}
+
+function resolveThemeMode(mode: 'system' | 'dark' | 'light'): 'dark' | 'light' {
+  if (mode === 'light' || mode === 'dark') return mode;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+}
+
+type TooltipFormatter = (params: any) => string;
+type TooltipColors = {
+  background: string;
+  border: string;
+  text: string;
+};
+
+function createTooltipFormatter(
+  startTime: string | null,
+  theme: 'light' | 'dark'
+): TooltipFormatter {
+  return (params) => {
+    const items = Array.isArray(params) ? params : [params];
+    const axisValue = items[0]?.axisValue ?? '';
+    const seconds =
+      typeof axisValue === 'number'
+        ? axisValue
+        : Number.parseFloat(String(axisValue));
+    const header = formatTooltipHeader(startTime, seconds, theme);
+
+    const lines = items.map((item) => {
+      const marker = typeof item.marker === 'string' ? item.marker : '';
+      const label = item.seriesName ?? '';
+      const rawValue =
+        Array.isArray(item.value) && item.value.length > 0
+          ? item.value[item.value.length - 1]
+          : item.value ?? item.data;
+      const value =
+        typeof rawValue === 'number' && Number.isFinite(rawValue)
+          ? formatNumericValue(rawValue)
+          : rawValue ?? '-';
+      return `${marker} ${label}: ${value}`;
+    });
+
+    return [header, ...lines].join('<br/>');
+  };
+}
+
+function formatTooltipHeader(
+  startTime: string | null,
+  seconds: number,
+  theme: 'light' | 'dark'
+): string {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const durationLabel = formatDurationLabel(safeSeconds);
+  if (!startTime) {
+    return durationLabel;
+  }
+  const startDate = new Date(startTime);
+  const timestamp = new Date(startDate.getTime() + safeSeconds * 1000);
+  const timeLabel = new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(timestamp);
+  const durationBg = theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(0,212,170,0.2)';
+  const timeBg = theme === 'light' ? 'rgba(2, 132, 199, 0.12)' : 'rgba(0,160,220,0.22)';
+  const textColor = theme === 'light' ? '#0f172a' : '#e2e8f0';
+  return `<div style="margin-bottom:0px;display:flex;gap:6px;align-items:center;">
+    <span class="tooltip-duration-tag" style="display:inline-block;padding:2px 8px;border-radius:999px;background:${durationBg};color:${textColor};font-size:11px;line-height:1.2;">${durationLabel}</span>
+    <span class="tooltip-time-tag" style="display:inline-block;padding:2px 8px;border-radius:999px;background:${timeBg};color:${textColor};font-size:11px;line-height:1.2;">${timeLabel}</span>
+  </div>`;
+}
+
+function formatDurationLabel(seconds: number): string {
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remaining = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(remaining).padStart(2, '0');
+  return `${mm}m ${ss}s`;
+}
+
+function formatNumericValue(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 100) return value.toFixed(0);
+  if (abs >= 10) return value.toFixed(1).replace(/\.0$/, '');
+  return value.toFixed(2).replace(/\.00$/, '');
+}
+
+function createTimeAxis(time: number[]): EChartsOption['xAxis'] {
+  const values = time.map((t) => t.toFixed(1));
+  return {
+    type: 'category',
+    boundaryGap: false,
+    data: values,
+    axisLine: {
+      lineStyle: {
+        color: '#4a4e69',
+      },
+    },
+    axisTick: {
+      alignWithLabel: true,
+    } as any,
+    axisLabel: {
+      color: '#9ca3af',
+      showMinLabel: false,
+      showMaxLabel: false,
+      hideOverlap: true,
+      rotate: 30,
+      interval: (index: number) => {
+        if (index === 0) return true;
+        const current = time[index];
+        const previous = time[index - 1];
+        if (!Number.isFinite(current) || !Number.isFinite(previous)) return false;
+        return Math.floor(previous / 60) !== Math.floor(current / 60);
+      },
+      formatter: (value: string) => {
+        return formatTimeLabel(value);
+      },
+    },
+    splitLine: {
+      show: false,
+    },
+  };
+}
+
+function formatTimeLabel(value: string): string {
+  const secs = Number.parseFloat(value);
+  if (!Number.isFinite(secs)) return '';
+  const rounded = Math.round(secs);
+  const mins = Math.floor(rounded / 60);
+  const remainingSecs = Math.floor(rounded % 60);
+  return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
 }
