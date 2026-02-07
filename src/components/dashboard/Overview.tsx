@@ -668,7 +668,7 @@ function ActivityHeatmap({
 
   const getColor = (count: number) => {
     if (count < 0) return 'transparent';
-    if (count === 0) return isLight ? '#e2e8f0' : 'rgb(30, 35, 50)';
+    if (count === 0) return isLight ? '#e2e8f0' : '#2f3548';
     const intensity = Math.min(count / Math.max(maxCount, 1), 1);
     if (isLight) {
       const r = Math.round(94 + intensity * 0);
@@ -676,9 +676,9 @@ function ActivityHeatmap({
       const b = Math.round(183 + intensity * 72);
       return `rgb(${r}, ${g}, ${b})`;
     }
-    const r = Math.round(0 + intensity * 0);
-    const g = Math.round(50 + intensity * 162);
-    const b = Math.round(80 + intensity * 140);
+    const r = Math.round(20 + intensity * 0);
+    const g = Math.round(80 + intensity * 150);
+    const b = Math.round(110 + intensity * 120);
     return `rgb(${r}, ${g}, ${b})`;
   };
 
@@ -825,6 +825,7 @@ function DonutChart({
         radius: ['50%', '75%'],
         center: ['35%', '50%'],
         avoidLabelOverlap: true,
+        padAngle: 2,
         itemStyle: {
           borderRadius: 4,
           borderColor: 'transparent',

@@ -99,7 +99,7 @@ export function Dashboard() {
       {/* Left Sidebar - Flight List */}
       {!isSidebarHidden && (
         <aside
-          className="bg-dji-secondary border-r border-gray-700 flex flex-col relative overflow-visible"
+          className="bg-dji-secondary border-r border-gray-700 flex flex-col relative overflow-visible z-40"
           style={{ width: sidebarWidth }}
         >
         <div className="p-4 border-b border-gray-700 flex items-center justify-between">
@@ -175,7 +175,7 @@ export function Dashboard() {
         </div>
         <button
           onClick={() => setIsSidebarHidden(true)}
-          className="absolute -right-3 top-6 bg-dji-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white z-20"
+          className="absolute -right-3 top-1 bg-dji-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white z-50"
           title="Hide sidebar"
         >
           ‹
