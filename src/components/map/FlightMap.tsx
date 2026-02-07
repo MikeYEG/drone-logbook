@@ -6,6 +6,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Map, { Source, Layer, NavigationControl, Marker } from 'react-map-gl/maplibre';
 import type { LineLayer, MapRef } from 'react-map-gl/maplibre';
+import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getTrackCenter, calculateBounds } from '@/lib/utils';
 
@@ -18,6 +19,27 @@ const MAP_STYLES = {
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
   light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
 } as const;
+
+const SATELLITE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    satellite: {
+      type: 'raster',
+      tiles: [
+        'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution: 'Tiles © Esri',
+    },
+  },
+  layers: [
+    {
+      id: 'satellite-base',
+      type: 'raster',
+      source: 'satellite',
+    },
+  ],
+};
 
 const TERRAIN_SOURCE_ID = 'terrain-dem';
 const TERRAIN_SOURCE = {
@@ -36,6 +58,7 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
     bearing: 0,
   });
   const [is3D, setIs3D] = useState(true);
+  const [isSatellite, setIsSatellite] = useState(false);
   const mapRef = useRef<MapRef | null>(null);
 
   const resolvedTheme = useMemo(() => {
@@ -46,6 +69,11 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
     }
     return themeMode;
   }, [themeMode]);
+
+  const activeMapStyle = useMemo(
+    () => (isSatellite ? SATELLITE_STYLE : MAP_STYLES[resolvedTheme]),
+    [isSatellite, resolvedTheme]
+  );
 
   // Calculate center and bounds when track changes
   useEffect(() => {
@@ -175,7 +203,7 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
       {...viewState}
       onMove={handleMove}
       style={{ width: '100%', height: '100%' }}
-      mapStyle={MAP_STYLES[resolvedTheme]}
+      mapStyle={activeMapStyle}
       attributionControl={false}
       ref={mapRef}
       onLoad={() => {
@@ -187,15 +215,17 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
       <NavigationControl position="top-right" />
 
       {/* Map Controls */}
-      <div className="absolute top-2 left-2 z-10 bg-dji-dark/80 border border-gray-700 rounded-lg p-2">
-        <label className="flex items-center gap-2 text-xs text-gray-300">
-          <input
-            type="checkbox"
-            checked={is3D}
-            onChange={(e) => setIs3D(e.target.checked)}
-          />
-          3D Terrain
-        </label>
+      <div className="absolute top-2 left-2 z-10 bg-dji-dark/80 border border-gray-700 rounded-xl px-3 py-2 space-y-2 shadow-lg">
+        <ToggleRow
+          label="3D Terrain"
+          checked={is3D}
+          onChange={setIs3D}
+        />
+        <ToggleRow
+          label="Satellite"
+          checked={isSatellite}
+          onChange={setIsSatellite}
+        />
       </div>
 
       {/* Flight Track */}
@@ -229,5 +259,39 @@ export function FlightMap({ track, themeMode }: FlightMapProps) {
         </Marker>
       )}
     </Map>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="w-full flex items-center justify-between gap-3 text-xs text-gray-200 hover:text-white transition-colors"
+      aria-pressed={checked}
+    >
+      <span>{label}</span>
+      <span
+        className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
+          checked
+            ? 'bg-dji-primary/90 border-dji-primary'
+            : 'bg-dji-surface border-gray-600'
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+            checked ? 'translate-x-4' : 'translate-x-1'
+          }`}
+        />
+      </span>
+    </button>
   );
 }
