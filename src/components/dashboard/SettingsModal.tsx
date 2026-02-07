@@ -255,7 +255,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               className="mt-2 flex items-center justify-between gap-3 w-full text-[0.85rem] text-gray-300"
               aria-pressed={donationAcknowledged}
             >
-              <span>I have already donated. Remove banner</span>
+              <span>Already donated. Remove banner permanently</span>
               <span
                 className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                   donationAcknowledged
