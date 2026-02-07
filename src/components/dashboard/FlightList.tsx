@@ -26,6 +26,7 @@ export function FlightList() {
   } =
     useFlightStore();
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [isDateOpen, setIsDateOpen] = useState(false);
@@ -240,7 +241,10 @@ export function FlightList() {
   }
 
   return (
-    <div className="divide-y divide-gray-700/50">
+    <div
+      className="divide-y divide-gray-700/50"
+      onClick={() => setConfirmDeleteId(null)}
+    >
       <div className="p-3 border-b border-gray-700 space-y-3">
         <div>
           <label className="block text-xs text-gray-400 mb-1">Date range</label>
@@ -472,6 +476,7 @@ export function FlightList() {
                       e.stopPropagation();
                       setEditingId(flight.id);
                       setDraftName(flight.displayName || flight.fileName);
+                      setConfirmDeleteId(null);
                     }}
                     className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-colors"
                     title="Rename flight"
@@ -504,6 +509,31 @@ export function FlightList() {
                   {formatDistance(flight.totalDistance, unitSystem)}
                 </span>
               </div>
+
+              {confirmDeleteId === flight.id && editingId !== flight.id && (
+                <div className="flex items-center gap-2 mt-2 text-xs">
+                  <span className="text-gray-400">Are you sure?</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteFlight(flight.id);
+                      setConfirmDeleteId(null);
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(null);
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Delete Button */}
@@ -511,12 +541,7 @@ export function FlightList() {
               <button
                 onClick={async (e) => {
                   e.stopPropagation();
-                  const shouldDelete = window.confirm(
-                    `Delete "${flight.displayName || flight.fileName}"? This cannot be undone.`
-                  );
-                  if (shouldDelete) {
-                    deleteFlight(flight.id);
-                  }
+                  setConfirmDeleteId(flight.id);
                 }}
                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-all"
                 title="Delete flight"

@@ -19,6 +19,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [appDataDir, setAppDataDir] = useState('');
   const [appLogDir, setAppLogDir] = useState('');
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const {
     unitSystem,
     setUnitSystem,
@@ -26,6 +27,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setThemeMode,
     loadFlights,
     loadOverview,
+    clearSelection,
   } = useFlightStore();
 
   // Check if API key exists on mount
@@ -103,25 +105,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleDeleteAll = async () => {
-    let shouldDelete = false;
-    try {
-      shouldDelete = await confirm(
-        'Delete all flight logs and telemetry? This cannot be undone.',
-        { title: 'Delete all logs', kind: 'warning' }
-      );
-    } catch {
-      shouldDelete = window.confirm(
-        'Delete all flight logs and telemetry? This cannot be undone.'
-      );
-    }
-
-    if (!shouldDelete) return;
-
     try {
       await invoke('delete_all_flights');
+      clearSelection();
       await loadFlights();
       await loadOverview();
       setMessage({ type: 'success', text: 'All logs deleted.' });
+      setConfirmDeleteAll(false);
     } catch (err) {
       setMessage({ type: 'error', text: `Failed to delete: ${err}` });
     }
@@ -201,6 +191,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 developer.dji.com
               </a>
             </p>
+            <p className="text-xs text-gray-500 mb-3">
+              The standalone app ships with a developer-provided key, but please use your own
+              API key to avoid rate limit issues. See the
+              {' '}
+              <a
+                href="https://developer.dji.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-dji-primary hover:underline"
+              >
+                DJI developer portal
+              </a>
+              {' '}for guidance.
+            </p>
 
             {/* Status indicator */}
             <div className="flex items-center gap-2 mb-3">
@@ -261,21 +265,38 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <p className="text-xs text-gray-500 mt-2">
               Your API key is stored locally in <code className="text-gray-400">config.json</code> and never sent to any external servers except DJI's official API.
             </p>
-            <button
-              onClick={handleDeleteAll}
-              className="mt-4 w-full py-2 px-3 rounded-lg border border-red-600 text-red-500 hover:bg-red-500/10 transition-colors"
-            >
-              Delete all logs
-            </button>
+            {confirmDeleteAll ? (
+              <div className="mt-4 rounded-lg border border-red-600/60 bg-red-500/10 p-3">
+                <p className="text-xs text-red-200">
+                  This action cannot be undone and will remove all flight logs.
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <button
+                    onClick={handleDeleteAll}
+                    className="text-xs text-red-300 hover:text-red-200"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteAll(false)}
+                    className="text-xs text-gray-400 hover:text-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDeleteAll(true)}
+                className="mt-4 w-full py-2 px-3 rounded-lg border border-red-600 text-red-500 hover:bg-red-500/10 transition-colors"
+              >
+                Delete all logs
+              </button>
+            )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-700 flex justify-end">
-          <button onClick={onClose} className="btn-secondary">
-            Close
-          </button>
-        </div>
       </div>
     </div>
   );

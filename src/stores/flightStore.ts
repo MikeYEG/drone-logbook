@@ -28,6 +28,7 @@ interface FlightState {
   updateFlightName: (flightId: number, displayName: string) => Promise<void>;
   setUnitSystem: (unitSystem: 'metric' | 'imperial') => void;
   setThemeMode: (themeMode: 'system' | 'dark' | 'light') => void;
+  clearSelection: () => void;
   clearError: () => void;
 }
 
@@ -59,9 +60,17 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       const flights = await invoke<Flight[]>('get_flights');
       set({ flights, isLoading: false });
 
-      // Auto-select first flight if none selected
-      if (flights.length > 0 && get().selectedFlightId === null) {
-        await get().selectFlight(flights[0].id);
+      // Auto-select last used flight if available (avoid heavy load on fresh startup)
+      const selectedFlightId = get().selectedFlightId;
+      if (flights.length > 0 && selectedFlightId === null) {
+        const lastSelectedRaw =
+          typeof localStorage !== 'undefined'
+            ? localStorage.getItem('lastSelectedFlightId')
+            : null;
+        const lastSelectedId = lastSelectedRaw ? Number(lastSelectedRaw) : null;
+        if (lastSelectedId && flights.some((flight) => flight.id === lastSelectedId)) {
+          await get().selectFlight(lastSelectedId);
+        }
       }
     } catch (err) {
       set({ 
@@ -93,6 +102,9 @@ export const useFlightStore = create<FlightState>((set, get) => ({
         maxPoints: 5000, // Downsample if needed
       });
       set({ currentFlightData: flightData, isLoading: false });
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('lastSelectedFlightId', String(flightId));
+      }
     } catch (err) {
       set({ 
         isLoading: false, 
@@ -185,6 +197,13 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     }
     set({ themeMode });
   },
+
+  clearSelection: () =>
+    set({
+      selectedFlightId: null,
+      currentFlightData: null,
+      overviewStats: null,
+    }),
 
   // Clear error
   clearError: () => set({ error: null }),

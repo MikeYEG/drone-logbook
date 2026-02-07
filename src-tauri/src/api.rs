@@ -10,13 +10,14 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Global API key cache
-static API_KEY: OnceLock<Option<String>> = OnceLock::new();
+static API_KEY: OnceLock<RwLock<Option<String>>> = OnceLock::new();
+const DEFAULT_DJI_API_KEY: &str = "7860e0c278e44617fd4c64fd86cfeaa";
 
 #[derive(Error, Debug)]
 pub enum ApiError {
@@ -67,50 +68,79 @@ impl DjiApi {
     /// 2. Config file in app data directory
     /// 3. .env file (for development)
     pub fn get_api_key(&self) -> Option<String> {
-        API_KEY
-            .get_or_init(|| {
-                // 1. Check environment variable
-                if let Ok(key) = std::env::var("DJI_API_KEY") {
-                    if !key.is_empty() && key != "your_api_key_here" {
-                        log::info!("Using DJI API key from environment variable");
-                        return Some(key);
+                let cache = API_KEY.get_or_init(|| RwLock::new(None));
+                if let Ok(read) = cache.read() {
+                    if let Some(key) = read.as_ref() {
+                        return Some(key.clone());
                     }
                 }
 
-                // 2. Check config file in app data directory
-                if let Some(ref app_dir) = self.app_data_dir {
-                    let config_path = app_dir.join("config.json");
-                    if config_path.exists() {
-                        if let Ok(content) = fs::read_to_string(&config_path) {
-                            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                                if let Some(key) = config.dji_api_key {
-                                    if !key.is_empty() {
-                                        log::info!("Using DJI API key from config.json");
-                                        return Some(key);
+                let loaded = {
+                    // 1. Check environment variable
+                    if let Ok(key) = std::env::var("DJI_API_KEY") {
+                        if !key.is_empty() && key != "your_api_key_here" {
+                            log::info!("Using DJI API key from environment variable");
+                            Some(key)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                .or_else(|| {
+                    // 2. Check config file in app data directory
+                    if let Some(ref app_dir) = self.app_data_dir {
+                        let config_path = app_dir.join("config.json");
+                        if config_path.exists() {
+                            if let Ok(content) = fs::read_to_string(&config_path) {
+                                if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                                    if let Some(key) = config.dji_api_key {
+                                        if !key.is_empty() {
+                                            log::info!("Using DJI API key from config.json");
+                                            return Some(key);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-
-                // 3. Try loading .env file (development)
-                if let Ok(content) = fs::read_to_string(".env") {
-                    for line in content.lines() {
-                        if let Some(key_value) = line.strip_prefix("DJI_API_KEY=") {
-                            let key = key_value.trim().trim_matches('"').trim_matches('\'');
-                            if !key.is_empty() && key != "your_api_key_here" {
-                                log::info!("Using DJI API key from .env file");
-                                return Some(key.to_string());
+                    None
+                })
+                .or_else(|| {
+                    // 3. Try loading .env file (development)
+                    if let Ok(content) = fs::read_to_string(".env") {
+                        for line in content.lines() {
+                            if let Some(key_value) = line.strip_prefix("DJI_API_KEY=") {
+                                let key = key_value.trim().trim_matches('"').trim_matches('\'');
+                                if !key.is_empty() && key != "your_api_key_here" {
+                                    log::info!("Using DJI API key from .env file");
+                                    return Some(key.to_string());
+                                }
                             }
                         }
                     }
+                    None
+                });
+
+                let loaded = loaded.or_else(|| {
+                    if !DEFAULT_DJI_API_KEY.is_empty() {
+                        log::info!("Using default DJI API key");
+                        Some(DEFAULT_DJI_API_KEY.to_string())
+                    } else {
+                        None
+                    }
+                });
+
+                if loaded.is_none() {
+                    log::warn!("No DJI API key configured");
                 }
 
-                log::warn!("No DJI API key configured");
-                None
-            })
-            .clone()
+                if let Ok(mut write) = cache.write() {
+                    *write = loaded.clone();
+                }
+
+                loaded
     }
 
     /// Check if an API key is configured
@@ -141,6 +171,12 @@ impl DjiApi {
             .map_err(|e| ApiError::ApiResponse(e.to_string()))?;
 
         fs::write(&config_path, content)?;
+
+        if let Some(cache) = API_KEY.get() {
+            if let Ok(mut write) = cache.write() {
+                *write = Some(api_key.to_string());
+            }
+        }
 
         log::info!("Saved DJI API key to config.json");
         Ok(())
