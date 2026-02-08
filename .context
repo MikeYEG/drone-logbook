@@ -118,8 +118,13 @@
       "UI refreshes flight list and telemetry views"
     ],
     "telemetry_query": [
-      "UI requests telemetry for flight",
-      "DB returns raw data or downsampled to ~5000 points",
+      "UI requests telemetry for flight via selectFlight()",
+      "Store checks if same flight already selected (skip if so)",
+      "Store checks _flightDataCache Map (LRU, max 10 entries) for instant hit",
+      "On cache miss: Tauri get_flight_data uses get_flight_by_id() for O(1) lookup",
+      "Telemetry/track queries skip COUNT(*) when point_count known from flight metadata",
+      "DB returns raw data or downsampled to ~5000 points (1s buckets)",
+      "Response cached in frontend store for future re-selection",
       "Frontend converts units and renders charts/maps"
     ]
   },
@@ -129,7 +134,10 @@
       "date_picker": "Modern range picker (react-day-picker), future dates disabled, themed styling."
     },
     "flight_list": {
-      "search_sort": "Search by partial title and sort by date/name with direction toggle."
+      "search_sort": "Search by partial title and sort by date/name with direction toggle.",
+      "simplified_layout": "Replaced complex flight entries (hover effects, group transitions, icon rows) with a simple compact list. Each entry shows flight name, small inline rename (sky-400) and delete (red-400) icons, and a single subtitle line with date, duration, and distance separated by dots. Double-click on name also triggers rename. All functionality preserved (rename with Save/Cancel, delete with Yes/No confirmation, selection highlight, keyboard access).",
+      "removed_icons": "Removed ClockIcon and DistanceIcon components (stats are now inline text).",
+      "flex_height_fix": "Changed FlightList root from h-full to flex-1 min-h-0, and Dashboard wrapper to flex-1 min-h-0 flex flex-col, fixing height resolution chain that caused double text rendering."
     },
     "ui": {
       "selects": "Custom select styling to match dark/light themes, consistent background and text.",
@@ -140,13 +148,15 @@
       "charts": "Light theme gridlines, auto axis ranges with rounding, right padding to avoid label clipping, RC ticks fixed (0/50/100).",
       "battery_chart": "Low battery region shown as semi-transparent red band; voltage plotted on hidden axis, temp labeled on right.",
       "gps_chart": "Height increased to 200px.",
-      "delete_confirm": "Inline confirmations for single-flight delete and delete-all logs in Settings."
+      "delete_confirm": "Inline confirmations for single-flight delete and delete-all logs in Settings.",
+      "loading_spinner": "Changed loading spinner from border-dji-primary to border-sky-400 (light blue) for visibility in both light and dark modes."
     },
     "exports": {
       "flight_stats": "Export dropdown for CSV/JSON/GPX/KML with derived distance-to-home in JSON/CSV."
     },
     "charts": {
-      "telemetry": "Added RC uplink/downlink, distance-to-home, and velocity XYZ panels."
+      "telemetry": "Added RC uplink/downlink, distance-to-home, and velocity XYZ panels.",
+      "theme_aware": "Chart base config is now theme-aware (createBaseChartConfig). Axis colors, label colors, tooltip bg/border/text, data zoom styling, and data background all adapt to light/dark mode."
     },
     "map": {
       "visuals": "Gradient path with start/end markers and modern toggle UI.",
@@ -163,6 +173,17 @@
     "api_key": {
       "cache": "API key cache updates immediately after saving (no restart needed).",
       "default": "Default key is used when no key is configured; users can override in Settings."
+    },
+    "light_mode": {
+      "text_overrides": "Light mode overrides for text-gray-300/400/500/100/white and border-gray-700 use !important in index.css.",
+      "hover_overrides": "Light mode hover overrides for hover:bg-gray-700/30, hover:bg-gray-700/40, hover:bg-gray-700, hover:text-white, hover:text-gray-200.",
+      "scrollbar": "Light mode scrollbar styling (track #f1f5f9, thumb #cbd5e1) plus scrollbar-color on body.theme-light."
+    },
+    "performance": {
+      "get_flight_by_id": "Added get_flight_by_id() to database.rs for single-row WHERE id=? lookup, replacing get_all_flights() scan in get_flight_data.",
+      "skip_count_queries": "get_flight_telemetry() and get_flight_track() now accept optional known_point_count parameter from flight metadata, skipping redundant SELECT COUNT(*) queries.",
+      "frontend_cache": "Zustand store caches up to 10 flight data responses in _flightDataCache Map. Re-selecting a previously viewed flight serves data instantly from memory.",
+      "skip_same_flight": "selectFlight() returns immediately if the requested flight is already selected and data is loaded."
     }
   },
   "behavior": {
@@ -303,10 +324,12 @@
     ]
   },
   "ui": {
-    "themes": "CSS variables in src/index.css; body classes theme-light/theme-dark.",
+    "themes": "CSS variables in src/index.css; body classes theme-light/theme-dark. Light mode uses !important overrides for text colors, hover backgrounds, and scrollbar styling.",
     "filters": "Flight list uses date range popover (react-day-picker), drone and battery selects.",
-    "charts": "ECharts with synced zoom; reset zoom button; map + charts resizable panels; tooltip header uses pill capsules for duration/time; attitude panel taller; RC ticks fixed to 0/50/100.",
-    "map": "MapLibre terrain with global theme styling."
+    "flight_list": "Simple compact list with always-visible rename (sky-400) and delete (red-400) icons. Subtitle shows date · duration · distance. Double-click name to rename. No hover effects or transitions.",
+    "charts": "ECharts with synced zoom; reset zoom button; map + charts resizable panels; tooltip header uses pill capsules for duration/time; attitude panel taller; RC ticks fixed to 0/50/100. Theme-aware base config adapts all visual elements to light/dark mode.",
+    "map": "MapLibre terrain with global theme styling.",
+    "loading": "Spinner uses border-sky-400 for both-mode visibility."
   },
   "known_issues": [
     "If import fails with column order mismatch, telemetry table rebuild should correct it.",

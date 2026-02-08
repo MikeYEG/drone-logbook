@@ -209,8 +209,11 @@ export function Dashboard() {
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-              <div className="w-12 h-12 border-4 border-dji-primary border-t-transparent rounded-full spinner" />
-              <p className="text-gray-400">Loading flight data...</p>
+              <div
+                className="w-12 h-12 rounded-full spinner"
+                style={{ border: '4px solid #38bdf8', borderTopColor: 'transparent' }}
+              />
+              <p className="text-sm" style={{ color: '#64748b' }}>Loading flight data...</p>
             </div>
           </div>
         ) : activeView === 'overview' ? (

@@ -510,30 +510,81 @@ impl Database {
         Ok(flights)
     }
 
+    /// Get a single flight by ID (avoids loading all flights)
+    pub fn get_flight_by_id(&self, flight_id: i64) -> Result<Flight, DatabaseError> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.query_row(
+            r#"
+            SELECT 
+                id, file_name, COALESCE(display_name, file_name) AS display_name,
+                drone_model, drone_serial, aircraft_name, battery_serial,
+                CAST(start_time AS VARCHAR) AS start_time,
+                duration_secs, total_distance,
+                max_altitude, max_speed, home_lat, home_lon, point_count
+            FROM flights
+            WHERE id = ?
+            "#,
+            params![flight_id],
+            |row| {
+                Ok(Flight {
+                    id: row.get(0)?,
+                    file_name: row.get(1)?,
+                    display_name: row.get(2)?,
+                    drone_model: row.get(3)?,
+                    drone_serial: row.get(4)?,
+                    aircraft_name: row.get(5)?,
+                    battery_serial: row.get(6)?,
+                    start_time: row.get(7)?,
+                    duration_secs: row.get(8)?,
+                    total_distance: row.get(9)?,
+                    max_altitude: row.get(10)?,
+                    max_speed: row.get(11)?,
+                    home_lat: row.get(12)?,
+                    home_lon: row.get(13)?,
+                    point_count: row.get(14)?,
+                })
+            },
+        )
+        .map_err(|e| match e {
+            duckdb::Error::QueryReturnedNoRows => DatabaseError::FlightNotFound(flight_id),
+            other => DatabaseError::DuckDb(other),
+        })
+    }
+
     /// Get flight telemetry with automatic downsampling for large datasets.
     ///
     /// Strategy:
     /// - If points < 5000: return raw data
     /// - If points >= 5000: group by 1-second intervals, averaging values
     /// - This keeps the frontend responsive while preserving data trends
+    ///
+    /// `known_point_count` avoids an extra COUNT query when the flight metadata
+    /// already provides the point count.
     pub fn get_flight_telemetry(
         &self,
         flight_id: i64,
         max_points: Option<usize>,
+        known_point_count: Option<i64>,
     ) -> Result<Vec<TelemetryRecord>, DatabaseError> {
         let conn = self.conn.lock().unwrap();
         let max_points = max_points.unwrap_or(5000);
 
-        // First, get the point count for this flight
-        let point_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM telemetry WHERE flight_id = ?",
-            params![flight_id],
-            |row| row.get(0),
-        )?;
-
-        if point_count == 0 {
-            return Err(DatabaseError::FlightNotFound(flight_id));
-        }
+        // Use known count or fall back to a COUNT query
+        let point_count = match known_point_count {
+            Some(c) if c > 0 => c,
+            _ => {
+                let c: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM telemetry WHERE flight_id = ?",
+                    params![flight_id],
+                    |row| row.get(0),
+                )?;
+                if c == 0 {
+                    return Err(DatabaseError::FlightNotFound(flight_id));
+                }
+                c
+            }
+        };
 
         let records = if point_count as usize <= max_points {
             // Return raw data - no downsampling needed
@@ -713,19 +764,26 @@ impl Database {
         &self,
         flight_id: i64,
         max_points: Option<usize>,
+        known_point_count: Option<i64>,
     ) -> Result<Vec<[f64; 3]>, DatabaseError> {
         let conn = self.conn.lock().unwrap();
         let max_points = max_points.unwrap_or(2000);
 
-        // Get total count
-        let point_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM telemetry WHERE flight_id = ?",
-            params![flight_id],
-            |row| row.get(0),
-        )?;
+        // Use known count or fall back to a COUNT query
+        let point_count = match known_point_count {
+            Some(c) if c > 0 => c as usize,
+            _ => {
+                let c: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM telemetry WHERE flight_id = ?",
+                    params![flight_id],
+                    |row| row.get(0),
+                )?;
+                c as usize
+            }
+        };
 
         // Calculate skip factor for downsampling
-        let skip_factor = ((point_count as usize) / max_points).max(1);
+        let skip_factor = (point_count / max_points).max(1);
 
         let mut stmt = conn.prepare(
             r#"

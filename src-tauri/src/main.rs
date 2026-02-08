@@ -138,7 +138,7 @@ async fn get_flights(state: State<'_, AppState>) -> Result<Vec<Flight>, String> 
 /// Get complete flight data for visualization
 ///
 /// This command:
-/// 1. Retrieves flight metadata
+/// 1. Retrieves flight metadata by ID (single row lookup)
 /// 2. Fetches telemetry with automatic downsampling for large datasets
 /// 3. Returns data optimized for ECharts consumption
 #[tauri::command]
@@ -149,21 +149,21 @@ async fn get_flight_data(
 ) -> Result<FlightDataResponse, String> {
     log::debug!("Fetching flight data for ID: {}", flight_id);
 
-    // Get flight metadata
-    let flights = state
+    // Get flight metadata by ID (single row, not all flights)
+    let flight = state
         .db
-        .get_all_flights()
-        .map_err(|e| format!("Failed to get flights: {}", e))?;
+        .get_flight_by_id(flight_id)
+        .map_err(|e| match e {
+            DatabaseError::FlightNotFound(id) => format!("Flight {} not found", id),
+            _ => format!("Failed to get flight: {}", e),
+        })?;
 
-    let flight = flights
-        .into_iter()
-        .find(|f| f.id == flight_id)
-        .ok_or_else(|| format!("Flight {} not found", flight_id))?;
+    let known_point_count = flight.point_count.map(|c| c as i64);
 
     // Get telemetry with automatic downsampling
     let telemetry_records = state
         .db
-        .get_flight_telemetry(flight_id, max_points)
+        .get_flight_telemetry(flight_id, max_points, known_point_count)
         .map_err(|e| match e {
             DatabaseError::FlightNotFound(id) => format!("Flight {} not found", id),
             _ => format!("Failed to get telemetry: {}", e),
@@ -175,7 +175,7 @@ async fn get_flight_data(
     // Get GPS track for map
     let track = state
         .db
-        .get_flight_track(flight_id, Some(2000))
+        .get_flight_track(flight_id, Some(2000), known_point_count)
         .map_err(|e| format!("Failed to get track: {}", e))?;
 
     Ok(FlightDataResponse {

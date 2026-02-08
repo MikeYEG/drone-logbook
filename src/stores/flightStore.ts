@@ -20,6 +20,9 @@ interface FlightState {
   themeMode: 'system' | 'dark' | 'light';
   donationAcknowledged: boolean;
 
+  // Flight data cache (keyed by flight ID)
+  _flightDataCache: Map<number, FlightDataResponse>;
+
   // Actions
   loadFlights: () => Promise<void>;
   loadOverview: () => Promise<void>;
@@ -58,6 +61,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     typeof localStorage !== 'undefined'
       ? localStorage.getItem('donationAcknowledged') === 'true'
       : false,
+  _flightDataCache: new Map(),
 
   // Load all flights from database
   loadFlights: async () => {
@@ -99,15 +103,42 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     }
   },
 
-  // Select a flight and load its data
+  // Select a flight and load its data (with cache)
   selectFlight: async (flightId: number) => {
-    set({ isLoading: true, error: null, selectedFlightId: flightId });
+    // Skip if already selected
+    if (get().selectedFlightId === flightId && get().currentFlightData) {
+      return;
+    }
+
+    // Always show loading briefly so user sees click feedback
+    set({ isLoading: true, error: null, selectedFlightId: flightId, currentFlightData: null });
+
+    // Check cache first
+    const cached = get()._flightDataCache.get(flightId);
+    if (cached) {
+      // Brief delay so spinner is visible even on cache hit
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      set({ currentFlightData: cached, isLoading: false, error: null });
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('lastSelectedFlightId', String(flightId));
+      }
+      return;
+    }
     try {
       const flightData = await invoke<FlightDataResponse>('get_flight_data', {
         flightId,
         maxPoints: 5000, // Downsample if needed
       });
-      set({ currentFlightData: flightData, isLoading: false });
+
+      // Store in cache (limit cache size to 10 entries)
+      const cache = new Map(get()._flightDataCache);
+      if (cache.size >= 10) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey !== undefined) cache.delete(firstKey);
+      }
+      cache.set(flightId, flightData);
+
+      set({ currentFlightData: flightData, isLoading: false, _flightDataCache: cache });
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('lastSelectedFlightId', String(flightId));
       }
@@ -150,9 +181,15 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     try {
       await invoke('delete_flight', { flightId });
       
+      // Remove from cache
+      const cache = new Map(get()._flightDataCache);
+      cache.delete(flightId);
+      
       // Clear selection if deleted flight was selected
       if (get().selectedFlightId === flightId) {
-        set({ selectedFlightId: null, currentFlightData: null });
+        set({ selectedFlightId: null, currentFlightData: null, _flightDataCache: cache });
+      } else {
+        set({ _flightDataCache: cache });
       }
       
       // Reload flights
@@ -178,11 +215,16 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       // If selected, update current flight data too
       const current = get().currentFlightData;
       if (current && current.flight.id === flightId) {
+        const updated = {
+          ...current,
+          flight: { ...current.flight, displayName },
+        };
+        // Update cache too
+        const cache = new Map(get()._flightDataCache);
+        cache.set(flightId, updated);
         set({
-          currentFlightData: {
-            ...current,
-            flight: { ...current.flight, displayName },
-          },
+          currentFlightData: updated,
+          _flightDataCache: cache,
         });
       }
     } catch (err) {

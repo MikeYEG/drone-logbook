@@ -403,6 +403,12 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
             </select>
           </div>
 
+          <span className="ml-auto text-xs text-gray-400 flex items-center h-8">
+            Analyzing{' '}
+            <span className="font-semibold text-dji-accent mx-1">{filteredFlights.length}</span>
+            {' '}of {flights.length} flight{flights.length !== 1 ? 's' : ''}
+          </span>
+
           <button
             onClick={() => {
               setDateRange(undefined);
