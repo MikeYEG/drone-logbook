@@ -206,6 +206,16 @@ All flight data (DuckDB database, cached decryption keys) is stored in a Docker 
     └── keychains/           # Cached decryption keys
 ```
 
+## How to obtain your own DJI Developer API key
+
+To acquire an apiKey, follow these steps:
+
+1. Visit [DJI Developer Technologies](https://developer.dji.com/user) and log in. Create an account if you don't have one, this is different registration than your existing DJI account
+2. Click `CREATE APP`, choose `Open API` as the App Type, and provide the necessary details like `App Name`, `Category`, and `Description`.
+3. After creating the app, activate it through the link sent to your email.
+4. On your developer user page, find your app's details to retrieve the ApiKey (labeled as the SDK key or app key).
+
+
 ## Love this project?
 
 I'm thrilled that you're using this dashboard. Your interest and engagement mean a lot to me! You can view and analyze more detailed DJI flight statistics with this setup than paying for any commertial solution.
