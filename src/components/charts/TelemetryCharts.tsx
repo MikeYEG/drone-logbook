@@ -4,7 +4,7 @@
  * Optimized for performance with large datasets
  */
 
-import { useMemo, useRef, useCallback } from 'react';
+import { useMemo, useRef, useCallback, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import type { EChartsOption, ECharts, LineSeriesOption } from 'echarts';
 import type { TelemetryData } from '@/types';
@@ -49,6 +49,22 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
     return resolvedTheme;
   }, [resolvedTheme]);
 
+  const [dragZoomActive, setDragZoomActive] = useState(true);
+
+  const toggleDragZoom = useCallback(() => {
+    setDragZoomActive((prev) => {
+      const next = !prev;
+      chartsRef.current.forEach((chart) => {
+        chart.dispatchAction({
+          type: 'takeGlobalCursor',
+          key: 'dataZoomSelect',
+          dataZoomSelectActive: next,
+        });
+      });
+      return next;
+    });
+  }, []);
+
   const resetZoom = useCallback(() => {
     chartsRef.current.forEach((chart) => {
       chart.dispatchAction({
@@ -91,6 +107,13 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
 
       chart.on('dataZoom', () => {
         syncZoom(chart);
+      });
+
+      // Activate drag-to-zoom by default
+      chart.dispatchAction({
+        type: 'takeGlobalCursor',
+        key: 'dataZoomSelect',
+        dataZoomSelectActive: true,
       });
     },
     [syncZoom]
@@ -135,10 +158,25 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-1.5">
+        <button
+          onClick={toggleDragZoom}
+          className={`text-xs border rounded px-2 py-1 transition-colors ${
+            dragZoomActive
+              ? 'text-dji-primary border-dji-primary/50 bg-dji-primary/10'
+              : 'text-gray-400 hover:text-white border-gray-700'
+          }`}
+          title={dragZoomActive ? 'Disable drag to zoom' : 'Enable drag to zoom'}
+        >
+          <svg className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" viewBox="0 0 1024 1024" fill="currentColor">
+            <path d="M1005.3 967.5L755.8 718.1c63.2-74.5 101.5-171 101.5-276.4C857.3 198 665.3 6 429.6 6S2 198 2 441.7s192 435.7 427.7 435.7c105.4 0 201.9-38.3 276.4-101.5l249.4 249.4c10.4 10.4 27.3 10.4 37.8 0l12-12c10.4-10.5 10.4-27.3 0-37.8zM429.6 810.4c-203.4 0-368.7-165.3-368.7-368.7s165.3-368.7 368.7-368.7 368.7 165.3 368.7 368.7-165.3 368.7-368.7 368.7z" />
+          </svg>
+          Drag zoom
+        </button>
         <button
           onClick={resetZoom}
           className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
+          title="Reset zoom on all charts"
         >
           Reset zoom
         </button>
@@ -235,6 +273,20 @@ function createBaseChartConfig(theme: 'dark' | 'light'): Partial<EChartsOption> 
 
   return {
     animation: false,
+    toolbox: {
+      show: true,
+      feature: {
+        dataZoom: {
+          yAxisIndex: 'none',
+          title: { zoom: '', back: '' },
+          iconStyle: { opacity: 0 },
+          emphasis: { iconStyle: { opacity: 0 } },
+        },
+      },
+      right: -999,
+      top: -999,
+      itemSize: 0,
+    },
     grid: {
       left: 50,
       right: 46,

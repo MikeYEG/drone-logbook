@@ -35,6 +35,11 @@ interface FlightState {
   setDonationAcknowledged: (value: boolean) => void;
   clearSelection: () => void;
   clearError: () => void;
+
+  // Battery name mapping (serial -> custom display name)
+  batteryNameMap: Record<string, string>;
+  renameBattery: (serial: string, displayName: string) => void;
+  getBatteryDisplayName: (serial: string) => string;
 }
 
 export const useFlightStore = create<FlightState>((set, get) => ({
@@ -62,6 +67,15 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       ? localStorage.getItem('donationAcknowledged') === 'true'
       : false,
   _flightDataCache: new Map(),
+  batteryNameMap: (() => {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem('batteryNameMap');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  })(),
 
   // Load all flights from database
   loadFlights: async () => {
@@ -263,6 +277,24 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       localStorage.setItem('donationAcknowledged', String(value));
     }
     set({ donationAcknowledged: value });
+  },
+
+  renameBattery: (serial: string, displayName: string) => {
+    const map = { ...get().batteryNameMap };
+    if (displayName.trim() === '' || displayName.trim() === serial) {
+      // Reset to original serial name
+      delete map[serial];
+    } else {
+      map[serial] = displayName.trim();
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('batteryNameMap', JSON.stringify(map));
+    }
+    set({ batteryNameMap: map });
+  },
+
+  getBatteryDisplayName: (serial: string) => {
+    return get().batteryNameMap[serial] || serial;
   },
 
   clearSelection: () =>

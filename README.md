@@ -37,12 +37,12 @@
 - **High-Performance Analytics**: DuckDB-powered analytical queries with automatic downsampling for large datasets - import all your flight logs in one place. Free and open source, zero maintanance cost, no monthly subscription for unlimited number of flight log analysis.
 - **Universally available**: The application can be built locally from source, but for ease of use, standalone binaries are provided for Windows and MacOS - ready to deploy. A Docker image is also available for self-hosted web deployment.
 - **Interactive Flight Maps**: MapLibre GL with 3D terrain, satellite toggle, start/end markers, and a deck.gl 3D path overlay - visualize your flight map in 3D interatively. Flight replay with play/pause, seek slider, speed control (0.5x-16x), and a 3D-aware aircraft marker that follows the flight path at altitude.
-- **Telemetry Charts**: Height/VPS, speed, battery, attitude, RC signal, GPS satellites, RC uplink/downlink, distance-to-home, and velocity X/Y/Z for each of your drone sessions.
+- **Telemetry Charts**: Height/VPS, speed, battery, attitude, RC signal, GPS satellites, RC uplink/downlink, distance-to-home, and velocity X/Y/Z with synchronized drag-to-zoom across all charts.
 - **V13+ Log Support**: Automatic encryption key handling for newer DJI logs
 - **Local-First**: All data stored locally in a single DuckDB database - No sketchy server upload. No need to even upload in DJI's servers, you can copy the log files locally and process them locally (for log decryption, the key will be sent to DJI's server during import, so you need to be online during the first import of a new log file)
 - **Filters, Search & Sort**: Date range picker, drone/device filter, battery serial filter, search, and sorting
-- **Overview Dashboard**: Aggregate totals, averages, heatmap activity, pie-chart activity breakdowns, and top-flight highlights
-- **Battery Health Insights**: Per-battery health bars and per‑minute charge usage history timeline
+- **Overview Dashboard**: Aggregate totals, averages, heatmap activity, pie-chart breakdowns (by drone, battery, flight duration), and top-flight highlights
+- **Battery Health Insights**: Per-battery health bars with inline serial renaming, and per‑minute charge usage history timeline with zoom/scroll
 - **Theme & Units**: Light/Dark/System theme and Metric/Imperial units
 - **Exports**: Direct CSV, JSON, GPX, and KML export from the flight stats bar
 

@@ -21,7 +21,7 @@ interface FlightStatsProps {
 
 export function FlightStats({ data }: FlightStatsProps) {
   const { flight, telemetry } = data;
-  const { unitSystem } = useFlightStore();
+  const { unitSystem, getBatteryDisplayName } = useFlightStore();
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -267,7 +267,7 @@ ${points}
             )}
             {flight.batterySerial && (
               <span className="px-2 py-0.5 rounded-full text-xs border border-dji-accent/40 text-dji-accent bg-dji-accent/10">
-                Battery SN: {flight.batterySerial}
+                Battery: {getBatteryDisplayName(flight.batterySerial)}
               </span>
             )}
           </div>

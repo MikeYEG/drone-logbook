@@ -39,6 +39,8 @@ interface OverviewProps {
 
 export function Overview({ stats, flights, unitSystem, onSelectFlight }: OverviewProps) {
   const themeMode = useFlightStore((state) => state.themeMode);
+  const getBatteryDisplayName = useFlightStore((state) => state.getBatteryDisplayName);
+  const renameBattery = useFlightStore((state) => state.renameBattery);
   const resolvedTheme = useMemo(() => resolveThemeMode(themeMode), [themeMode]);
   // Filter state
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -397,7 +399,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
               <option value="">All batteries</option>
               {batteryOptions.map((serial) => (
                 <option key={serial} value={serial}>
-                  {serial}
+                  {getBatteryDisplayName(serial)}
                 </option>
               ))}
             </select>
@@ -462,7 +464,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       </div>
 
       {/* Charts Row */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
         {/* Drone Model Chart */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-white mb-3">Flights by Drone</h3>
@@ -480,10 +482,32 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
           <h3 className="text-sm font-semibold text-white mb-3">Flights by Battery</h3>
           <DonutChart
             data={filteredStats.batteriesUsed.map((b) => ({
-              name: b.batterySerial,
+              name: getBatteryDisplayName(b.batterySerial),
               value: b.flightCount,
             }))}
             emptyMessage="No battery data available"
+          />
+        </div>
+
+        {/* Flights by Duration Chart */}
+        <div className="card p-4">
+          <h3 className="text-sm font-semibold text-white mb-3">Flights by Duration</h3>
+          <DonutChart
+            data={(() => {
+              let short = 0, mid = 0, long = 0;
+              filteredFlights.forEach((f) => {
+                const dur = f.durationSecs ?? 0;
+                if (dur < 600) short++;
+                else if (dur < 1200) mid++;
+                else long++;
+              });
+              return [
+                { name: 'Short (<10 min)', value: short },
+                { name: 'Mid (10–20 min)', value: mid },
+                { name: 'Long (>20 min)', value: long },
+              ].filter((d) => d.value > 0);
+            })()}
+            emptyMessage="No flight data available"
           />
         </div>
       </div>
@@ -497,6 +521,8 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
             batteries={filteredStats.batteriesUsed}
             points={filteredHealthPoints}
             isLight={resolvedTheme === 'light'}
+            getBatteryDisplayName={getBatteryDisplayName}
+            renameBattery={renameBattery}
           />
         </div>
 
@@ -845,10 +871,7 @@ function DonutChart({
         label: { show: false },
         emphasis: {
           label: {
-            show: true,
-            fontSize: 12,
-            fontWeight: 'bold' as const,
-            color: '#fff',
+            show: false,
           },
           itemStyle: {
             shadowBlur: 10,
@@ -873,17 +896,65 @@ function BatteryHealthList({
   batteries,
   points,
   isLight,
+  getBatteryDisplayName,
+  renameBattery,
 }: {
   batteries: { batterySerial: string; flightCount: number; totalDurationSecs: number }[];
   points: BatteryHealthPoint[];
   isLight: boolean;
+  getBatteryDisplayName: (serial: string) => string;
+  renameBattery: (serial: string, displayName: string) => void;
 }) {
+  const [editingSerial, setEditingSerial] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+
   if (batteries.length === 0) {
     return <p className="text-sm text-gray-400">No battery data available.</p>;
   }
 
   // Estimate health based on flight count (assuming 400 cycles = end of life)
   const maxCycles = 400;
+
+  const handleStartRename = (serial: string) => {
+    setEditingSerial(serial);
+    setDraftName(getBatteryDisplayName(serial));
+    setRenameError(null);
+  };
+
+  const handleSaveRename = (serial: string) => {
+    const name = draftName.trim();
+    if (name.length === 0) {
+      setEditingSerial(null);
+      setRenameError(null);
+      return;
+    }
+    // If name equals the serial itself, just clear the mapping
+    if (name === serial) {
+      renameBattery(serial, '');
+      setEditingSerial(null);
+      setRenameError(null);
+      return;
+    }
+    // Check uniqueness: name must not match any other battery's custom name or serial
+    const otherSerials = batteries
+      .map((b) => b.batterySerial)
+      .filter((s) => s !== serial);
+    const otherNames = otherSerials.map((s) => getBatteryDisplayName(s));
+    if (otherNames.includes(name) || otherSerials.includes(name)) {
+      setRenameError('Name must be unique across all batteries');
+      return;
+    }
+    renameBattery(serial, name);
+    setEditingSerial(null);
+    setRenameError(null);
+  };
+
+  const handleCancelRename = () => {
+    setEditingSerial(null);
+    setDraftName('');
+    setRenameError(null);
+  };
 
   const seriesMap = new Map<string, BatteryHealthPoint[]>();
   points.forEach((point) => {
@@ -908,9 +979,11 @@ function BatteryHealthList({
       })
       .filter((p): p is [number, number] => p !== null);
 
+    const displayName = getBatteryDisplayName(serial);
+
     return [
       {
-        name: serial,
+        name: displayName,
         type: 'line' as const,
         smooth: true,
         showSymbol: true,
@@ -919,7 +992,7 @@ function BatteryHealthList({
         data,
       },
       {
-        name: serial,
+        name: displayName,
         type: 'scatter' as const,
         symbolSize: 7,
         data,
@@ -945,6 +1018,25 @@ function BatteryHealthList({
       left: 'center',
       textStyle: { color: titleColor, fontSize: 12, fontWeight: 'normal' as const },
     },
+    toolbox: {
+      feature: {
+        dataZoom: {
+          yAxisIndex: 'none',
+          title: { zoom: 'Drag to zoom', back: 'Reset zoom' },
+        },
+      },
+      right: 16,
+      top: -4,
+      itemSize: 13,
+      iconStyle: {
+        borderColor: isLight ? '#94a3b8' : '#6b7280',
+      },
+      emphasis: {
+        iconStyle: {
+          borderColor: isLight ? '#007acc' : '#00a0dc',
+        },
+      },
+    },
     tooltip: {
       trigger: 'axis' as const,
       backgroundColor: tooltipStyle.background,
@@ -966,7 +1058,7 @@ function BatteryHealthList({
       bottom: 0,
       textStyle: { color: axisLabelColor, fontSize: 11 },
     },
-    grid: { left: 16, right: 16, top: 46, bottom: 48, containLabel: true },
+    grid: { left: 16, right: 16, top: 46, bottom: 72, containLabel: true },
     xAxis: {
       type: 'time' as const,
       axisLine: { lineStyle: { color: axisLineColor } },
@@ -983,45 +1075,135 @@ function BatteryHealthList({
       axisLabel: { color: axisLabelColor, fontSize: 10 },
       splitLine: { lineStyle: { color: splitLineColor } },
     },
+    dataZoom: [
+      {
+        type: 'inside' as const,
+        xAxisIndex: 0,
+        filterMode: 'filter' as const,
+        zoomOnMouseWheel: 'ctrl',
+        moveOnMouseWheel: false,
+        moveOnMouseMove: true,
+        preventDefaultMouseMove: false,
+      },
+      {
+        type: 'slider' as const,
+        xAxisIndex: 0,
+        height: 18,
+        bottom: 28,
+        brushSelect: false,
+        borderColor: isLight ? '#cbd5e1' : '#374151',
+        backgroundColor: isLight ? '#f1f5f9' : '#1e293b',
+        fillerColor: isLight ? 'rgba(0, 122, 204, 0.15)' : 'rgba(0, 160, 220, 0.2)',
+        handleStyle: {
+          color: isLight ? '#007acc' : '#00a0dc',
+        },
+        textStyle: {
+          color: axisLabelColor,
+        },
+        dataBackground: {
+          lineStyle: { color: isLight ? '#94a3b8' : '#4a4e69' },
+          areaStyle: { color: isLight ? '#cbd5e1' : '#2a2a4e' },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: isLight ? '#007acc' : '#00a0dc' },
+          areaStyle: { color: isLight ? 'rgba(0, 122, 204, 0.1)' : 'rgba(0, 160, 220, 0.15)' },
+        },
+      },
+    ],
     series,
   };
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3 max-h-[200px] overflow-y-auto">
+      <div className="space-y-2 max-h-[200px] overflow-y-auto" style={{ padding: '0 16px 0 10px' }}>
         {batteries.map((battery) => {
           const healthPercent = Math.max(0, 100 - (battery.flightCount / maxCycles) * 100);
           const healthColor =
             healthPercent > 70 ? '#10b981' : healthPercent > 40 ? '#f59e0b' : '#ef4444';
+          const displayName = getBatteryDisplayName(battery.batterySerial);
+          const isEditing = editingSerial === battery.batterySerial;
 
           return (
-            <div key={battery.batterySerial} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300 font-medium truncate">{battery.batterySerial}</span>
-                <span className="text-gray-400">
-                  {battery.flightCount} flights · {formatDuration(battery.totalDurationSecs)}
-                </span>
-              </div>
-              <div className="relative h-2 bg-gray-700/50 rounded-full overflow-hidden">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${healthPercent}%`,
-                    backgroundColor: healthColor,
-                  }}
-                />
-              </div>
-              <div className="text-[10px] text-gray-500 text-right">
-                Est. health: {healthPercent.toFixed(0)}%
-              </div>
+            <div key={battery.batterySerial}>
+              {isEditing ? (
+                <div className="mb-1">
+                  <input
+                    value={draftName}
+                    onChange={(e) => {
+                      setDraftName(e.target.value);
+                      setRenameError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveRename(battery.batterySerial);
+                      if (e.key === 'Escape') handleCancelRename();
+                    }}
+                    className="input h-6 text-xs px-2 w-full"
+                    placeholder="Battery name"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <button
+                      onClick={() => handleSaveRename(battery.batterySerial)}
+                      className="text-[10px] text-dji-primary hover:text-dji-primary/80"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleCancelRename}
+                      className="text-[10px] text-gray-400 hover:text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    {renameError && (
+                      <span className="text-[10px] text-red-400">{renameError}</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid items-center gap-1.5 text-xs" style={{ gridTemplateColumns: '160px 1fr 32px 150px' }}>
+                  <span
+                    className="text-gray-300 font-medium truncate flex items-center justify-end gap-1 group cursor-pointer"
+                    onDoubleClick={() => handleStartRename(battery.batterySerial)}
+                    title={`${displayName}${displayName !== battery.batterySerial ? ` (${battery.batterySerial})` : ''} — double-click to rename`}
+                  >
+                    <span className="truncate">{displayName}</span>
+                    <button
+                      onClick={() => handleStartRename(battery.batterySerial)}
+                      className="p-0.5 text-sky-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      title="Rename battery"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                      </svg>
+                    </button>
+                  </span>
+                  <div className="relative h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${healthPercent}%`,
+                        backgroundColor: healthColor,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-500 text-right" style={{ fontVariantNumeric: 'tabular-nums', minWidth: '32px' }}>
+                    {healthPercent.toFixed(0)}%
+                  </span>
+                  <span className="text-gray-400 text-[10px] text-left truncate">
+                    {battery.flightCount} flights · {formatDuration(battery.totalDurationSecs)}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
       {series.length > 0 ? (
-        <div className="h-[220px]">
-          <ReactECharts option={chartOption} style={{ height: '100%' }} />
+        <div className="h-[260px]">
+          <ReactECharts option={chartOption} style={{ height: '100%' }} onChartReady={(chart) => {
+            chart.dispatchAction({ type: 'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: true });
+          }} />
         </div>
       ) : (
         <p className="text-xs text-gray-500">No battery usage points available.</p>

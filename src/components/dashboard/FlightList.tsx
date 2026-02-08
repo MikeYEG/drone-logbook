@@ -26,6 +26,7 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
     deleteFlight,
     updateFlightName,
     unitSystem,
+    getBatteryDisplayName,
   } =
     useFlightStore();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -754,7 +755,7 @@ ${points}
             <option value="">All batteries</option>
             {batteryOptions.map((serial) => (
               <option key={serial} value={serial}>
-                {serial}
+                {getBatteryDisplayName(serial)}
               </option>
             ))}
           </select>
@@ -1008,17 +1009,17 @@ ${points}
                     setDraftName(flight.displayName || flight.fileName);
                     setConfirmDeleteId(null);
                   }}
-                  className="p-0.5 text-sky-400"
+                  className="p-0.5 text-sky-400 hover:text-sky-300"
                   title="Rename flight"
                 >
-                  <EditIcon />
+                  <PencilIcon />
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setConfirmDeleteId(flight.id);
                   }}
-                  className="p-0.5 text-red-400"
+                  className="p-0.5 text-red-400 hover:text-red-300"
                   title="Delete flight"
                 >
                   <TrashIcon />
@@ -1137,15 +1138,10 @@ function TrashIcon() {
   );
 }
 
-function EditIcon() {
+function PencilIcon() {
   return (
-    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M11 5h2m-1 0v14m-7 0h14"
-      />
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
     </svg>
   );
 }

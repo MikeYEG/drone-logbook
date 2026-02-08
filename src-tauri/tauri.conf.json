@@ -16,7 +16,7 @@
         "title": "DJI Flight Log Analyzer",
         "width": 1400,
         "height": 900,
-        "minWidth": 1024,
+        "minWidth": 1600,
         "minHeight": 768,
         "resizable": true,
         "fullscreen": false,

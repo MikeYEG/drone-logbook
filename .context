@@ -80,15 +80,15 @@
       "Local DuckDB storage with telemetry schema, WAL recovery, and migration support.",
       "Overview analytics page (totals, averages, max altitude, max distance from home).",
       "Overview activity heatmap (365-day, 7x52 grid).",
-      "Overview donut charts for flights by drone model and batteries used.",
+      "Overview donut charts for flights by drone model, batteries used, and flight duration (short/mid/long).",
       "Overview top 3 longest and furthest (distance-from-home) flights.",
-      "Battery health: per-serial health bars and per-minute usage history plot (scatter + smoothed line).",
-      "Flight list with rename, delete, filters (date range, drone, battery), search, and sorting.",
+      "Battery health: per-serial health bars, inline rename (pencil icon, uniqueness-validated, persisted to localStorage), and per-minute usage history plot (scatter + smoothed line) with zoom slider and drag-to-zoom.",
+      "Flight list with rename (pencil icon), delete (trash icon), filters (date range, drone, battery), search, and sorting.",
       "Settings: API key, units (metric/imperial), theme (light/dark/system), delete-all logs.",
       "Settings: shows app data + log directory for troubleshooting.",
       "Charts: height/VPS/speed (metric in km/h), battery, attitude, RC signal, GPS satellites.",
       "Charts: RC uplink/downlink, distance-to-home, and velocity XYZ panels.",
-      "Charts: synchronized zoom, reset zoom, auto-scaled Y axes, aligned X-axis ticks, custom tooltip header with pills.",
+      "Charts: synchronized zoom, drag-to-zoom toggle, reset zoom, auto-scaled Y axes, aligned X-axis ticks, custom tooltip header with pills.",
       "Map: 3D terrain view via MapLibre, global theme styling.",
       "Map: satellite style toggle, gradient flight path with start/end markers.",
       "Map: deck.gl 3D path overlay; map toggles persist in session.",
@@ -102,6 +102,8 @@
       "UI polish: Import progress counter showing current file out of total during batch imports.",
       "UI polish: Sidebar width remembered across sessions via localStorage.",
       "UI polish: Layout clipping fixes for Tauri on Linux (100vh -> 100% for title bar area).",
+      "UI polish: Battery serial rename mapping (frontend-only, persisted to localStorage, shown everywhere).",
+      "UI polish: App min-width 1600px with horizontal scrollbar when window is narrower.",
       "Data safety: DB backup, corruption handling, telemetry rebuild when column order mismatches.",
       "Docker/Web deployment: Axum REST API mirroring all Tauri commands, Nginx reverse proxy, multi-stage Docker build.",
       "Dual-mode frontend: api.ts adapter uses invoke() for Tauri, fetch() for web. All @tauri-apps imports are dynamic."
@@ -128,7 +130,7 @@
         "src/index.css",
         "tailwind.config.js"
       ],
-      "state_store": "src/stores/flightStore.ts",
+      "state_store": "src/stores/flightStore.ts (includes batteryNameMap persisted to localStorage)",
       "api_adapter": "src/lib/api.ts",
       "types": "src/types/index.ts",
       "env_types": "src/vite-env.d.ts"
@@ -403,8 +405,8 @@
   "ui": {
     "themes": "CSS variables in src/index.css; body classes theme-light/theme-dark. Light mode uses !important overrides.",
     "filters": "Flight list uses date range popover (react-day-picker), drone and battery selects.",
-    "flight_list": "Simple compact list with always-visible rename (sky-400) and delete (red-400) icons. Subtitle shows date . duration . distance.",
-    "charts": "ECharts with synced zoom; reset zoom button; tooltip header uses pill capsules. Theme-aware base config.",
+    "flight_list": "Simple compact list with always-visible rename (pencil icon, sky-400) and delete (trash icon, red-400) icons. Subtitle shows date . duration . distance.",
+    "charts": "ECharts with synced zoom; global drag-to-zoom toggle + reset zoom buttons; tooltip header uses pill capsules. Theme-aware base config. Hidden per-chart toolbox enables selection highlight for drag-to-zoom.",
     "map": "MapLibre terrain with deck.gl overlay. Spline-smoothed color-by gradient path, shadow layer, start/end/home markers, hover tooltip.",
     "loading": "Spinner uses border-sky-400 for both-mode visibility."
   },
