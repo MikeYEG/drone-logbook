@@ -19,7 +19,7 @@ import { DayPicker, type DateRange } from 'react-day-picker';
 import type { FlightDataResponse, Flight, TelemetryData } from '@/types';
 import 'react-day-picker/dist/style.css';
 
-export function FlightList({ showControls = true }: { showControls?: boolean } = {}) {
+export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: number) => void } = {}) {
   const {
     flights,
     selectedFlightId,
@@ -168,7 +168,7 @@ export function FlightList({ showControls = true }: { showControls?: boolean } =
   }, [flights]);
 
   const filteredFlights = useMemo(() => {
-    if (!showControls) return flights;
+    // Always apply filters
     const start = dateRange?.from ?? null;
     const end = dateRange?.to ? new Date(dateRange.to) : null;
     if (end) end.setHours(23, 59, 59, 999);
@@ -195,8 +195,8 @@ export function FlightList({ showControls = true }: { showControls?: boolean } =
   }, [dateRange, flights, selectedBattery, selectedDrone]);
 
   const normalizedSearch = useMemo(
-    () => (showControls ? searchQuery.trim().toLowerCase() : ''),
-    [searchQuery, showControls]
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery]
   );
 
   const getFlightTitle = useCallback((flight: { displayName?: string | null; fileName?: string | null }) => {
@@ -214,11 +214,6 @@ export function FlightList({ showControls = true }: { showControls?: boolean } =
   const sortedFlights = useMemo(() => {
     const list = [...searchedFlights];
     list.sort((a, b) => {
-      if (!showControls) {
-        const aDate = a.startTime ? new Date(a.startTime).getTime() : 0;
-        const bDate = b.startTime ? new Date(b.startTime).getTime() : 0;
-        return bDate - aDate;
-      }
       if (sortOption === 'name') {
         const nameA = getFlightTitle(a).toLowerCase();
         const nameB = getFlightTitle(b).toLowerCase();
@@ -244,7 +239,7 @@ export function FlightList({ showControls = true }: { showControls?: boolean } =
       return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
     });
     return list;
-  }, [getFlightTitle, searchedFlights, showControls, sortDirection, sortOption]);
+  }, [getFlightTitle, searchedFlights, sortDirection, sortOption]);
 
   const sortOptions = useMemo(
     () => [
@@ -649,11 +644,10 @@ ${points}
   }
 
   return (
-    <div className="flex flex-col h-full" onClick={() => {
+    <div className="flex flex-col flex-1 min-h-0" onClick={() => {
       setConfirmDeleteId(null);
       setConfirmBulkDelete(false);
     }}>
-      {showControls && (
         <div className="p-3 border-b border-gray-700 space-y-3 flex-shrink-0">
         <div>
           <label className="block text-xs text-gray-400 mb-1">Date range</label>
@@ -919,22 +913,25 @@ ${points}
           </div>
         </div>
       </div>
-      )}
 
       {/* Scrollable flight list */}
       <div className="flex-1 overflow-y-auto divide-y divide-gray-700/50">
       {sortedFlights.map((flight) => (
         <div
           key={flight.id}
-          onClick={() => selectFlight(flight.id)}
+          onClick={() => {
+            selectFlight(flight.id);
+            onSelectFlight?.(flight.id);
+          }}
           role="button"
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               selectFlight(flight.id);
+              onSelectFlight?.(flight.id);
             }
           }}
-          className={`w-full p-3 text-left hover:bg-gray-700/30 transition-colors group ${
+          className={`w-full p-3 text-left hover:bg-gray-700/30 transition-[background-color] duration-150 group ${
             selectedFlightId === flight.id
               ? 'bg-dji-primary/20 border-l-2 border-dji-primary'
               : 'border-l-2 border-transparent'
@@ -979,7 +976,7 @@ ${points}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <p className="font-medium text-white truncate">
+                  <p className="font-medium text-gray-300 truncate">
                     {flight.displayName || flight.fileName}
                   </p>
                   <button
@@ -999,7 +996,7 @@ ${points}
 
               {/* Drone Model */}
               {flight.droneModel && !flight.droneModel.startsWith('Unknown') && (
-                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                <p className="text-xs text-gray-400 mt-0.5 truncate">
                   {flight.droneModel}
                 </p>
               )}
@@ -1063,11 +1060,7 @@ ${points}
           </div>
         </div>
       ))}
-      {showControls && sortedFlights.length === 0 && normalizedSearch.length === 0 && (
-        <div className="p-4 text-center text-gray-500 text-xs">
-          No flights match the current filters or search.
-        </div>
-      )}      {showControls && sortedFlights.length === 0 && normalizedSearch.length === 0 && (
+      {sortedFlights.length === 0 && normalizedSearch.length === 0 && (
         <div className="p-4 text-center text-gray-500 text-xs">
           No flights match the current filters or search.
         </div>

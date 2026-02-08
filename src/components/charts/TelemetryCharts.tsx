@@ -43,6 +43,12 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
     [resolvedTheme]
   );
 
+  // Update module-level base config when theme changes
+  useMemo(() => {
+    baseChartConfig = createBaseChartConfig(resolvedTheme);
+    return resolvedTheme;
+  }, [resolvedTheme]);
+
   const resetZoom = useCallback(() => {
     chartsRef.current.forEach((chart) => {
       chart.dispatchAction({
@@ -217,86 +223,107 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
   );
 }
 
-/** Shared chart configuration for performance */
-const baseChartConfig: Partial<EChartsOption> = {
-  animation: false, // Disable for large datasets
-  grid: {
-    left: 50,
-    right: 46,
-    top: 30,
-    bottom: 50,
-    containLabel: true,
-  },
-  tooltip: {
-    trigger: 'axis',
-    renderMode: 'html',
-    backgroundColor: '#16213e',
-    borderColor: '#4a4e69',
-    textStyle: {
-      color: '#fff',
+/** Shared chart configuration - theme-aware */
+function createBaseChartConfig(theme: 'dark' | 'light'): Partial<EChartsOption> {
+  const isLight = theme === 'light';
+  const axisColor = isLight ? '#cbd5e1' : '#4a4e69';
+  const labelColor = isLight ? '#64748b' : '#9ca3af';
+  const zoomBg = isLight ? '#f1f5f9' : '#16213e';
+  const zoomBorder = isLight ? '#cbd5e1' : '#2a2a4e';
+  const zoomFiller = isLight ? 'rgba(0, 122, 204, 0.15)' : 'rgba(0, 160, 220, 0.2)';
+  const handleColor = isLight ? '#007acc' : '#00A0DC';
+
+  return {
+    animation: false,
+    grid: {
+      left: 50,
+      right: 46,
+      top: 30,
+      bottom: 50,
+      containLabel: true,
     },
-    axisPointer: {
-      type: 'line',
-      axis: 'x',
-      lineStyle: {
-        color: '#4a4e69',
-      },
-    },
-  },
-  legend: {
-    textStyle: {
-      color: '#9ca3af',
-    },
-    top: 0,
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    axisLine: {
-      lineStyle: {
-        color: '#4a4e69',
-      },
-    },
-    axisLabel: {
-      color: '#9ca3af',
-      formatter: (value: string) => {
-        const secs = parseFloat(value);
-        const mins = Math.floor(secs / 60);
-        const remainingSecs = Math.floor(secs % 60);
-        return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
-      },
-    },
-    splitLine: {
-      show: false,
-    },
-  },
-  dataZoom: [
-    {
-      type: 'inside',
-      xAxisIndex: 0,
-      filterMode: 'filter',
-      zoomOnMouseWheel: 'ctrl',
-      moveOnMouseWheel: true,
-      moveOnMouseMove: true,
-    },
-    {
-      type: 'slider',
-      xAxisIndex: 0,
-      height: 18,
-      bottom: 12,
-      brushSelect: false,
-      borderColor: '#2a2a4e',
-      backgroundColor: '#16213e',
-      fillerColor: 'rgba(0, 160, 220, 0.2)',
-      handleStyle: {
-        color: '#00A0DC',
-      },
+    tooltip: {
+      trigger: 'axis',
+      renderMode: 'html',
+      backgroundColor: isLight ? '#ffffff' : '#16213e',
+      borderColor: isLight ? '#e2e8f0' : '#4a4e69',
       textStyle: {
-        color: '#9ca3af',
+        color: isLight ? '#0f172a' : '#fff',
+      },
+      axisPointer: {
+        type: 'line',
+        axis: 'x',
+        lineStyle: {
+          color: axisColor,
+        },
       },
     },
-  ],
-};
+    legend: {
+      textStyle: {
+        color: labelColor,
+      },
+      top: 0,
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      axisLine: {
+        lineStyle: {
+          color: axisColor,
+        },
+      },
+      axisLabel: {
+        color: labelColor,
+        formatter: (value: string) => {
+          const secs = parseFloat(value);
+          const mins = Math.floor(secs / 60);
+          const remainingSecs = Math.floor(secs % 60);
+          return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
+        },
+      },
+      splitLine: {
+        show: false,
+      },
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'filter',
+        zoomOnMouseWheel: 'ctrl',
+        moveOnMouseWheel: true,
+        moveOnMouseMove: true,
+      },
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        height: 18,
+        bottom: 12,
+        brushSelect: false,
+        borderColor: zoomBorder,
+        backgroundColor: zoomBg,
+        fillerColor: zoomFiller,
+        handleStyle: {
+          color: handleColor,
+        },
+        textStyle: {
+          color: labelColor,
+        },
+        dataBackground: {
+          lineStyle: { color: isLight ? '#94a3b8' : '#4a4e69' },
+          areaStyle: { color: isLight ? '#cbd5e1' : '#2a2a4e' },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: handleColor },
+          areaStyle: { color: isLight ? 'rgba(0, 122, 204, 0.1)' : 'rgba(0, 160, 220, 0.15)' },
+        },
+      },
+    ],
+  };
+}
+
+// Module-level cache for current base config (set by TelemetryCharts component)
+let baseChartConfig: Partial<EChartsOption> = createBaseChartConfig('dark');
 
 function createAltitudeSpeedChart(
   data: TelemetryData,

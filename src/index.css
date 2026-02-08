@@ -18,30 +18,52 @@ body.theme-light {
   --dji-dark: 248 250 252;
   --dji-surface: 255 255 255;
   --dji-muted: 148 163 184;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 body.theme-light .text-gray-400 {
-  color: #475569;
+  color: #64748b !important;
 }
 
 body.theme-light .text-gray-500 {
-  color: #334155;
+  color: #94a3b8 !important;
 }
 
 body.theme-light .text-gray-300 {
-  color: #1f2937;
+  color: #1e293b !important;
 }
 
 body.theme-light .text-gray-100 {
-  color: #0f172a;
+  color: #1e293b !important;
 }
 
 body.theme-light .text-white {
-  color: #0f172a;
+  color: #0f172a !important;
 }
 
 body.theme-light .border-gray-700 {
-  border-color: #e2e8f0;
+  border-color: #e2e8f0 !important;
+}
+
+/* Light mode hover overrides */
+body.theme-light .hover\:bg-gray-700\/30:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+body.theme-light .hover\:bg-gray-700\/40:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.theme-light .hover\:bg-gray-700:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.theme-light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+body.theme-light .hover\:text-gray-200:hover {
+  color: #334155 !important;
 }
 
 body.modal-open {
@@ -89,6 +111,20 @@ body.overlay-active .overflow-y-auto {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #6a6e89;
+}
+
+/* Light mode scrollbar */
+body.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+body.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+body.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Base layer overrides */

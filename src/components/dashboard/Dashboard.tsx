@@ -163,8 +163,11 @@ export function Dashboard() {
         </div>
 
         {/* Flight List */}
-        <div className="flex-1 overflow-y-auto">
-          <FlightList showControls={activeView === 'flights'} />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <FlightList onSelectFlight={(flightId) => {
+            setActiveView('flights');
+            useFlightStore.getState().selectFlight(flightId);
+          }} />
         </div>
 
         {/* Flight Count */}
