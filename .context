@@ -85,7 +85,9 @@
       "Overview donut charts for flights by drone model, batteries used, and flight duration (short/mid/long).",
       "Overview top 3 longest and furthest (distance-from-home) flights.",
       "Battery health: per-serial health bars, inline rename (pencil icon, uniqueness-validated, persisted to localStorage), and per-minute usage history plot (scatter + smoothed line) with zoom slider and drag-to-zoom.",
-      "Flight list with rename (pencil icon), delete (trash icon), filters (date range, drone, battery), search, and sorting.",
+      "Flight list with rename (pencil icon), delete (trash icon), filters (date range, drone, battery, duration range slider), search, and sorting.",
+      "Flight list sidebar: collapsible Filters section (default collapsed) and Import section (default expanded), both persisted to localStorage with 'click to expand' hints.",
+      "Overview uses sidebar-filtered flights via Zustand store (sidebarFilteredFlightIds) instead of its own filter bar.",
       "Settings: API key, units (metric/imperial), theme (light/dark/system), delete-all logs.",
       "Settings: shows app data + log directory for troubleshooting.",
       "Charts: height/VPS/speed (metric in km/h), battery, attitude, RC signal, GPS satellites.",
@@ -96,6 +98,7 @@
       "Map: deck.gl 3D path overlay; map toggles persist in session.",
       "Map: Catmull-Rom spline smoothing, color-by modes (progress/height/speed/distance), hover tooltip.",
       "Map: Flight replay with play/pause, seek slider, speed selector (0.5x-16x), and 3D-aware aircraft marker.",
+      "Map: Replay telemetry overlay (top-right) showing live-interpolated height, speed, distance, battery, satellites, attitude, and coordinates synced to playback position. Hover tooltip paused during replay.",
       "Map: Aircraft toggle to show/hide replay controls and marker. Satellite maxzoom 18, terrain DEM maxzoom 12.",
       "Export: CSV/JSON/GPX/KML downloads from flight stats.",
       "Logging: comprehensive debug logging via tauri-plugin-log (desktop) or env_logger (web).",
@@ -106,6 +109,7 @@
       "UI polish: Layout clipping fixes for Tauri on Linux (100vh -> 100% for title bar area).",
       "UI polish: Battery serial rename mapping (frontend-only, persisted to localStorage, shown everywhere).",
       "UI polish: App min-width 1600px with horizontal scrollbar when window is narrower.",
+      "UI polish: WeatherModal rendered via createPortal to document.body with modal-open class for scrollbar suppression.",
       "Backup & Restore: Export full database (flights, telemetry, keychains) to a portable gzip-compressed tar archive of Parquet files. Import restores data with upsert semantics. Works in both Tauri (native save/open dialogs) and web (browser download/upload).",
       "Data safety: DB backup, corruption handling, telemetry rebuild when column order mismatches.",
       "Docker/Web deployment: Axum REST API mirroring all Tauri commands, Nginx reverse proxy, multi-stage Docker build.",
@@ -133,7 +137,7 @@
         "src/index.css",
         "tailwind.config.js"
       ],
-      "state_store": "src/stores/flightStore.ts (includes batteryNameMap persisted to localStorage)",
+      "state_store": "src/stores/flightStore.ts (includes batteryNameMap persisted to localStorage, sidebarFilteredFlightIds for Overview filter sync)",
       "api_adapter": "src/lib/api.ts",
       "types": "src/types/index.ts",
       "env_types": "src/vite-env.d.ts"
@@ -227,6 +231,15 @@
       "import_counter": "FlightImporter.tsx: Shows 'X of Y files' during batch imports.",
       "sidebar_persistence": "Dashboard.tsx: Sidebar width saved to localStorage and restored on load.",
       "replay_slider_styles": "index.css: Custom slider thumb styles for the flight replay seek bar."
+    },
+    "v1_5_0_sidebar_and_telemetry": {
+      "description": "Sidebar UX polish, unified sidebar filters for Overview, weather modal fix, map replay telemetry overlay.",
+      "collapsible_sections": "Dashboard.tsx: Collapsible Import section (default expanded) moved below Flights/Overview toggle. FlightList.tsx: Collapsible Filters section (default collapsed). Both persisted to localStorage with 'click to expand' hints.",
+      "duration_filter": "FlightList.tsx: Dual-thumb duration range slider with custom CSS (dual-range-wrap in index.css). Filters by flight duration in minutes.",
+      "overview_filter_unification": "Overview.tsx: Removed all local filter UI (date picker, drone/battery dropdowns, CalendarIcon). Now reads sidebarFilteredFlightIds from Zustand store. flightStore.ts: Added sidebarFilteredFlightIds Set<number> and setSidebarFilteredFlightIds action. FlightList.tsx syncs filtered IDs via useEffect.",
+      "weather_modal_fix": "WeatherModal.tsx: Rendered via createPortal to document.body (escapes parent stacking contexts). Adds modal-open class to body for scrollbar suppression.",
+      "replay_telemetry_overlay": "FlightMap.tsx: New telemetry prop from Dashboard. replayTelemetry memo interpolates all telemetry fields at replay position. Fixed overlay (top-right, map-overlay style) shows height, speed, distance, battery (color-coded), voltage, temp, satellites, pitch/roll/yaw, and lat/lng. Hover tooltip paused during replay.",
+      "telemetry_toggle_rename": "FlightMap.tsx: Toggle label renamed from 'Tooltip' to 'Telemetry'."
     }
   },
   "behavior": {
@@ -415,10 +428,10 @@
   },
   "ui": {
     "themes": "CSS variables in src/index.css; body classes theme-light/theme-dark. Light mode uses !important overrides.",
-    "filters": "Flight list uses date range popover (react-day-picker), drone and battery selects.",
+    "filters": "Flight list uses date range popover (react-day-picker), drone and battery selects, and dual-thumb duration slider. Collapsible filter/import panels persisted to localStorage. Overview shares sidebar filters via store.",
     "flight_list": "Simple compact list with always-visible rename (pencil icon, sky-400) and delete (trash icon, red-400) icons. Subtitle shows date . duration . distance.",
     "charts": "ECharts with synced zoom; global drag-to-zoom toggle + reset zoom buttons; tooltip header uses pill capsules. Theme-aware base config. Hidden per-chart toolbox enables selection highlight for drag-to-zoom.",
-    "map": "MapLibre terrain with deck.gl overlay. Spline-smoothed color-by gradient path, shadow layer, start/end/home markers, hover tooltip.",
+    "map": "MapLibre terrain with deck.gl overlay. Spline-smoothed color-by gradient path, shadow layer, start/end/home markers, hover tooltip. Replay telemetry overlay with live-interpolated data during playback.",
     "loading": "Spinner uses border-sky-400 for both-mode visibility."
   },
   "known_issues": [

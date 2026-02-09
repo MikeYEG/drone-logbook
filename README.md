@@ -29,16 +29,25 @@
     <img src="screenshots/individual_stats_light.png" alt="Individual stats (light)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/overall_stats_dark.png" alt="Overall stats (dark)" width="900" />
+    <img src="screenshots/weather_preview.png" alt="Weather preview" width="900" />
 </p>
-<p align="center">
-    <img src="screenshots/overall_stats.png" alt="Overall stats" width="900" />
 <p align="center">
     <img src="screenshots/telemetry_1.png" alt="Telemetry charts" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/telemetry_2.png" alt="Telemetry charts 2" width="900" />
 </p>
+<p align="center">
+    <img src="screenshots/overall_stats_dark.png" alt="Overall stats (dark)" width="900" />
+</p>
+<p align="center">
+    <img src="screenshots/overall_stats.png" alt="Overall stats" width="900" />
+</p>
+<p align="center">
+    <img src="screenshots/map_dark.png" alt="Flight map replay (dark)" width="900" />
+</p>
+<p align="center">
+    <img src="screenshots/map_light.png" alt="Flight map replay (light)" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/flight_map.png" alt="Flight map" width="900" />
@@ -47,20 +56,21 @@
     <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
 </p>
 
+
 ## Features
 
 - **High-Performance Analytics**: DuckDB-powered analytical queries with automatic downsampling for large datasets - import all your flight logs in one place. Free and open source, zero maintanance cost, no monthly subscription for unlimited number of flight log analysis.
 - **Universally available**: The application can be built locally from source, but for ease of use, standalone binaries are provided for Windows and MacOS - ready to deploy. A Docker image is also available for self-hosted web deployment.
-- **Interactive Flight Maps**: MapLibre GL with 3D terrain, satellite toggle, start/end markers, and a deck.gl 3D path overlay - visualize your flight map in 3D interatively. Flight replay with play/pause, seek slider, speed control (0.5x-16x), and a 3D-aware aircraft marker that follows the flight path at altitude.
+- **Interactive Flight Maps**: MapLibre GL with 3D terrain, satellite toggle, start/end markers, and a deck.gl 3D path overlay - visualize your flight map in 3D interatively. Flight replay with play/pause, seek slider, speed control (0.5x-16x), and a 3D-aware aircraft marker that follows the flight path at altitude. Live telemetry overlay during replay showing height, speed, battery, distance, attitude, and more - synced to the playback position.
 - **Telemetry Charts**: Height/VPS, speed, battery, attitude, RC signal, GPS satellites, RC uplink/downlink, distance-to-home, and velocity X/Y/Z with synchronized drag-to-zoom across all charts.
 - **V13+ Log Support**: Automatic encryption key handling for newer DJI logs
 - **Local-First**: All data stored locally in a single DuckDB database - No sketchy server upload. No need to even upload in DJI's servers, you can copy the log files locally and process them locally (for log decryption, the key will be sent to DJI's server during import, so you need to be online during the first import of a new log file)
-- **Filters, Search & Sort**: Date range picker, drone/device filter, battery serial filter, search, and sorting
-- **Overview Dashboard**: Aggregate totals, averages, heatmap activity, pie-chart breakdowns (by drone, battery, flight duration), and top-flight highlights
+- **Filters, Search & Sort**: Date range picker, drone/device filter, battery serial filter, duration range slider, search, and sorting - shared across flight list and overview
+- **Overview Dashboard**: Aggregate totals, averages, heatmap activity, pie-chart breakdowns (by drone, battery, flight duration), and top-flight highlights - all filtered by sidebar selections
 - **Battery Health Insights**: Per-battery health bars with inline serial renaming, and per‑minute charge usage history timeline with zoom/scroll
 - **Theme & Units**: Light/Dark/System theme and Metric/Imperial units
 - **Exports**: Direct CSV, JSON, GPX, and KML export from the flight stats bar
-- **Backup & Restore**: Export your entire database to a portable backup file and restore it on any instance — works on both desktop and Docker
+- **Backup & Restore**: Export your entire database to a portable backup file and restore it on any instance - works on both desktop and Docker
 
 ## Accessing the DJI flight log files
 
@@ -88,7 +98,7 @@ xattr -d com.apple.quarantine <the-app-file> # you can drag and drop the app to 
 2. **Select a Flight**: Click on a flight in the sidebar
 3. **Analyze Data**: View telemetry charts and the 3D flight path on the map
 4. **Filter/Search/Sort**: Use date range, drone/device, battery serial filters, search, and sorting
-5. **Overview Filters**: Apply the same date/drone/battery filters to overview analytics (no search)
+5. **Overview Analytics**: Sidebar filters (date, drone, battery, duration) automatically apply to overview statistics
 5. **Export**: Use the Export dropdown in the stats bar (CSV/JSON/GPX/KML)
 6. **Backup & Restore**: Use Settings → Backup Database to export, or Import Backup to restore
 7. **Configure Settings**: Set API key, theme, units, and view app data/log directories
