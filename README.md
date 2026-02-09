@@ -249,5 +249,6 @@ BSD 3-clause - see [LICENSE](LICENSE) for details.
 - [DuckDB](https://duckdb.org/) - Analytical database
 - [Tauri](https://tauri.app/) - Desktop app framework
 
+## Star History
 
-
+[![Star History Chart](https://api.star-history.com/svg?repos=arpanghosh8453/dji-logbook&type=date&legend=top-left)](https://www.star-history.com/#arpanghosh8453/dji-logbook&type=date&legend=top-left)
