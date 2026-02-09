@@ -43,13 +43,21 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
   } | null>(null);
   const [selectedDrone, setSelectedDrone] = useState('');
   const [selectedBattery, setSelectedBattery] = useState('');
+  const [durationFilterMin, setDurationFilterMin] = useState<number | null>(null);
+  const [durationFilterMax, setDurationFilterMax] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<
     'name' | 'date' | 'duration' | 'distance'
   >('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(() => {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('filtersCollapsed');
+      if (stored !== null) return stored === 'true';
+    }
+    return true;
+  });
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0, currentFile: '' });
@@ -169,6 +177,17 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
     return Array.from(unique);
   }, [flights]);
 
+  const durationRange = useMemo(() => {
+    const durations = flights
+      .map((f) => f.durationSecs ?? 0)
+      .filter((d) => d > 0);
+    if (durations.length === 0) return { minMins: 0, maxMins: 60 };
+    return {
+      minMins: Math.floor(Math.min(...durations) / 60),
+      maxMins: Math.ceil(Math.max(...durations) / 60),
+    };
+  }, [flights]);
+
   const filteredFlights = useMemo(() => {
     // Always apply filters
     const start = dateRange?.from ?? null;
@@ -192,9 +211,21 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
         if (flight.batterySerial !== selectedBattery) return false;
       }
 
+      if (durationFilterMin !== null || durationFilterMax !== null) {
+        const durationMins = (flight.durationSecs ?? 0) / 60;
+        if (durationFilterMin !== null && durationMins < durationFilterMin) return false;
+        if (durationFilterMax !== null && durationMins > durationFilterMax) return false;
+      }
+
       return true;
     });
-  }, [dateRange, flights, selectedBattery, selectedDrone]);
+  }, [dateRange, flights, selectedBattery, selectedDrone, durationFilterMin, durationFilterMax]);
+
+  // Sync filtered flight IDs to the store so Overview can use them
+  const setSidebarFilteredFlightIds = useFlightStore((s) => s.setSidebarFilteredFlightIds);
+  useEffect(() => {
+    setSidebarFilteredFlightIds(new Set(filteredFlights.map((f) => f.id)));
+  }, [filteredFlights, setSidebarFilteredFlightIds]);
 
   const normalizedSearch = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -669,11 +700,17 @@ ${points}
         {/* Collapsible filter header */}
         <button
           type="button"
-          onClick={() => setIsFiltersCollapsed((v) => !v)}
+          onClick={() => setIsFiltersCollapsed((v) => {
+            const next = !v;
+            localStorage.setItem('filtersCollapsed', String(next));
+            return next;
+          })}
           className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors"
         >
-          <span className={`font-medium ${dateRange?.from || dateRange?.to || selectedDrone || selectedBattery ? 'text-emerald-400' : ''}`}>
-            {dateRange?.from || dateRange?.to || selectedDrone || selectedBattery ? 'Filters — Active' : 'Filters'}
+          <span className={`font-medium ${dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null ? 'text-emerald-400' : ''}`}>
+            {dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null
+              ? 'Filters — Active'
+              : isFiltersCollapsed ? 'Filters — click to expand' : 'Filters'}
           </span>
           <span
             className={`w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center transition-transform duration-200 ${
@@ -691,6 +728,65 @@ ${points}
           }`}
         >
         <div className="px-3 pb-3 space-y-3">
+        {/* Duration range slider */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-gray-400">Duration</label>
+            <span className="text-xs font-medium text-gray-200">
+              {(() => {
+                const lo = durationFilterMin ?? durationRange.minMins;
+                const hi = durationFilterMax ?? durationRange.maxMins;
+                const fmt = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+                if (durationFilterMin === null && durationFilterMax === null) return 'Any';
+                return `${fmt(lo)} – ${fmt(hi)}`;
+              })()}
+            </span>
+          </div>
+          {(() => {
+            const lo = durationFilterMin ?? durationRange.minMins;
+            const hi = durationFilterMax ?? durationRange.maxMins;
+            const span = Math.max(durationRange.maxMins - durationRange.minMins, 1);
+            const loPct = ((lo - durationRange.minMins) / span) * 100;
+            const hiPct = ((hi - durationRange.minMins) / span) * 100;
+            return (
+              <div className="dual-range-wrap" style={{ '--lo-pct': `${loPct}%`, '--hi-pct': `${hiPct}%` } as React.CSSProperties}>
+                <div className="dual-range-track" />
+                <div className="dual-range-fill" />
+                <input
+                  type="range"
+                  min={durationRange.minMins}
+                  max={durationRange.maxMins}
+                  step={1}
+                  value={lo}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    const clamped = Math.min(val, hi - 1);
+                    setDurationFilterMin(clamped <= durationRange.minMins ? null : clamped);
+                  }}
+                  className="dual-range-input"
+                />
+                <input
+                  type="range"
+                  min={durationRange.minMins}
+                  max={durationRange.maxMins}
+                  step={1}
+                  value={hi}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    const clamped = Math.max(val, lo + 1);
+                    setDurationFilterMax(clamped >= durationRange.maxMins ? null : clamped);
+                  }}
+                  className="dual-range-input"
+                />
+              </div>
+            );
+          })()}
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-gray-500">{durationRange.minMins}m</span>
+            <span className="text-[10px] text-gray-500">{durationRange.maxMins >= 60 ? `${Math.floor(durationRange.maxMins / 60)}h ${durationRange.maxMins % 60}m` : `${durationRange.maxMins}m`}</span>
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs text-gray-400 mb-1">Date range</label>
           <button
@@ -756,6 +852,7 @@ ${points}
             </>
           )}
         </div>
+
         <div>
           <label className="block text-xs text-gray-400 mb-1">Drone</label>
           <Select
@@ -792,6 +889,8 @@ ${points}
               setDateRange(undefined);
               setSelectedDrone('');
               setSelectedBattery('');
+              setDurationFilterMin(null);
+              setDurationFilterMax(null);
             }}
             className="text-xs text-gray-400 hover:text-white"
           >

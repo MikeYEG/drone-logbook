@@ -308,6 +308,113 @@ body.theme-light .maplibregl-ctrl-group {
   border-top: 1px solid #4a4e69 !important;
 }
 
+/* Dual-range duration slider */
+.dual-range-wrap {
+  position: relative;
+  height: 20px;
+}
+
+.dual-range-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: #374151;
+}
+
+.dual-range-fill {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgb(var(--dji-primary));
+  left: var(--lo-pct, 0%);
+  right: calc(100% - var(--hi-pct, 100%));
+  pointer-events: none;
+}
+
+.dual-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+.dual-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(var(--dji-primary));
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.1s ease;
+  margin-top: -5px;
+}
+
+.dual-range-input::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.dual-range-input::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  z-index: 3;
+}
+
+.dual-range-input::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+
+.dual-range-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(var(--dji-primary));
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.dual-range-input::-moz-range-track {
+  height: 4px;
+  background: transparent;
+  border: none;
+}
+
+/* Light mode overrides */
+body.theme-light .dual-range-track {
+  background: #e2e8f0;
+}
+
+body.theme-light .dual-range-input::-webkit-slider-thumb {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+body.theme-light .dual-range-input::-moz-range-thumb {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
 /* Flight cluster map popup — light theme (default) */
 .flight-cluster-popup .maplibregl-popup-content {
   background: #ffffff;

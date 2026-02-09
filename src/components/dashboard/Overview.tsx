@@ -1,14 +1,12 @@
 /**
  * Overview panel with comprehensive flight statistics
- * Features: filters, activity heatmap, donut charts, battery health, top flights
+ * Features: activity heatmap, donut charts, battery health, top flights
+ * Uses sidebar filters from the flight list for all calculations
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { DayPicker, type DateRange } from 'react-day-picker';
-import 'react-day-picker/dist/style.css';
 import type { BatteryHealthPoint, Flight, OverviewStats } from '@/types';
-import { Select } from '@/components/ui/Select';
 import {
   formatDistance,
   formatDuration,
@@ -43,106 +41,14 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
   const themeMode = useFlightStore((state) => state.themeMode);
   const getBatteryDisplayName = useFlightStore((state) => state.getBatteryDisplayName);
   const renameBattery = useFlightStore((state) => state.renameBattery);
+  const sidebarFilteredFlightIds = useFlightStore((state) => state.sidebarFilteredFlightIds);
   const resolvedTheme = useMemo(() => resolveThemeMode(themeMode), [themeMode]);
-  // Filter state
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [isDateOpen, setIsDateOpen] = useState(false);
-  const [selectedDrone, setSelectedDrone] = useState('');
-  const [selectedBattery, setSelectedBattery] = useState('');
-  const dateButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-    []
-  );
-
-  const today = useMemo(() => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }, []);
-
-  const dateRangeLabel = useMemo(() => {
-    if (!dateRange?.from && !dateRange?.to) return 'Any date';
-    if (dateRange?.from && !dateRange?.to) {
-      return `From ${dateFormatter.format(dateRange.from)}`;
-    }
-    if (dateRange?.from && dateRange?.to) {
-      return `${dateFormatter.format(dateRange.from)} – ${dateFormatter.format(dateRange.to)}`;
-    }
-    return 'Any date';
-  }, [dateFormatter, dateRange]);
-
-  useEffect(() => {
-    if (!isDateOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsDateOpen(false);
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isDateOpen]);
-
-  // Drone options from flights
-  const droneOptions = useMemo(() => {
-    const entries = flights
-      .map((flight) => ({
-        key: `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`,
-        label: `${flight.aircraftName || flight.droneModel || 'Unknown'}${
-          flight.droneSerial ? ` : ${flight.droneSerial}` : ''
-        }`,
-      }))
-      .filter((entry) => entry.label.trim().length > 0);
-
-    const unique = new Map<string, string>();
-    entries.forEach((entry) => {
-      if (!unique.has(entry.key)) unique.set(entry.key, entry.label);
-    });
-
-    return Array.from(unique.entries()).map(([key, label]) => ({ key, label }));
-  }, [flights]);
-
-  // Battery options from flights
-  const batteryOptions = useMemo(() => {
-    const unique = new Set<string>();
-    flights.forEach((flight) => {
-      if (flight.batterySerial) unique.add(flight.batterySerial);
-    });
-    return Array.from(unique);
-  }, [flights]);
-
-  // Filter flights
+  // Use sidebar-filtered flights (fall back to all flights if no filter set yet)
   const filteredFlights = useMemo(() => {
-    const start = dateRange?.from ?? null;
-    const end = dateRange?.to ? new Date(dateRange.to) : null;
-    if (end) end.setHours(23, 59, 59, 999);
-
-    return flights.filter((flight) => {
-      if (start || end) {
-        if (!flight.startTime) return false;
-        const flightDate = new Date(flight.startTime);
-        if (start && flightDate < start) return false;
-        if (end && flightDate > end) return false;
-      }
-
-      if (selectedDrone) {
-        const key = `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`;
-        if (key !== selectedDrone) return false;
-      }
-
-      if (selectedBattery) {
-        if (flight.batterySerial !== selectedBattery) return false;
-      }
-
-      return true;
-    });
-  }, [dateRange, flights, selectedBattery, selectedDrone]);
+    if (!sidebarFilteredFlightIds) return flights;
+    return flights.filter((f) => sidebarFilteredFlightIds.has(f.id));
+  }, [flights, sidebarFilteredFlightIds]);
 
   // Compute filtered stats
   const filteredStats = useMemo(() => {
@@ -261,7 +167,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       flightsByDate,
       topFlights,
     };
-  }, [filteredFlights, dateRange, selectedDrone, selectedBattery, stats.maxDistanceFromHomeM, stats.topDistanceFlights]);
+  }, [filteredFlights, stats.maxDistanceFromHomeM, stats.topDistanceFlights]);
 
   const filteredHealthPoints = useMemo(() => {
     if (!stats.batteryHealthPoints.length) return [] as BatteryHealthPoint[];
@@ -278,8 +184,6 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       .slice(0, 3);
   }, [filteredFlights, stats.topDistanceFlights]);
 
-  const hasFilters = dateRange?.from || dateRange?.to || selectedDrone || selectedBattery;
-
   const avgDistancePerFlight =
     filteredStats.totalFlights > 0
       ? filteredStats.totalDistanceM / filteredStats.totalFlights
@@ -295,117 +199,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
 
   return (
     <div className="h-full flex flex-col">
-      {/* Filter Bar */}
-      <div className="sticky top-0 z-30 bg-dji-dark/95 backdrop-blur p-4 pb-2">
-        <div className="card p-4">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[180px] relative">
-            <label className="block text-xs text-gray-400 mb-1">Date range</label>
-            <button
-              ref={dateButtonRef}
-              type="button"
-              onClick={() => setIsDateOpen((open) => !open)}
-              className="input w-full text-xs h-8 px-3 py-1.5 flex items-center justify-between gap-2"
-            >
-              <span className={dateRange?.from || dateRange?.to ? 'text-gray-100' : 'text-gray-400'}>
-                {dateRangeLabel}
-              </span>
-              <CalendarIcon />
-            </button>
-            {isDateOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsDateOpen(false)} />
-                <div
-                  className="absolute left-0 z-50 mt-1 rounded-xl border border-gray-700 bg-dji-surface p-3 shadow-xl"
-                  style={{
-                    width: Math.max(320, dateButtonRef.current?.getBoundingClientRect().width ?? 320),
-                  }}
-                >
-                  <DayPicker
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={(range) => {
-                      setDateRange(range);
-                      if (range?.from && range?.to) setIsDateOpen(false);
-                    }}
-                    disabled={{ after: today }}
-                    weekStartsOn={1}
-                    numberOfMonths={1}
-                    className="rdp-theme"
-                  />
-                  <div className="mt-2 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setDateRange(undefined)}
-                      className="text-xs text-gray-400 hover:text-white"
-                    >
-                      Clear range
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsDateOpen(false)}
-                      className="text-xs text-gray-200 hover:text-white"
-                    >
-                      Done
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs text-gray-400 mb-1">Drone</label>
-            <Select
-              value={selectedDrone}
-              onChange={setSelectedDrone}
-              className="text-xs h-8"
-              options={[
-                { value: '', label: 'All drones' },
-                ...droneOptions.map((option) => ({ value: option.key, label: option.label })),
-              ]}
-            />
-          </div>
-
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs text-gray-400 mb-1">Battery serial</label>
-            <Select
-              value={selectedBattery}
-              onChange={setSelectedBattery}
-              className="text-xs h-8"
-              options={[
-                { value: '', label: 'All batteries' },
-                ...batteryOptions.map((serial) => ({ value: serial, label: getBatteryDisplayName(serial) })),
-              ]}
-            />
-          </div>
-
-          <span className="ml-auto text-xs text-gray-400 flex items-center h-8">
-            Analyzing{' '}
-            <span className="font-semibold text-dji-accent mx-1">{filteredFlights.length}</span>
-            {' '}of {flights.length} flight{flights.length !== 1 ? 's' : ''}
-          </span>
-
-          <button
-            onClick={() => {
-              setDateRange(undefined);
-              setSelectedDrone('');
-              setSelectedBattery('');
-            }}
-            disabled={!hasFilters}
-            className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${
-              hasFilters
-                ? 'bg-dji-primary/20 text-dji-primary hover:bg-dji-primary/30'
-                : 'text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            Clear filters
-          </button>
-        </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-5">
         {/* Primary Stats */}
         <div className="grid grid-cols-4 gap-3">
         <StatCard label="Total Flights" value={filteredStats.totalFlights.toLocaleString()} icon={<FlightIcon />} />
@@ -1198,27 +992,6 @@ function BatteryHealthList({
 // =============================================================================
 // Icons
 // =============================================================================
-
-function CalendarIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-gray-400"
-    >
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  );
-}
 
 function FlightIcon() {
   return (

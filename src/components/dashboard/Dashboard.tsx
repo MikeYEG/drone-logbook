@@ -36,6 +36,13 @@ export function Dashboard() {
     return 288;
   });
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isImporterCollapsed, setIsImporterCollapsed] = useState(() => {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('importerCollapsed');
+      if (stored !== null) return stored === 'true';
+    }
+    return false;
+  });
   const [mainSplit, setMainSplit] = useState(50);
   const resizingRef = useRef<null | 'sidebar' | 'main'>(null);
 
@@ -146,11 +153,6 @@ export function Dashboard() {
           </button>
         </div>
 
-        {/* Flight Importer */}
-        <div className="p-4 border-b border-gray-700">
-          <FlightImporter />
-        </div>
-
         {/* View Toggle */}
         <div className="px-4 py-2 border-b border-gray-700">
           <div className="flex gap-2">
@@ -174,6 +176,37 @@ export function Dashboard() {
             >
               Overview
             </button>
+          </div>
+        </div>
+
+        {/* Flight Importer */}
+        <div className="border-b border-gray-700 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsImporterCollapsed((v) => {
+              const next = !v;
+              localStorage.setItem('importerCollapsed', String(next));
+              return next;
+            })}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors"
+          >
+            <span className="font-medium">{isImporterCollapsed ? 'Import — click to expand' : 'Import'}</span>
+            <span
+              className={`w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center transition-transform duration-200 ${
+                isImporterCollapsed ? 'rotate-180' : ''
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </span>
+          </button>
+          <div
+            className={`transition-all duration-200 ease-in-out ${
+              isImporterCollapsed ? 'max-h-0 overflow-hidden opacity-0' : 'max-h-[300px] overflow-visible opacity-100'
+            }`}
+          >
+            <div className="px-3 pb-3">
+              <FlightImporter />
+            </div>
           </div>
         </div>
 

@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchFlightWeather } from '@/lib/weather';
 import type { WeatherData } from '@/lib/weather';
 import type { UnitSystem } from '@/lib/utils';
@@ -36,23 +37,25 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
       .finally(() => setLoading(false));
   }, [isOpen, lat, lon, startTime]);
 
-  // Lock body scroll while open
+  // Lock body scroll and hide all nested scrollbars while open
   useEffect(() => {
     if (!isOpen) return;
     const prevBody = document.body.style.overflow;
     const prevHtml = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add('modal-open');
     return () => {
       document.body.style.overflow = prevBody;
       document.documentElement.style.overflow = prevHtml;
+      document.body.classList.remove('modal-open');
     };
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
@@ -169,7 +172,8 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
           })()}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -36,6 +36,10 @@ interface FlightState {
   clearSelection: () => void;
   clearError: () => void;
 
+  // Sidebar-filtered flight IDs (used by Overview to share sidebar filters)
+  sidebarFilteredFlightIds: Set<number> | null;
+  setSidebarFilteredFlightIds: (ids: Set<number> | null) => void;
+
   // Battery name mapping (serial -> custom display name)
   batteryNameMap: Record<string, string>;
   renameBattery: (serial: string, displayName: string) => void;
@@ -296,6 +300,10 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   getBatteryDisplayName: (serial: string) => {
     return get().batteryNameMap[serial] || serial;
   },
+
+  // Sidebar filtered flight IDs
+  sidebarFilteredFlightIds: null,
+  setSidebarFilteredFlightIds: (ids) => set({ sidebarFilteredFlightIds: ids }),
 
   clearSelection: () =>
     set({
