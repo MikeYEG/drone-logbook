@@ -217,6 +217,12 @@ impl Database {
                 rc_signal       INTEGER,
                 rc_uplink       INTEGER,
                 rc_downlink     INTEGER,
+
+                -- RC stick inputs (normalized -100..+100)
+                rc_aileron      DOUBLE,
+                rc_elevator     DOUBLE,
+                rc_throttle     DOUBLE,
+                rc_rudder       DOUBLE,
                 
                 -- Composite primary key for efficient range queries
                 PRIMARY KEY (flight_id, timestamp_ms)
@@ -231,6 +237,10 @@ impl Database {
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS vps_height DOUBLE;
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_uplink INTEGER;
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_downlink INTEGER;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_aileron DOUBLE;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_elevator DOUBLE;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_throttle DOUBLE;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_rudder DOUBLE;
 
             -- ============================================================
             -- KEYCHAIN TABLE: Store cached decryption keys for V13+ logs
@@ -316,6 +326,10 @@ impl Database {
             "rc_signal",
             "rc_uplink",
             "rc_downlink",
+            "rc_aileron",
+            "rc_elevator",
+            "rc_throttle",
+            "rc_rudder",
         ];
 
         let mut stmt = conn.prepare("PRAGMA table_info('telemetry')")?;
@@ -460,6 +474,10 @@ impl Database {
                 point.rc_signal,
                 point.rc_uplink,
                 point.rc_downlink,
+                point.rc_aileron,
+                point.rc_elevator,
+                point.rc_throttle,
+                point.rc_rudder,
             ]) {
                 Ok(()) => inserted += 1,
                 Err(err) => {
@@ -704,7 +722,11 @@ impl Database {
                 flight_mode,
                 rc_signal,
                 rc_uplink,
-                rc_downlink
+                rc_downlink,
+                rc_aileron,
+                rc_elevator,
+                rc_throttle,
+                rc_rudder
             FROM telemetry
             WHERE flight_id = ?
             ORDER BY timestamp_ms ASC
@@ -735,6 +757,10 @@ impl Database {
                     rc_signal: row.get(18)?,
                     rc_uplink: row.get(19)?,
                     rc_downlink: row.get(20)?,
+                    rc_aileron: row.get(21)?,
+                    rc_elevator: row.get(22)?,
+                    rc_throttle: row.get(23)?,
+                    rc_rudder: row.get(24)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -785,7 +811,11 @@ impl Database {
                     FIRST(flight_mode ORDER BY timestamp_ms) AS flight_mode,
                     AVG(rc_signal)::INTEGER AS rc_signal,
                     AVG(rc_uplink)::INTEGER AS rc_uplink,
-                    AVG(rc_downlink)::INTEGER AS rc_downlink
+                    AVG(rc_downlink)::INTEGER AS rc_downlink,
+                    AVG(rc_aileron) AS rc_aileron,
+                    AVG(rc_elevator) AS rc_elevator,
+                    AVG(rc_throttle) AS rc_throttle,
+                    AVG(rc_rudder) AS rc_rudder
                 FROM telemetry
                 WHERE flight_id = ?
                 GROUP BY bucket_ts
@@ -819,6 +849,10 @@ impl Database {
                     rc_signal: row.get(18)?,
                     rc_uplink: row.get(19)?,
                     rc_downlink: row.get(20)?,
+                    rc_aileron: row.get(21)?,
+                    rc_elevator: row.get(22)?,
+                    rc_throttle: row.get(23)?,
+                    rc_rudder: row.get(24)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

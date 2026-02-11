@@ -677,6 +677,12 @@ impl<'a> LogParser<'a> {
             point.rc_downlink = rc.downlink_signal.map(i32::from);
             point.rc_signal = rc.downlink_signal.or(rc.uplink_signal).map(i32::from);
 
+            // RC stick inputs: raw u16 centered at 1024 (range 0..2048) → normalized to -100..+100
+            point.rc_aileron = Some(((rc.aileron as f64) - 1024.0) / 1024.0 * 100.0);
+            point.rc_elevator = Some(((rc.elevator as f64) - 1024.0) / 1024.0 * 100.0);
+            point.rc_throttle = Some(((rc.throttle as f64) - 1024.0) / 1024.0 * 100.0);
+            point.rc_rudder = Some(((rc.rudder as f64) - 1024.0) / 1024.0 * 100.0);
+
             points.push(point);
 
             // Increment timestamp using computed interval

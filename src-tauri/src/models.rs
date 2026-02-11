@@ -101,6 +101,12 @@ pub struct TelemetryPoint {
     pub rc_signal: Option<i32>,
     pub rc_uplink: Option<i32>,
     pub rc_downlink: Option<i32>,
+
+    // RC stick inputs (normalized to -100..+100 percentage)
+    pub rc_aileron: Option<f64>,
+    pub rc_elevator: Option<f64>,
+    pub rc_throttle: Option<f64>,
+    pub rc_rudder: Option<f64>,
 }
 
 /// Telemetry record for frontend consumption (optimized for ECharts)
@@ -128,6 +134,10 @@ pub struct TelemetryRecord {
     pub rc_signal: Option<i32>,
     pub rc_uplink: Option<i32>,
     pub rc_downlink: Option<i32>,
+    pub rc_aileron: Option<f64>,
+    pub rc_elevator: Option<f64>,
+    pub rc_throttle: Option<f64>,
+    pub rc_rudder: Option<f64>,
 }
 
 /// Response format optimized for ECharts rendering
@@ -261,6 +271,14 @@ pub struct TelemetryData {
     pub roll: Vec<Option<f64>>,
     /// Yaw/Heading
     pub yaw: Vec<Option<f64>>,
+    /// RC aileron stick input (normalized -100..+100)
+    pub rc_aileron: Vec<Option<f64>>,
+    /// RC elevator stick input (normalized -100..+100)
+    pub rc_elevator: Vec<Option<f64>>,
+    /// RC throttle stick input (normalized -100..+100)
+    pub rc_throttle: Vec<Option<f64>>,
+    /// RC rudder stick input (normalized -100..+100)
+    pub rc_rudder: Vec<Option<f64>>,
 }
 
 impl TelemetryData {
@@ -292,6 +310,10 @@ impl TelemetryData {
         let mut pitch = Vec::with_capacity(n);
         let mut roll = Vec::with_capacity(n);
         let mut yaw = Vec::with_capacity(n);
+        let mut rc_aileron = Vec::with_capacity(n);
+        let mut rc_elevator = Vec::with_capacity(n);
+        let mut rc_throttle = Vec::with_capacity(n);
+        let mut rc_rudder = Vec::with_capacity(n);
 
         for r in records {
             time.push((r.timestamp_ms - base_time) as f64 / 1000.0);
@@ -314,6 +336,10 @@ impl TelemetryData {
             pitch.push(r.pitch);
             roll.push(r.roll);
             yaw.push(r.yaw);
+            rc_aileron.push(r.rc_aileron);
+            rc_elevator.push(r.rc_elevator);
+            rc_throttle.push(r.rc_throttle);
+            rc_rudder.push(r.rc_rudder);
         }
 
         Self {
@@ -337,6 +363,10 @@ impl TelemetryData {
             pitch,
             roll,
             yaw,
+            rc_aileron,
+            rc_elevator,
+            rc_throttle,
+            rc_rudder,
         }
     }
 

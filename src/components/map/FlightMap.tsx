@@ -191,6 +191,101 @@ const COLOR_BY_OPTIONS: { value: ColorByMode; label: string }[] = [
   { value: 'distance', label: 'Dist. from Home' },
 ];
 
+/* ─── Directional arrow stick widget ────────────────────────────── */
+
+interface StickArrowsProps {
+  label: string;
+  up: number;      // 0-100
+  down: number;    // 0-100
+  left: number;    // 0-100
+  right: number;   // 0-100
+  upLabel: string;
+  downLabel: string;
+  leftLabel: string;
+  rightLabel: string;
+}
+
+/** Renders a cross of 4 directional arrows that progressively fill based on input % */
+function StickArrows({ label, up, down, left, right, upLabel, downLabel, leftLabel, rightLabel }: StickArrowsProps) {
+  const clamp = (v: number) => Math.min(100, Math.max(0, v));
+  const pct = { up: clamp(up), down: clamp(down), left: clamp(left), right: clamp(right) };
+
+  // color ramp: dim → bright cyan as intensity increases
+  const fill = (val: number) => {
+    if (val < 2) return 'rgba(148, 163, 184, 0.18)'; // near-idle  slate-400/18
+    const t = val / 100;
+    // interpolate from gray-500 to sky-400
+    const r = Math.round(107 + (56 - 107) * t);   // 107 → 56
+    const g = Math.round(114 + (189 - 114) * t);   // 114 → 189
+    const b = Math.round(128 + (248 - 128) * t);   // 128 → 248
+    return `rgba(${r},${g},${b},${0.35 + 0.65 * t})`;
+  };
+
+  // Arrow SVG: points upward by default, rotated per direction
+  //  The arrow has a "fill zone" that grows from the base toward the tip.
+  const ArrowIcon = ({ value, rotation, arrowLabel }: { value: number; rotation: number; arrowLabel: string }) => {
+    const h = 28; // arrow total height in viewBox
+    const fillH = (clamp(value) / 100) * h;
+    const id = `arr-${label}-${rotation}`;
+    return (
+      <div className="flex flex-col items-center" style={{ transform: `rotate(${rotation}deg)` }}>
+        <svg width="18" height="32" viewBox="0 0 24 36" className="block">
+          <defs>
+            <clipPath id={id}>
+              {/* Upward arrow shape */}
+              <polygon points="12,2 22,18 17,18 17,34 7,34 7,18 2,18" />
+            </clipPath>
+          </defs>
+          {/* Unfilled outline */}
+          <polygon
+            points="12,2 22,18 17,18 17,34 7,34 7,18 2,18"
+            fill="none"
+            stroke="rgba(148,163,184,0.25)"
+            strokeWidth="1"
+            strokeLinejoin="round"
+          />
+          {/* Progressive fill from base (bottom) upward */}
+          <rect
+            x="0"
+            y={36 - (fillH / h) * 34}
+            width="24"
+            height={(fillH / h) * 34}
+            fill={fill(value)}
+            clipPath={`url(#${id})`}
+          />
+        </svg>
+        {/* Tiny label — counter-rotate so text stays upright */}
+        <span
+          className="text-[8px] leading-none text-gray-500 mt-[-2px] select-none"
+          style={{ transform: `rotate(${-rotation}deg)` }}
+        >
+          {arrowLabel}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider mb-0.5">{label}</span>
+      <div className="grid grid-cols-3 grid-rows-3 gap-0 place-items-center" style={{ width: 64, height: 70 }}>
+        {/* row 1 */}
+        <div />{/* top-left empty */}
+        <ArrowIcon value={pct.up} rotation={0} arrowLabel={upLabel} />
+        <div />{/* top-right empty */}
+        {/* row 2 */}
+        <ArrowIcon value={pct.left} rotation={-90} arrowLabel={leftLabel} />
+        <div />{/* center */}
+        <ArrowIcon value={pct.right} rotation={90} arrowLabel={rightLabel} />
+        {/* row 3 */}
+        <div />{/* bottom-left empty */}
+        <ArrowIcon value={pct.down} rotation={180} arrowLabel={downLabel} />
+        <div />{/* bottom-right empty */}
+      </div>
+    </div>
+  );
+}
+
 export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, themeMode }: FlightMapProps) {
   const [viewState, setViewState] = useState({
     longitude: 0,
@@ -380,6 +475,10 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     const rcSignal = telemetry.rcSignal?.[lo] ?? null;
     const batteryVoltage = lerp(telemetry.batteryVoltage);
     const batteryTemp = lerp(telemetry.batteryTemp);
+    const rcAileron = lerp(telemetry.rcAileron);
+    const rcElevator = lerp(telemetry.rcElevator);
+    const rcThrottle = lerp(telemetry.rcThrottle);
+    const rcRudder = lerp(telemetry.rcRudder);
 
     // Compute distance from home at this point
     const lat = lerp(telemetry.latitude);
@@ -398,6 +497,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     return {
       height, speed, battery, satellites, altitude, vpsHeight,
       pitch, roll, yaw, rcSignal, batteryVoltage, batteryTemp,
+      rcAileron, rcElevator, rcThrottle, rcRudder,
       distHome, timeSecs, lat, lng,
     };
   }, [telemetry, track, replayProgress, homeLat, homeLon, durationSecs]);
@@ -922,6 +1022,42 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* RC Stick Overlay — above the playbar */}
+      {replayActive && showTooltip && replayTelemetry && (replayTelemetry.rcAileron !== null || replayTelemetry.rcThrottle !== null) && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="map-overlay bg-dji-dark/70 backdrop-blur-md border border-gray-700/60 rounded-xl px-3 py-2.5 shadow-xl">
+            <div className="flex items-center gap-4">
+              {/* Left Stick — Throttle (up/down) + Rudder (left/right = yaw) */}
+              <StickArrows
+                label="L"
+                up={Math.max(0, replayTelemetry.rcThrottle ?? 0)}
+                down={Math.max(0, -(replayTelemetry.rcThrottle ?? 0))}
+                left={Math.max(0, -(replayTelemetry.rcRudder ?? 0))}
+                right={Math.max(0, replayTelemetry.rcRudder ?? 0)}
+                upLabel="Up"
+                downLabel="Down"
+                leftLabel="CCW"
+                rightLabel="CW"
+              />
+              {/* Divider */}
+              <div className="w-px h-14 bg-gray-700/50" />
+              {/* Right Stick — Elevator (forward/back) + Aileron (left/right) */}
+              <StickArrows
+                label="R"
+                up={Math.max(0, replayTelemetry.rcElevator ?? 0)}
+                down={Math.max(0, -(replayTelemetry.rcElevator ?? 0))}
+                left={Math.max(0, -(replayTelemetry.rcAileron ?? 0))}
+                right={Math.max(0, replayTelemetry.rcAileron ?? 0)}
+                upLabel="Fwd"
+                downLabel="Back"
+                leftLabel="Left"
+                rightLabel="Right"
+              />
+            </div>
           </div>
         </div>
       )}
