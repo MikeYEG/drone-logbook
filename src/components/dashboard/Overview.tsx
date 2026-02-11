@@ -198,8 +198,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       : 0;
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24 space-y-5">
+    <div className="min-w-[1100px] px-4 pt-4 pb-24 space-y-5">
         {/* Primary Stats */}
         <div className="grid grid-cols-4 gap-3">
         <StatCard label="Total Flights" value={filteredStats.totalFlights.toLocaleString()} icon={<FlightIcon />} />
@@ -377,7 +376,6 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
         </div>
         </div>
       </div>
-    </div>
   );
 }
 
@@ -503,7 +501,7 @@ function ActivityHeatmap({
 
   return (
     <div className="w-full flex justify-center">
-      <div className="w-full flex justify-center overflow-x-hidden" style={{ maxWidth: `${maxWidth}px` }}>
+      <div className="w-full flex justify-center overflow-x-auto" style={{ maxWidth: `${maxWidth}px` }}>
         <div className="flex flex-col" style={{ width: `${contentWidth}px` }}>
           {/* Month labels */}
           <div

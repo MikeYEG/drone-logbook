@@ -91,7 +91,7 @@ function App() {
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-dji-dark overflow-x-auto overflow-y-hidden" style={{ minWidth: 1600 }}>
+    <div className="w-full h-full flex flex-col bg-dji-dark overflow-hidden">
       {showDonationBanner && (
         <div
           className={`w-full border-b border-dji-primary/40 text-gray-100 ${

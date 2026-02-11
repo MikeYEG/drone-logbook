@@ -253,7 +253,7 @@ export function Dashboard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -265,7 +265,7 @@ export function Dashboard() {
             </div>
           </div>
         ) : activeView === 'overview' ? (
-          <div className="flex-1 overflow-hidden">
+          <div className="w-full h-full overflow-auto">
             {overviewStats ? (
               <Overview
                 stats={overviewStats}
@@ -283,7 +283,8 @@ export function Dashboard() {
             )}
           </div>
         ) : currentFlightData ? (
-          <>
+          <div className="w-full h-full overflow-auto">
+            <div className="min-w-[1100px] h-full flex flex-col">
             {/* Stats Bar */}
             <FlightStats data={currentFlightData} />
 
@@ -332,7 +333,8 @@ export function Dashboard() {
                 </div>
               </div>
             </div>
-          </>
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center max-w-md">
