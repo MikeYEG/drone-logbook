@@ -683,6 +683,11 @@ impl<'a> LogParser<'a> {
             point.rc_throttle = Some(((rc.throttle as f64) - 1024.0) / 1024.0 * 100.0);
             point.rc_rudder = Some(((rc.rudder as f64) - 1024.0) / 1024.0 * 100.0);
 
+            // Camera state: extract is_photo and is_video from frame.camera
+            let camera = &frame.camera;
+            point.is_photo = Some(camera.is_photo);
+            point.is_video = Some(camera.is_video);
+
             points.push(point);
 
             // Increment timestamp using computed interval

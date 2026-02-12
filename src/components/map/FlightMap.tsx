@@ -7,7 +7,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Map, { NavigationControl, Marker } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import DeckGL from '@deck.gl/react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { getTrackCenter, calculateBounds, formatAltitude, formatSpeed, formatDistance } from '@/lib/utils';
@@ -24,7 +24,7 @@ interface FlightMapProps {
   themeMode: 'system' | 'dark' | 'light';
 }
 
-type ColorByMode = 'progress' | 'height' | 'speed' | 'distance';
+type ColorByMode = 'progress' | 'height' | 'speed' | 'distance' | 'videoSegment';
 
 const MAP_STYLES = {
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
@@ -184,11 +184,16 @@ const RAMP_DISTANCE: [number, number, number][] = [
   [239, 68, 68],
 ];
 
+// Blue for normal flight, Red for video recording segments
+const COLOR_VIDEO_NORMAL: [number, number, number] = [59, 130, 246]; // Blue
+const COLOR_VIDEO_RECORDING: [number, number, number] = [239, 68, 68]; // Red
+
 const COLOR_BY_OPTIONS: { value: ColorByMode; label: string }[] = [
   { value: 'progress', label: 'Start → End' },
   { value: 'height', label: 'Height' },
   { value: 'speed', label: 'Speed' },
   { value: 'distance', label: 'Dist. from Home' },
+  { value: 'videoSegment', label: 'Video Segment' },
 ];
 
 /* ─── Directional arrow stick widget ────────────────────────────── */
@@ -308,6 +313,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   });
   const [showTooltip, setShowTooltip] = useState(() => getSessionBool('map:showTooltip', true));
   const [showAircraft, setShowAircraft] = useState(() => getSessionBool('map:showAircraft', true));
+  const [showMedia, setShowMedia] = useState(() => getSessionBool('map:showMedia', false));
   const [hoverInfo, setHoverInfo] = useState<{
     x: number; y: number;
     height: number; speed: number; distance: number; progress: number;
@@ -568,11 +574,27 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
 
     const toAlt = (altitude: number) => (is3D ? altitude : 0);
     const n = smoothedTrack.length;
+    const rawN = track.length;
+    const telemetryN = telemetry?.isVideo?.length ?? 0;
 
     // Pre-compute per-point values depending on colorBy mode
     let values: number[] | null = null;
     let minVal = 0;
     let maxVal = 1;
+
+    // For video segment mode, map telemetry isVideo to smoothed track indices
+    // The track is derived from telemetry (filtered/downsampled), so we map through telemetry length
+    let isVideoAtIndex: boolean[] | null = null;
+    if (colorBy === 'videoSegment' && telemetry?.isVideo && telemetryN > 0) {
+      isVideoAtIndex = [];
+      for (let i = 0; i < n; i++) {
+        // Map smoothed point → raw track index → telemetry index
+        const rawTrackIndex = Math.round((i / Math.max(1, n - 1)) * Math.max(1, rawN - 1));
+        const telemetryIndex = Math.round((rawTrackIndex / Math.max(1, rawN - 1)) * Math.max(1, telemetryN - 1));
+        const isRecording = telemetry.isVideo[telemetryIndex] === true;
+        isVideoAtIndex.push(isRecording);
+      }
+    }
 
     if (colorBy === 'height') {
       values = smoothedTrack.map((p) => p[2]);
@@ -631,8 +653,17 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       const ptA = smoothedTrack[i];
       const ptB = smoothedTrack[i + 1];
       if (!ptA || !ptB) continue;
-      const t = values ? (values[i] - minVal) / range : i / Math.max(1, n - 2);
-      const color = valueToColor(t, ramp);
+      
+      let color: [number, number, number];
+      if (colorBy === 'videoSegment') {
+        // Use red for video recording, blue for normal flight
+        const isRecording = isVideoAtIndex ? isVideoAtIndex[i] : false;
+        color = isRecording ? COLOR_VIDEO_RECORDING : COLOR_VIDEO_NORMAL;
+      } else {
+        const t = values ? (values[i] - minVal) / range : i / Math.max(1, n - 2);
+        color = valueToColor(t, ramp);
+      }
+      
       const [lng1, lat1, alt1] = ptA;
       const [lng2, lat2, alt2] = ptB;
       segments.push({
@@ -653,7 +684,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     }
 
     return segments;
-  }, [is3D, smoothedTrack, colorBy, homeLat, homeLon]);
+  }, [is3D, smoothedTrack, track, colorBy, homeLat, homeLon, telemetry]);
 
   const deckLayers = useMemo(() => {
     if (deckPathData.length === 0) return [];
@@ -693,6 +724,270 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     ];
   }, [deckPathData, showTooltip]);
 
+  // ─── Media markers (photo/video locations) with clustering ────────
+  interface MediaPoint {
+    position: [number, number, number];
+    type: 'photo' | 'videoStart' | 'videoStop';
+  }
+  
+  interface MediaCluster {
+    position: [number, number, number];
+    type: 'photo' | 'videoStart' | 'videoStop';
+    count: number;
+  }
+
+  // Extract photo and video capture locations from telemetry
+  const mediaPoints = useMemo<MediaPoint[]>(() => {
+    if (!telemetry || !showMedia) return [];
+    const points: MediaPoint[] = [];
+    const n = telemetry.time?.length ?? 0;
+    
+    // Track previous states to detect transitions (capture moment)
+    let wasPhoto = false;
+    let wasVideo = false;
+    
+    for (let i = 0; i < n; i++) {
+      const lat = telemetry.latitude?.[i];
+      const lng = telemetry.longitude?.[i];
+      const height = telemetry.height?.[i] ?? telemetry.altitude?.[i] ?? 0;
+      const isPhoto = telemetry.isPhoto?.[i] === true;
+      const isVideo = telemetry.isVideo?.[i] === true;
+      
+      // Skip if no valid coordinates
+      if (lat == null || lng == null || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)) {
+        wasPhoto = isPhoto;
+        wasVideo = isVideo;
+        continue;
+      }
+      
+      // Detect photo capture (transition to true)
+      if (isPhoto && !wasPhoto) {
+        points.push({
+          position: [lng, lat, is3D ? height : 0],
+          type: 'photo',
+        });
+      }
+      
+      // Detect video recording start (transition to true)
+      if (isVideo && !wasVideo) {
+        points.push({
+          position: [lng, lat, is3D ? height : 0],
+          type: 'videoStart',
+        });
+      }
+      
+      // Detect video recording stop (transition to false)
+      if (!isVideo && wasVideo) {
+        points.push({
+          position: [lng, lat, is3D ? height : 0],
+          type: 'videoStop',
+        });
+      }
+      
+      wasPhoto = isPhoto;
+      wasVideo = isVideo;
+    }
+    
+    return points;
+  }, [telemetry, showMedia, is3D]);
+
+  // Cluster points within 0.5 meters of each other
+  // For mixed types at same location, create separate markers for each type
+  const mediaClusters = useMemo<MediaCluster[]>(() => {
+    if (mediaPoints.length === 0) return [];
+    
+    const CLUSTER_THRESHOLD_M = 0.5; // 0.5 meters
+    const used = new Set<number>();
+    const clusteredPoints: { points: MediaPoint[]; position: [number, number, number] }[] = [];
+    
+    // Group nearby points together
+    for (let i = 0; i < mediaPoints.length; i++) {
+      if (used.has(i)) continue;
+      
+      const pt = mediaPoints[i];
+      const [lng, lat] = pt.position;
+      const cluster: MediaPoint[] = [pt];
+      used.add(i);
+      
+      // Find nearby points to cluster together
+      for (let j = i + 1; j < mediaPoints.length; j++) {
+        if (used.has(j)) continue;
+        const other = mediaPoints[j];
+        const dist = haversineM(lat, lng, other.position[1], other.position[0]);
+        if (dist < CLUSTER_THRESHOLD_M) {
+          cluster.push(other);
+          used.add(j);
+        }
+      }
+      
+      // Calculate cluster center
+      const avgLng = cluster.reduce((s, p) => s + p.position[0], 0) / cluster.length;
+      const avgLat = cluster.reduce((s, p) => s + p.position[1], 0) / cluster.length;
+      const avgAlt = cluster.reduce((s, p) => s + p.position[2], 0) / cluster.length;
+      
+      clusteredPoints.push({
+        points: cluster,
+        position: [avgLng, avgLat, avgAlt],
+      });
+    }
+    
+    // Now split each cluster by type
+    const clusters: MediaCluster[] = [];
+    
+    for (const { points, position } of clusteredPoints) {
+      // Group by type at this location - create separate clusters for each type
+      const byType: Record<string, number> = {};
+      for (const p of points) {
+        byType[p.type] = (byType[p.type] ?? 0) + 1;
+      }
+      
+      // Create a cluster for each type present at this location
+      for (const type of Object.keys(byType)) {
+        clusters.push({
+          position,
+          type: type as 'photo' | 'videoStart' | 'videoStop',
+          count: byType[type],
+        });
+      }
+    }
+    
+    return clusters;
+  }, [mediaPoints]);
+
+  // DeckGL layers for media markers (3D positioned)
+  const mediaLayers = useMemo(() => {
+    if (!showMedia || mediaClusters.length === 0) return [];
+    
+    // Use meters for radius so markers scale with zoom
+    const baseRadius = 3; // meters
+    
+    // Define offset cluster type
+    type OffsetCluster = MediaCluster & { offset: [number, number] };
+    
+    // Offset positions slightly for overlapping markers at same location
+    // Group by position to detect overlaps
+    const positionGroups: Record<string, MediaCluster[]> = {};
+    for (const cluster of mediaClusters) {
+      const key = `${cluster.position[0].toFixed(7)},${cluster.position[1].toFixed(7)}`;
+      if (!positionGroups[key]) positionGroups[key] = [];
+      positionGroups[key].push(cluster);
+    }
+    
+    // Apply small offsets for overlapping markers
+    const offsetClusters: OffsetCluster[] = [];
+    for (const key of Object.keys(positionGroups)) {
+      const group = positionGroups[key];
+      if (group.length === 1) {
+        offsetClusters.push({ ...group[0], offset: [0, 0] });
+      } else {
+        // Offset markers horizontally when multiple at same location
+        const spacing = 8; // pixels
+        const totalWidth = (group.length - 1) * spacing;
+        group.forEach((cluster: MediaCluster, i: number) => {
+          offsetClusters.push({ 
+            ...cluster, 
+            offset: [i * spacing - totalWidth / 2, 0] 
+          });
+        });
+      }
+    }
+    
+    // Separate by type
+    const photoClusters = offsetClusters.filter((d: OffsetCluster) => d.type === 'photo');
+    const videoClusters = offsetClusters.filter((d: OffsetCluster) => d.type !== 'photo');
+    
+    return [
+      // === PHOTO MARKERS ===
+      // Photo border (white outline)
+      new ScatterplotLayer({
+        id: 'media-photo-border',
+        data: photoClusters,
+        getPosition: (d: OffsetCluster) => d.position,
+        getRadius: baseRadius * 1.3,
+        radiusUnits: 'meters',
+        radiusMinPixels: 5,
+        radiusMaxPixels: 12,
+        getFillColor: [255, 255, 255, 255],
+        stroked: false,
+        filled: true,
+        billboard: true,
+        getPixelOffset: (d: OffsetCluster) => d.offset,
+        parameters: { depthTest: true, depthMask: true },
+      }),
+      // Photo dot (blue)
+      new ScatterplotLayer({
+        id: 'media-photo-dot',
+        data: photoClusters,
+        getPosition: (d: OffsetCluster) => d.position,
+        getRadius: baseRadius,
+        radiusUnits: 'meters',
+        radiusMinPixels: 3,
+        radiusMaxPixels: 9,
+        getFillColor: [59, 130, 246, 255], // Blue
+        stroked: false,
+        filled: true,
+        billboard: true,
+        getPixelOffset: (d: OffsetCluster) => d.offset,
+        parameters: { depthTest: true, depthMask: true },
+      }),
+      // Photo count text
+      new TextLayer({
+        id: 'media-photo-text',
+        data: photoClusters,
+        getPosition: (d: OffsetCluster) => d.position,
+        getText: (d: OffsetCluster) => String(d.count),
+        getSize: baseRadius * 1.8,
+        sizeUnits: 'meters',
+        sizeMinPixels: 7,
+        sizeMaxPixels: 10,
+        getColor: [255, 255, 255, 255],
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'center',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontWeight: 'bold',
+        billboard: true,
+        getPixelOffset: (d: OffsetCluster) => d.offset,
+        parameters: { depthTest: true, depthMask: false },
+      }),
+      // === VIDEO MARKERS ===
+      // Video border
+      new ScatterplotLayer({
+        id: 'media-video-border',
+        data: videoClusters,
+        getPosition: (d: OffsetCluster) => d.position,
+        getRadius: baseRadius * 1.3,
+        radiusUnits: 'meters',
+        radiusMinPixels: 5,
+        radiusMaxPixels: 12,
+        getFillColor: [255, 255, 255, 255],
+        stroked: false,
+        filled: true,
+        billboard: true,
+        getPixelOffset: (d: OffsetCluster) => d.offset,
+        parameters: { depthTest: true, depthMask: true },
+      }),
+      // Video dot (green for start, red for stop)
+      new ScatterplotLayer({
+        id: 'media-video-dot',
+        data: videoClusters,
+        getPosition: (d: OffsetCluster) => d.position,
+        getRadius: baseRadius,
+        radiusUnits: 'meters',
+        radiusMinPixels: 3,
+        radiusMaxPixels: 9,
+        getFillColor: (d: OffsetCluster) => {
+          if (d.type === 'videoStart') return [34, 197, 94, 255];  // Green
+          return [239, 68, 68, 255];  // Red for stop
+        },
+        stroked: false,
+        filled: true,
+        billboard: true,
+        getPixelOffset: (d: OffsetCluster) => d.offset,
+        parameters: { depthTest: true, depthMask: true },
+      }),
+    ];
+  }, [showMedia, mediaClusters]);
+
   // Start and end markers
   const startPoint = track.length > 0 ? track[0] : undefined;
   const endPoint = track.length > 0 ? track[track.length - 1] : undefined;
@@ -703,6 +998,31 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     },
     []
   );
+
+  // Reset view to fit the track (same as initial load)
+  const resetView = useCallback(() => {
+    if (track.length === 0) return;
+    
+    const [lng, lat] = getTrackCenter(track);
+    const bounds = calculateBounds(track);
+
+    let zoom = 14;
+    if (bounds) {
+      const lngDiff = bounds[1][0] - bounds[0][0];
+      const latDiff = bounds[1][1] - bounds[0][1];
+      const maxDiff = Math.max(lngDiff, latDiff);
+      zoom = Math.max(10, Math.min(18, 16 - Math.log2(maxDiff * 111)));
+    }
+
+    setViewState((prev) => ({
+      ...prev,
+      longitude: lng,
+      latitude: lat,
+      zoom,
+      pitch: is3D ? 60 : 0,
+      bearing: 0,
+    }));
+  }, [track, is3D]);
 
   const enableTerrain = useCallback(() => {
     const map = mapRef.current?.getMap();
@@ -768,6 +1088,12 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       setReplayProgress(0);
     }
   }, [showAircraft]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('map:showMedia', String(showMedia));
+    }
+  }, [showMedia]);
 
   useEffect(() => {
     if (is3D) {
@@ -844,6 +1170,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
             checked={showAircraft}
             onChange={setShowAircraft}
           />
+          <ToggleRow
+            label="Media"
+            checked={showMedia}
+            onChange={setShowMedia}
+          />
 
           {/* Color-by dropdown */}
           <div className="pt-1 border-t border-gray-600/50">
@@ -894,13 +1225,30 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
             </div>
           </Marker>
         )}
+
+        {/* Reset View Button — bottom right */}
+        <div className="absolute bottom-3 right-3 z-10">
+          <button
+            type="button"
+            onClick={resetView}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-dji-dark/80 hover:bg-dji-dark border border-gray-700 hover:border-gray-500 rounded-lg text-xs text-gray-300 hover:text-white shadow-lg transition-all"
+            title="Reset view to fit flight path"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+            </svg>
+            <span>Reset</span>
+          </button>
+        </div>
+
+
       </Map>
 
       <DeckGL
         ref={deckRef}
         viewState={viewState}
         controller={false}
-        layers={[...deckLayers, ...replayDeckLayers]}
+        layers={[...deckLayers, ...mediaLayers, ...replayDeckLayers]}
         pickingRadius={12}
         style={{
           width: '100%', height: '100%',

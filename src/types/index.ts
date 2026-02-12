@@ -56,6 +56,10 @@ export interface TelemetryData {
   rcElevator?: (number | null)[];
   rcThrottle?: (number | null)[];
   rcRudder?: (number | null)[];
+  /** Photo capture indicator (true when taking photo) */
+  isPhoto?: (boolean | null)[];
+  /** Video recording indicator (true when recording) */
+  isVideo?: (boolean | null)[];
 }
 
 /** Complete flight data response from backend */

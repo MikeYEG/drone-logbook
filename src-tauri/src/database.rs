@@ -223,6 +223,10 @@ impl Database {
                 rc_elevator     DOUBLE,
                 rc_throttle     DOUBLE,
                 rc_rudder       DOUBLE,
+
+                -- Camera state
+                is_photo        BOOLEAN,
+                is_video        BOOLEAN,
                 
                 -- Composite primary key for efficient range queries
                 PRIMARY KEY (flight_id, timestamp_ms)
@@ -241,6 +245,8 @@ impl Database {
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_elevator DOUBLE;
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_throttle DOUBLE;
             ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS rc_rudder DOUBLE;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS is_photo BOOLEAN;
+            ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS is_video BOOLEAN;
 
             -- ============================================================
             -- KEYCHAIN TABLE: Store cached decryption keys for V13+ logs
@@ -330,6 +336,8 @@ impl Database {
             "rc_elevator",
             "rc_throttle",
             "rc_rudder",
+            "is_photo",
+            "is_video",
         ];
 
         let mut stmt = conn.prepare("PRAGMA table_info('telemetry')")?;
@@ -478,6 +486,8 @@ impl Database {
                 point.rc_elevator,
                 point.rc_throttle,
                 point.rc_rudder,
+                point.is_photo,
+                point.is_video,
             ]) {
                 Ok(()) => inserted += 1,
                 Err(err) => {
@@ -726,7 +736,9 @@ impl Database {
                 rc_aileron,
                 rc_elevator,
                 rc_throttle,
-                rc_rudder
+                rc_rudder,
+                is_photo,
+                is_video
             FROM telemetry
             WHERE flight_id = ?
             ORDER BY timestamp_ms ASC
@@ -761,6 +773,8 @@ impl Database {
                     rc_elevator: row.get(22)?,
                     rc_throttle: row.get(23)?,
                     rc_rudder: row.get(24)?,
+                    is_photo: row.get(25)?,
+                    is_video: row.get(26)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -815,7 +829,9 @@ impl Database {
                     AVG(rc_aileron) AS rc_aileron,
                     AVG(rc_elevator) AS rc_elevator,
                     AVG(rc_throttle) AS rc_throttle,
-                    AVG(rc_rudder) AS rc_rudder
+                    AVG(rc_rudder) AS rc_rudder,
+                    BOOL_OR(is_photo) AS is_photo,
+                    BOOL_OR(is_video) AS is_video
                 FROM telemetry
                 WHERE flight_id = ?
                 GROUP BY bucket_ts
@@ -853,6 +869,8 @@ impl Database {
                     rc_elevator: row.get(22)?,
                     rc_throttle: row.get(23)?,
                     rc_rudder: row.get(24)?,
+                    is_photo: row.get(25)?,
+                    is_video: row.get(26)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

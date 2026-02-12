@@ -107,6 +107,10 @@ pub struct TelemetryPoint {
     pub rc_elevator: Option<f64>,
     pub rc_throttle: Option<f64>,
     pub rc_rudder: Option<f64>,
+
+    // Camera state
+    pub is_photo: Option<bool>,
+    pub is_video: Option<bool>,
 }
 
 /// Telemetry record for frontend consumption (optimized for ECharts)
@@ -138,6 +142,8 @@ pub struct TelemetryRecord {
     pub rc_elevator: Option<f64>,
     pub rc_throttle: Option<f64>,
     pub rc_rudder: Option<f64>,
+    pub is_photo: Option<bool>,
+    pub is_video: Option<bool>,
 }
 
 /// Response format optimized for ECharts rendering
@@ -279,6 +285,10 @@ pub struct TelemetryData {
     pub rc_throttle: Vec<Option<f64>>,
     /// RC rudder stick input (normalized -100..+100)
     pub rc_rudder: Vec<Option<f64>>,
+    /// Photo capture indicator (true when taking photo)
+    pub is_photo: Vec<Option<bool>>,
+    /// Video recording indicator (true when recording)
+    pub is_video: Vec<Option<bool>>,
 }
 
 impl TelemetryData {
@@ -314,6 +324,8 @@ impl TelemetryData {
         let mut rc_elevator = Vec::with_capacity(n);
         let mut rc_throttle = Vec::with_capacity(n);
         let mut rc_rudder = Vec::with_capacity(n);
+        let mut is_photo = Vec::with_capacity(n);
+        let mut is_video = Vec::with_capacity(n);
 
         for r in records {
             time.push((r.timestamp_ms - base_time) as f64 / 1000.0);
@@ -340,6 +352,8 @@ impl TelemetryData {
             rc_elevator.push(r.rc_elevator);
             rc_throttle.push(r.rc_throttle);
             rc_rudder.push(r.rc_rudder);
+            is_photo.push(r.is_photo);
+            is_video.push(r.is_video);
         }
 
         Self {
@@ -367,6 +381,8 @@ impl TelemetryData {
             rc_elevator,
             rc_throttle,
             rc_rudder,
+            is_photo,
+            is_video,
         }
     }
 
