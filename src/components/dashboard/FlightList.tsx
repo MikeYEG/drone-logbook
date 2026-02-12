@@ -57,6 +57,10 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
   const [tagSearch, setTagSearch] = useState('');
   const [durationFilterMin, setDurationFilterMin] = useState<number | null>(null);
   const [durationFilterMax, setDurationFilterMax] = useState<number | null>(null);
+  const [altitudeFilterMin, setAltitudeFilterMin] = useState<number | null>(null);
+  const [altitudeFilterMax, setAltitudeFilterMax] = useState<number | null>(null);
+  const [distanceFilterMin, setDistanceFilterMin] = useState<number | null>(null);
+  const [distanceFilterMax, setDistanceFilterMax] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<
     'name' | 'date' | 'duration' | 'distance'
@@ -221,13 +225,35 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
     };
   }, [flights]);
 
+  const altitudeRange = useMemo(() => {
+    const altitudes = flights
+      .map((f) => f.maxAltitude ?? 0)
+      .filter((a) => a > 0);
+    if (altitudes.length === 0) return { min: 0, max: 500 };
+    return {
+      min: Math.floor(Math.min(...altitudes)),
+      max: Math.ceil(Math.max(...altitudes)),
+    };
+  }, [flights]);
+
+  const distanceRange = useMemo(() => {
+    const distances = flights
+      .map((f) => f.totalDistance ?? 0)
+      .filter((d) => d > 0);
+    if (distances.length === 0) return { min: 0, max: 10000 };
+    return {
+      min: Math.floor(Math.min(...distances)),
+      max: Math.ceil(Math.max(...distances)),
+    };
+  }, [flights]);
+
   const filteredFlights = useMemo(() => {
     // Always apply filters
     const start = dateRange?.from ?? null;
     const end = dateRange?.to ? new Date(dateRange.to) : null;
     if (end) end.setHours(23, 59, 59, 999);
 
-    const hasAnyFilter = !!(start || end || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || selectedTags.length > 0 || (mapAreaFilterEnabled && mapVisibleBounds));
+    const hasAnyFilter = !!(start || end || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || (mapAreaFilterEnabled && mapVisibleBounds));
 
     return flights.filter((flight) => {
       // When no filters are active, show all
@@ -269,6 +295,22 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
         if (isFilterInverted ? matchesDuration : !matchesDuration) return false;
       }
 
+      if (altitudeFilterMin !== null || altitudeFilterMax !== null) {
+        const altitude = flight.maxAltitude ?? 0;
+        let matchesAltitude = true;
+        if (altitudeFilterMin !== null && altitude < altitudeFilterMin) matchesAltitude = false;
+        if (altitudeFilterMax !== null && altitude > altitudeFilterMax) matchesAltitude = false;
+        if (isFilterInverted ? matchesAltitude : !matchesAltitude) return false;
+      }
+
+      if (distanceFilterMin !== null || distanceFilterMax !== null) {
+        const distance = flight.totalDistance ?? 0;
+        let matchesDistance = true;
+        if (distanceFilterMin !== null && distance < distanceFilterMin) matchesDistance = false;
+        if (distanceFilterMax !== null && distance > distanceFilterMax) matchesDistance = false;
+        if (isFilterInverted ? matchesDistance : !matchesDistance) return false;
+      }
+
       // Tag filter: normal = flight must have ALL selected tags; inverted = must have NONE
       if (selectedTags.length > 0) {
         const flightTagNames = (flight.tags ?? []).map(t => typeof t === 'string' ? t : t.tag);
@@ -287,7 +329,7 @@ export function FlightList({ onSelectFlight }: { onSelectFlight?: (flightId: num
 
       return true;
     });
-  }, [dateRange, flights, selectedBattery, selectedDrone, durationFilterMin, durationFilterMax, selectedTags, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds]);
+  }, [dateRange, flights, selectedBattery, selectedDrone, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds]);
 
   // Sync filtered flight IDs to the store so Overview can use them
   const setSidebarFilteredFlightIds = useFlightStore((s) => s.setSidebarFilteredFlightIds);
@@ -847,12 +889,12 @@ ${points}
           className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors"
         >
           <span className="flex items-center gap-1.5">
-            <span className={`font-medium ${(dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
-              {dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled
+            <span className={`font-medium ${(dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
+              {dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled
                 ? isFilterInverted ? 'Filters — Active — Inverted' : 'Filters — Active'
                 : isFiltersCollapsed ? 'Filters — click to expand' : 'Filters'}
             </span>
-            {(dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) && (
+            {(dateRange?.from || dateRange?.to || selectedDrone || selectedBattery || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -964,6 +1006,126 @@ ${points}
                 const hi = durationFilterMax ?? durationRange.maxMins;
                 const fmt = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 > 0 ? m % 60 : ''}` : `${m}m`;
                 if (durationFilterMin === null && durationFilterMax === null) return 'Any';
+                return `${fmt(lo)}–${fmt(hi)}`;
+              })()}
+            </span>
+          </div>
+        </div>
+
+        {/* Max Altitude range slider */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-400 whitespace-nowrap w-[52px] flex-shrink-0 text-center">Altitude</label>
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <div className="flex-1 min-w-0">
+              {(() => {
+                const lo = altitudeFilterMin ?? altitudeRange.min;
+                const hi = altitudeFilterMax ?? altitudeRange.max;
+                const span = Math.max(altitudeRange.max - altitudeRange.min, 1);
+                const loPct = ((lo - altitudeRange.min) / span) * 100;
+                const hiPct = ((hi - altitudeRange.min) / span) * 100;
+                return (
+                  <div className="dual-range-wrap" style={{ '--lo-pct': `${loPct}%`, '--hi-pct': `${hiPct}%` } as React.CSSProperties}>
+                    <div className="dual-range-track" />
+                    <div className="dual-range-fill" />
+                    <input
+                      type="range"
+                      min={altitudeRange.min}
+                      max={altitudeRange.max}
+                      step={1}
+                      value={lo}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const clamped = Math.min(val, hi - 1);
+                        setAltitudeFilterMin(clamped <= altitudeRange.min ? null : clamped);
+                      }}
+                      className="dual-range-input"
+                    />
+                    <input
+                      type="range"
+                      min={altitudeRange.min}
+                      max={altitudeRange.max}
+                      step={1}
+                      value={hi}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const clamped = Math.max(val, lo + 1);
+                        setAltitudeFilterMax(clamped >= altitudeRange.max ? null : clamped);
+                      }}
+                      className="dual-range-input"
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+            <span className="text-xs font-medium text-gray-200 whitespace-nowrap min-w-[60px] flex items-center justify-center flex-shrink-0">
+              {(() => {
+                const lo = altitudeFilterMin ?? altitudeRange.min;
+                const hi = altitudeFilterMax ?? altitudeRange.max;
+                const fmt = (m: number) => unitSystem === 'imperial' ? `${Math.round(m * 3.28084)}ft` : `${m}m`;
+                if (altitudeFilterMin === null && altitudeFilterMax === null) return 'Any';
+                return `${fmt(lo)}–${fmt(hi)}`;
+              })()}
+            </span>
+          </div>
+        </div>
+
+        {/* Total Distance range slider */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-400 whitespace-nowrap w-[52px] flex-shrink-0 text-center">Distance</label>
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <div className="flex-1 min-w-0">
+              {(() => {
+                const lo = distanceFilterMin ?? distanceRange.min;
+                const hi = distanceFilterMax ?? distanceRange.max;
+                const span = Math.max(distanceRange.max - distanceRange.min, 1);
+                const loPct = ((lo - distanceRange.min) / span) * 100;
+                const hiPct = ((hi - distanceRange.min) / span) * 100;
+                return (
+                  <div className="dual-range-wrap" style={{ '--lo-pct': `${loPct}%`, '--hi-pct': `${hiPct}%` } as React.CSSProperties}>
+                    <div className="dual-range-track" />
+                    <div className="dual-range-fill" />
+                    <input
+                      type="range"
+                      min={distanceRange.min}
+                      max={distanceRange.max}
+                      step={1}
+                      value={lo}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const clamped = Math.min(val, hi - 1);
+                        setDistanceFilterMin(clamped <= distanceRange.min ? null : clamped);
+                      }}
+                      className="dual-range-input"
+                    />
+                    <input
+                      type="range"
+                      min={distanceRange.min}
+                      max={distanceRange.max}
+                      step={1}
+                      value={hi}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const clamped = Math.max(val, lo + 1);
+                        setDistanceFilterMax(clamped >= distanceRange.max ? null : clamped);
+                      }}
+                      className="dual-range-input"
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+            <span className="text-xs font-medium text-gray-200 whitespace-nowrap min-w-[60px] flex items-center justify-center flex-shrink-0">
+              {(() => {
+                const lo = distanceFilterMin ?? distanceRange.min;
+                const hi = distanceFilterMax ?? distanceRange.max;
+                const fmt = (m: number) => {
+                  if (unitSystem === 'imperial') {
+                    const miles = m * 0.000621371;
+                    return miles >= 1 ? `${miles.toFixed(1)}mi` : `${Math.round(m * 3.28084)}ft`;
+                  }
+                  return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`;
+                };
+                if (distanceFilterMin === null && distanceFilterMax === null) return 'Any';
                 return `${fmt(lo)}–${fmt(hi)}`;
               })()}
             </span>
@@ -1199,7 +1361,7 @@ ${points}
         {/* Filtered count and Clear filters on same line */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-400">
-            {filteredFlights.length} flight(s) selected
+            {filteredFlights.length} of {flights.length} logs selected
           </span>
           <button
             onClick={() => {
@@ -1208,6 +1370,10 @@ ${points}
               setSelectedBattery('');
               setDurationFilterMin(null);
               setDurationFilterMax(null);
+              setAltitudeFilterMin(null);
+              setAltitudeFilterMax(null);
+              setDistanceFilterMin(null);
+              setDistanceFilterMax(null);
               setSelectedTags([]);
               setIsFilterInverted(false);
               setMapAreaFilterEnabled(false);
