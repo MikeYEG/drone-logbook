@@ -697,8 +697,9 @@ ${points}
 </kml>`;
   };
 
-  const buildSummaryCsv = (flightsData: { flight: Flight; data: FlightDataResponse }[]): string => {
+  const buildSummaryCsv = (flightsData: { flight: Flight; data: FlightDataResponse }[], getDroneDisplayNameFn: (serial: string, fallbackName: string) => string): string => {
     const headers = [
+      'Aircraft Name',
       'Aircraft SN',
       'Battery SN',
       'Date',
@@ -791,8 +792,15 @@ ${points}
       const maxDistanceFromHome = calculateMaxDistanceFromHome(data.telemetry);
       const takeoffLat = flight.homeLat ?? (data.telemetry.latitude?.[0] || null);
       const takeoffLon = flight.homeLon ?? (data.telemetry.longitude?.[0] || null);
+      
+      // Get aircraft name - use edited name if available, otherwise fall back to aircraftName or droneModel
+      const fallbackName = flight.aircraftName || flight.droneModel || '';
+      const aircraftName = flight.droneSerial 
+        ? getDroneDisplayNameFn(flight.droneSerial, fallbackName) 
+        : fallbackName;
 
       return [
+        escapeCsv(aircraftName),
         escapeCsv(flight.droneSerial || ''),
         escapeCsv(flight.batterySerial || ''),
         escapeCsv(formatDate(flight.startTime)),
@@ -857,25 +865,63 @@ ${points}
         }
       }
 
-      // Write summary CSV if multiple flights
-      if (flightsData.length > 1) {
-        try {
-          const summaryCsv = buildSummaryCsv(flightsData);
-          if (isWebMode()) {
-            downloadFile('filtered_flights_summary.csv', summaryCsv);
-          } else {
-            const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-            await writeTextFile(`${dirPath}/filtered_flights_summary.csv`, summaryCsv);
-          }
-        } catch (err) {
-          console.error('Failed to write summary CSV:', err);
+      setExportProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: '' });
+      setTimeout(() => setIsExporting(false), 1000);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setIsExporting(false);
+    }
+  };
+
+  const handleSummaryExport = async () => {
+    if (filteredFlights.length <= 1) return;
+    
+    try {
+      setIsExporting(true);
+      setExportProgress({ done: 0, total: filteredFlights.length, currentFile: 'Building summary...' });
+      
+      const flightsData: { flight: Flight; data: FlightDataResponse }[] = [];
+
+      // In Tauri mode, pick a file location first
+      let filePath: string | null = null;
+      if (!isWebMode()) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        filePath = await save({
+          defaultPath: 'filtered_flights_summary.csv',
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        }) as string | null;
+        if (!filePath) {
+          setIsExporting(false);
+          return;
         }
+      }
+
+      for (let i = 0; i < filteredFlights.length; i++) {
+        const flight = filteredFlights[i];
+        const safeName = (flight as any).original_filename || `flight_${flight.id}`;
+        setExportProgress({ done: i, total: filteredFlights.length, currentFile: safeName });
+        
+        try {
+          const data: FlightDataResponse = await api.getFlightData(flight.id, 999999999);
+          flightsData.push({ flight, data });
+        } catch (err) {
+          console.error(`Failed to fetch flight ${flight.id} for summary:`, err);
+        }
+      }
+
+      const summaryCsv = buildSummaryCsv(flightsData, getDroneDisplayName);
+      
+      if (isWebMode()) {
+        downloadFile('filtered_flights_summary.csv', summaryCsv);
+      } else {
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+        await writeTextFile(filePath!, summaryCsv);
       }
 
       setExportProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: '' });
       setTimeout(() => setIsExporting(false), 1000);
     } catch (err) {
-      console.error('Export failed:', err);
+      console.error('Summary export failed:', err);
       setIsExporting(false);
     }
   };
@@ -1612,22 +1658,45 @@ ${points}
                   tabIndex={-1}
                   onKeyDown={(e) => {
                     const exportOptions = [
-                      { id: 'csv', label: 'CSV', ext: 'csv' },
-                      { id: 'json', label: 'JSON', ext: 'json' },
-                      { id: 'gpx', label: 'GPX', ext: 'gpx' },
-                      { id: 'kml', label: 'KML', ext: 'kml' },
+                      { id: 'csv', label: 'CSV', ext: 'csv', disabled: false },
+                      { id: 'json', label: 'JSON', ext: 'json', disabled: false },
+                      { id: 'gpx', label: 'GPX', ext: 'gpx', disabled: false },
+                      { id: 'kml', label: 'KML', ext: 'kml', disabled: false },
+                      { id: 'summary', label: 'Summary', ext: 'csv', disabled: filteredFlights.length <= 1 },
                     ];
+                    const enabledOptions = exportOptions.filter(o => !o.disabled);
                     if (e.key === 'ArrowDown') {
                       e.preventDefault();
-                      setExportHighlightedIndex(prev => prev < exportOptions.length - 1 ? prev + 1 : 0);
+                      setExportHighlightedIndex(prev => {
+                        let next = prev + 1;
+                        while (next < exportOptions.length && exportOptions[next].disabled) next++;
+                        return next >= exportOptions.length ? enabledOptions.length > 0 ? exportOptions.findIndex(o => !o.disabled) : 0 : next;
+                      });
                     } else if (e.key === 'ArrowUp') {
                       e.preventDefault();
-                      setExportHighlightedIndex(prev => prev > 0 ? prev - 1 : exportOptions.length - 1);
+                      setExportHighlightedIndex(prev => {
+                        let next = prev - 1;
+                        while (next >= 0 && exportOptions[next].disabled) next--;
+                        if (next < 0) {
+                          // Find last enabled option
+                          for (let i = exportOptions.length - 1; i >= 0; i--) {
+                            if (!exportOptions[i].disabled) return i;
+                          }
+                          return 0;
+                        }
+                        return next;
+                      });
                     } else if (e.key === 'Enter') {
                       e.preventDefault();
                       const opt = exportOptions[exportHighlightedIndex];
-                      setIsExportDropdownOpen(false);
-                      handleBulkExport(opt.id, opt.ext);
+                      if (!opt.disabled) {
+                        setIsExportDropdownOpen(false);
+                        if (opt.id === 'summary') {
+                          handleSummaryExport();
+                        } else {
+                          handleBulkExport(opt.id, opt.ext);
+                        }
+                      }
                     } else if (e.key === 'Escape') {
                       e.preventDefault();
                       setIsExportDropdownOpen(false);
@@ -1637,20 +1706,29 @@ ${points}
                 >
                   <div className="p-2">
                     {[
-                      { id: 'csv', label: 'CSV', ext: 'csv' },
-                      { id: 'json', label: 'JSON', ext: 'json' },
-                      { id: 'gpx', label: 'GPX', ext: 'gpx' },
-                      { id: 'kml', label: 'KML', ext: 'kml' },
+                      { id: 'csv', label: 'CSV', ext: 'csv', disabled: false },
+                      { id: 'json', label: 'JSON', ext: 'json', disabled: false },
+                      { id: 'gpx', label: 'GPX', ext: 'gpx', disabled: false },
+                      { id: 'kml', label: 'KML', ext: 'kml', disabled: false },
+                      { id: 'summary', label: 'Summary', ext: 'csv', disabled: filteredFlights.length <= 1 },
                     ].map((opt, index) => (
                       <button
                         key={opt.id}
                         onClick={() => {
+                          if (opt.disabled) return;
                           setIsExportDropdownOpen(false);
-                          handleBulkExport(opt.id, opt.ext);
+                          if (opt.id === 'summary') {
+                            handleSummaryExport();
+                          } else {
+                            handleBulkExport(opt.id, opt.ext);
+                          }
                         }}
-                        onMouseEnter={() => setExportHighlightedIndex(index)}
+                        onMouseEnter={() => !opt.disabled && setExportHighlightedIndex(index)}
+                        disabled={opt.disabled}
                         className={`themed-select-option w-full text-left px-3 py-2 text-sm rounded transition-colors ${
-                          index === exportHighlightedIndex ? 'bg-dji-primary/20' : ''
+                          opt.disabled 
+                            ? 'text-gray-500 cursor-not-allowed' 
+                            : index === exportHighlightedIndex ? 'bg-dji-primary/20' : ''
                         }`}
                       >
                         {opt.label}
