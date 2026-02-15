@@ -474,12 +474,16 @@ export function FlightImporter() {
           return;
         }
         
-        // Filter for .txt files
-        const txtFiles = entries
-          .filter((entry) => entry.isFile && entry.name?.toLowerCase().endsWith('.txt'))
+        // Filter for .txt and .csv files (DJI logs and Litchi exports)
+        const logFiles = entries
+          .filter((entry) => {
+            if (!entry.isFile || !entry.name) return false;
+            const name = entry.name.toLowerCase();
+            return name.endsWith('.txt') || name.endsWith('.csv');
+          })
           .map((entry) => `${folderPath}/${entry.name}`);
         
-        if (txtFiles.length === 0) {
+        if (logFiles.length === 0) {
           setIsBackgroundSyncing(false);
           return;
         }
@@ -491,7 +495,7 @@ export function FlightImporter() {
         
         // Find truly new files (not already imported, not blacklisted)
         const newFiles: string[] = [];
-        for (const filePath of txtFiles) {
+        for (const filePath of logFiles) {
           // Check abort during hash computation loop
           if (backgroundSyncAbortRef.current) {
             setIsBackgroundSyncing(false);
@@ -568,16 +572,17 @@ export function FlightImporter() {
       const { readDir } = await import('@tauri-apps/plugin-fs');
       const entries = await readDir(folderPath);
       
-      // Filter for top-level .txt files only
-      const txtFiles = entries
+      // Filter for .txt and .csv files (DJI logs and Litchi exports)
+      const logFiles = entries
         .filter((entry) => {
-          // Only files (not directories) with .txt extension
-          return entry.isFile && entry.name?.toLowerCase().endsWith('.txt');
+          if (!entry.isFile || !entry.name) return false;
+          const name = entry.name.toLowerCase();
+          return name.endsWith('.txt') || name.endsWith('.csv');
         })
         .map((entry) => `${folderPath}/${entry.name}`);
 
-      if (txtFiles.length === 0) {
-        setBatchMessage('No .txt files found in sync folder.');
+      if (logFiles.length === 0) {
+        setBatchMessage('No flight log files (.txt, .csv) found in sync folder.');
         setIsSyncing(false);
         return;
       }
@@ -586,7 +591,7 @@ export function FlightImporter() {
       // The processBatch function will check each file's hash against the blacklist
       // after import and delete any that match (files user previously deleted)
       setIsSyncing(false);
-      await processBatch(txtFiles, false); // isManualImport = false for sync
+      await processBatch(logFiles, false); // isManualImport = false for sync
     } catch (e) {
       console.error('Sync failed:', e);
       setBatchMessage(`Sync failed: ${e}`);
