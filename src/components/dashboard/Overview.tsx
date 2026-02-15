@@ -354,7 +354,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
                     <p className="text-sm text-white truncate">{flight.displayName}</p>
                     <p className="text-xs text-gray-400">{formatDateTime(flight.startTime)}</p>
                   </div>
-                  <div className="text-sm font-medium text-dji-accent">
+                  <div className="text-sm font-medium text-drone-accent">
                     {formatDuration(flight.durationSecs)}
                   </div>
                 </div>
@@ -389,7 +389,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
                       <p className="text-sm text-white truncate">{flight.displayName}</p>
                       <p className="text-xs text-gray-400">{formatDateTime(flight.startTime)}</p>
                     </div>
-                    <div className="text-sm font-medium text-dji-accent">
+                    <div className="text-sm font-medium text-drone-accent">
                       {formatDistance(flight.maxDistanceFromHomeM, unitSystem)}
                     </div>
                   </div>
@@ -420,7 +420,7 @@ function StatCard({
 }) {
   return (
     <div className={`stat-card ${small ? 'py-3' : ''}`}>
-      {icon && <div className="text-dji-primary mb-1">{icon}</div>}
+      {icon && <div className="text-drone-primary mb-1">{icon}</div>}
       <span className={small ? 'text-lg font-bold text-white' : 'stat-value'}>{value}</span>
       <span className={small ? 'text-xs text-gray-400' : 'stat-label'}>{label}</span>
     </div>
@@ -501,7 +501,7 @@ function ActivityHeatmapCard({
             onClick={() => setPickingDate(pickingDate === 'from' ? null : 'from')}
             className={`px-1.5 py-0.5 rounded transition-colors ${
               pickingDate === 'from'
-                ? 'bg-dji-primary/20 text-dji-primary'
+                ? 'bg-drone-primary/20 text-drone-primary'
                 : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
             }`}
             title="Select start date"
@@ -515,7 +515,7 @@ function ActivityHeatmapCard({
             onClick={() => setPickingDate(pickingDate === 'to' ? null : 'to')}
             className={`px-1.5 py-0.5 rounded transition-colors ${
               pickingDate === 'to'
-                ? 'bg-dji-primary/20 text-dji-primary'
+                ? 'bg-drone-primary/20 text-drone-primary'
                 : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
             }`}
             title="Select end date"
@@ -532,7 +532,7 @@ function ActivityHeatmapCard({
             onClick={() => setPickingDate(null)}
           />
           <div
-            className={`fixed z-50 rounded-xl border p-3 shadow-xl ${isLight ? 'border-gray-300 bg-white' : 'border-gray-700 bg-dji-surface'}`}
+            className={`fixed z-50 rounded-xl border p-3 shadow-xl ${isLight ? 'border-gray-300 bg-white' : 'border-gray-700 bg-drone-surface'}`}
             style={{
               top: dateAnchor.top,
               left: dateAnchor.left,
@@ -906,7 +906,7 @@ function DroneFlightTimeList({
                   <div className="flex items-center gap-2 mt-0.5">
                     <button
                       onClick={() => handleSaveRename(drone.droneSerial!)}
-                      className="text-[10px] text-dji-primary hover:text-dji-primary/80"
+                      className="text-[10px] text-drone-primary hover:text-drone-primary/80"
                     >
                       Save
                     </button>
@@ -1298,7 +1298,7 @@ function BatteryHealthList({
                   <div className="flex items-center gap-2 mt-0.5">
                     <button
                       onClick={() => handleSaveRename(battery.batterySerial)}
-                      className="text-[10px] text-dji-primary hover:text-dji-primary/80"
+                      className="text-[10px] text-drone-primary hover:text-drone-primary/80"
                     >
                       Save
                     </button>

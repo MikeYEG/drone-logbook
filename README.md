@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="src-tauri/icons/icon.png" alt="DJI Logbook" width="96" />
+    <img src="src-tauri/icons/icon.png" alt="Drone Logbook" width="96" />
 </p>
 
 <p align="center">
@@ -10,10 +10,10 @@
 
 <hr>
 
-<h1 align="center">DJI Logbook</h1>
+<h1 align="center">Drone Logbook</h1>
 
 
-<p align="center">A high-performance application for analyzing DJI drone flight logs. Available as a Tauri v2 desktop app or a Docker-deployable web app. Built with DuckDB and React.</p>
+<p align="center">A high-performance application for analyzing drone flight logs (DJI format). Available as a Tauri v2 desktop app or a Docker-deployable web app. Built with DuckDB and React.</p>
 
 
 <p align="center">
@@ -89,7 +89,7 @@ There is no installation step if you want to use the standalone binary builds, j
 <img width="320" height="311" alt="image" src="https://github.com/user-attachments/assets/2787ffff-9961-433c-898a-b548c738f1a2" />
 
 > [!IMPORTANT]
-If you see **"DJI Logbook is damaged and can't be opened"** on macOS (especially on M1/M2/M3/M4/M5 Macs), this is a Gatekeeper security warning for unsigned apps, **not a corrupted file**. For signing the files with a official apple developer account, it costs $99/year!
+If you see **"Drone Logbook is damaged and can't be opened"** on macOS (especially on M1/M2/M3/M4/M5 Macs), this is a Gatekeeper security warning for unsigned apps, **not a corrupted file**. For signing the files with a official apple developer account, it costs $99/year!
 
 **Quick Fix Remove quarantine attribute**
 
@@ -99,7 +99,7 @@ xattr -d com.apple.quarantine <the-app-file> # you can drag and drop the app to 
 
 ## Usage
 
-1. **Import a Flight Log**: Click "Browse Files" or drag-and-drop a DJI log file
+1. **Import a Flight Log**: Click "Browse Files" or drag-and-drop a drone log file
 2. **Select a Flight**: Click on a flight in the sidebar
 3. **Analyze Data**: View telemetry charts and the 3D flight path on the map
 4. **Filter/Search/Sort**: Use date range, drone/device, battery serial filters, search, and sorting
@@ -142,13 +142,13 @@ The app can also be deployed as a self-hosted web application using Docker. This
 Pull the pre-built image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/arpanghosh8453/dji-logbook:latest
+docker pull ghcr.io/arpanghosh8453/drone-logbook:latest
 
 docker run -d \
   -p 8080:80 \
-  -v dji-data:/data/dji-logviewer \
-  --name dji-logbook \
-  ghcr.io/arpanghosh8453/dji-logbook:latest
+  -v drone-data:/data/drone-logbook \
+  --name drone-logbook \
+  ghcr.io/arpanghosh8453/drone-logbook:latest
 ```
 
 Or use docker-compose (uses the same pre-built image):
@@ -175,20 +175,20 @@ docker compose -f docker-compose-build.yml up -d
 
 ### Data persistence
 
-All flight data (DuckDB database, cached decryption keys) is stored in a Docker named volume (`dji-data`) mapped to `/data/dji-logviewer` internally inside the container. Data persists across container restarts, image updates, and rebuilds. It is only removed if you explicitly delete the volume with `docker compose down -v`.
+All flight data (DuckDB database, cached decryption keys) is stored in a Docker named volume (`drone-data`) mapped to `/data/drone-logbook` internally inside the container. Data persists across container restarts, image updates, and rebuilds. It is only removed if you explicitly delete the volume with `docker compose down -v`.
 
 ### Environment variables
 
 | Variable   | Default                | Description                    |
 |------------|------------------------|--------------------------------|
-| `DATA_DIR` | `/data/dji-logviewer`  | Database and config storage    |
+| `DATA_DIR` | `/data/drone-logbook`  | Database and config storage    |
 | `RUST_LOG` | `info`                 | Log level (debug, info, warn)  |
 
 
 ## Configuration
 
 - **DJI API Key**: Stored locally in `config.json`. You can also provide it via `.env` or via the `settings` menu inside the application. The standalone app ships with a default key, but users should enter their own to avoid rate limits for log file decryption key fetching.
-- **Database Location**: Stored in the platform-specific app data directory (e.g., AppData on Windows, Application Support on macOS, and local share on Linux). In Docker mode, data is stored in `/data/dji-logviewer` (persisted via a Docker volume).
+- **Database Location**: Stored in the platform-specific app data directory (e.g., AppData on Windows, Application Support on macOS, and local share on Linux). In Docker mode, data is stored in `/data/drone-logbook` (persisted via a Docker volume).
 - **Log Files**: App logs are written to the platform-specific log directory and surfaced in Settings. In Docker mode, logs are written to stdout.
 
 ## Tech Stack

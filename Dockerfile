@@ -1,5 +1,5 @@
 # =============================================================================
-# DJI Logbook — Docker multi-stage build
+# Drone Logbook — Docker multi-stage build
 #
 # Stage 1: Build Rust backend (Axum web server)
 # Stage 2: Build React frontend (Vite)
@@ -72,7 +72,7 @@ RUN npx vite build
 FROM nginx:stable-bookworm AS runtime
 
 # Copy backend binary
-COPY --from=backend-builder /build/src-tauri/target/release/dji-logviewer /app/dji-logviewer
+COPY --from=backend-builder /build/src-tauri/target/release/drone-logbook /app/drone-logbook
 
 # Copy frontend build
 COPY --from=frontend-builder /build/dist /usr/share/nginx/html
@@ -85,10 +85,10 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Create data directory
-RUN mkdir -p /data/dji-logviewer
+RUN mkdir -p /data/drone-logbook
 
 # Environment variables
-ENV DATA_DIR=/data/dji-logviewer
+ENV DATA_DIR=/data/drone-logbook
 ENV PORT=3001
 ENV HOST=127.0.0.1
 ENV RUST_LOG=info
@@ -97,6 +97,6 @@ ENV RUST_LOG=info
 EXPOSE 80
 
 # Persistent data volume
-VOLUME ["/data/dji-logviewer"]
+VOLUME ["/data/drone-logbook"]
 
 ENTRYPOINT ["/app/entrypoint.sh"]

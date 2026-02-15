@@ -72,7 +72,7 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-dji-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -195,7 +195,7 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
 
 function WeatherStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-dji-surface/50 border border-gray-700/50 px-3 py-2.5">
+    <div className="flex items-center gap-3 rounded-lg bg-drone-surface/50 border border-gray-700/50 px-3 py-2.5">
       {icon}
       <div className="min-w-0">
         <p className="text-xs text-gray-500 truncate">{label}</p>

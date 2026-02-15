@@ -777,7 +777,7 @@ export function FlightList({
       .join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="DJI Logbook">
+<gpx version="1.1" creator="Drone Logbook">
   <trk>
     <name>${escapeXml((data.flight as any).original_filename || 'Flight')}</name>
     <trkseg>
@@ -1148,8 +1148,8 @@ ${points}
             <span
               className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                 mapAreaFilterEnabled
-                  ? 'bg-dji-primary/90 border-dji-primary'
-                  : 'bg-dji-surface border-gray-600'
+                  ? 'bg-drone-primary/90 border-drone-primary'
+                  : 'bg-drone-surface border-gray-600'
               }`}
             >
               <span
@@ -1362,7 +1362,7 @@ ${points}
                 onClick={() => setIsDateOpen(false)}
               />
               <div
-                className="fixed z-50 rounded-xl border border-gray-700 bg-dji-surface p-3 shadow-xl"
+                className="fixed z-50 rounded-xl border border-gray-700 bg-drone-surface p-3 shadow-xl"
                 style={{
                   top: dateAnchor.top,
                   left: dateAnchor.left,
@@ -1427,7 +1427,7 @@ ${points}
                 />
                 <div
                   ref={droneDropdownRef}
-                  className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-dji-surface shadow-xl flex flex-col overflow-hidden"
+                  className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-drone-surface shadow-xl flex flex-col overflow-hidden"
                 >
                   {droneOptions.length > 4 && (
                     <div className="px-2 pt-2 pb-1 border-b border-gray-700 flex-shrink-0">
@@ -1447,7 +1447,7 @@ ${points}
                         }}
                         placeholder="Search drones…"
                         autoFocus
-                        className="w-full bg-dji-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-dji-primary focus:outline-none placeholder-gray-500"
+                        className="w-full bg-drone-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-drone-primary focus:outline-none placeholder-gray-500"
                       />
                     </div>
                   )}
@@ -1518,7 +1518,7 @@ ${points}
                 />
                 <div
                   ref={batteryDropdownRef}
-                  className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-dji-surface shadow-xl flex flex-col overflow-hidden"
+                  className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-drone-surface shadow-xl flex flex-col overflow-hidden"
                 >
                   {batteryOptions.length > 4 && (
                     <div className="px-2 pt-2 pb-1 border-b border-gray-700 flex-shrink-0">
@@ -1538,7 +1538,7 @@ ${points}
                         }}
                         placeholder="Search batteries…"
                         autoFocus
-                        className="w-full bg-dji-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-dji-primary focus:outline-none placeholder-gray-500"
+                        className="w-full bg-drone-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-drone-primary focus:outline-none placeholder-gray-500"
                       />
                     </div>
                   )}
@@ -1609,7 +1609,7 @@ ${points}
                   />
                   <div
                     ref={tagDropdownRef}
-                    className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-dji-surface shadow-xl flex flex-col overflow-hidden"
+                    className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 rounded-lg border border-gray-700 bg-drone-surface shadow-xl flex flex-col overflow-hidden"
                   >
                     {/* Search input */}
                     <div className="px-2 pt-2 pb-1 border-b border-gray-700 flex-shrink-0">
@@ -1650,7 +1650,7 @@ ${points}
                         }}
                         placeholder="Search tags…"
                         autoFocus
-                        className="w-full bg-dji-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-dji-primary focus:outline-none placeholder-gray-500"
+                        className="w-full bg-drone-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-drone-primary focus:outline-none placeholder-gray-500"
                       />
                     </div>
                     <div className="overflow-auto flex-1">
@@ -1755,7 +1755,7 @@ ${points}
               disabled={filteredFlights.length === 0}
               className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors w-full ${
                 filteredFlights.length > 0
-                  ? 'bg-dji-primary/20 text-dji-primary hover:bg-dji-primary/30'
+                  ? 'bg-drone-primary/20 text-drone-primary hover:bg-drone-primary/30'
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`}
             >
@@ -1843,7 +1843,7 @@ ${points}
                         className={`themed-select-option w-full text-left px-3 py-2 text-sm rounded transition-colors ${
                           opt.disabled 
                             ? 'text-gray-500 cursor-not-allowed' 
-                            : index === exportHighlightedIndex ? 'bg-dji-primary/20' : ''
+                            : index === exportHighlightedIndex ? 'bg-drone-primary/20' : ''
                         }`}
                       >
                         {opt.label}
@@ -1919,7 +1919,7 @@ ${points}
               ref={sortButtonRef}
               type="button"
               onClick={() => setIsSortOpen((open) => !open)}
-              className="h-8 w-8 rounded-l-md border border-gray-700/70 bg-dji-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
+              className="h-8 w-8 rounded-l-md border border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
               aria-label={`Sort flights: ${activeSortLabel}`}
             >
               <SortIcon />
@@ -1927,7 +1927,7 @@ ${points}
             <button
               type="button"
               onClick={() => setSortDirection((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
-              className="h-8 w-7 rounded-r-md border border-l-0 border-gray-700/70 bg-dji-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
+              className="h-8 w-7 rounded-r-md border border-l-0 border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
               aria-label={`Toggle sort direction: ${sortDirection === 'asc' ? 'ascending' : 'descending'}`}
             >
               <SortDirectionIcon direction={sortDirection} />
@@ -1970,7 +1970,7 @@ ${points}
                       onMouseEnter={() => setSortHighlightedIndex(index)}
                       className={`themed-select-option w-full text-left px-3 py-2 text-xs rounded-lg transition-colors ${
                         sortOption === option.value ? 'font-medium' : ''
-                      } ${index === sortHighlightedIndex ? 'bg-dji-primary/20' : ''}`}
+                      } ${index === sortHighlightedIndex ? 'bg-drone-primary/20' : ''}`}
                     >
                       {option.label}
                     </button>
@@ -2034,7 +2034,7 @@ ${points}
             (activeView === 'overview' 
               ? overviewHighlightedFlightId === flight.id
               : (selectedFlightId === flight.id || previewFlightId === flight.id))
-              ? 'bg-dji-primary/20 border-l-2 border-dji-primary'
+              ? 'bg-drone-primary/20 border-l-2 border-drone-primary'
               : 'border-l-2 border-transparent hover:bg-gray-700/30 hover:border-l-gray-500'
           }`}
         >
@@ -2058,7 +2058,7 @@ ${points}
                     }
                     setEditingId(null);
                   }}
-                  className="text-xs text-dji-primary"
+                  className="text-xs text-drone-primary"
                 >
                   Save
                 </button>
@@ -2164,7 +2164,7 @@ ${points}
       {/* Export Progress Overlay */}
       {isExporting && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-dji-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
+          <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">Exporting Flights</h3>
             <div className="space-y-3">
               <div className="flex justify-between text-sm text-gray-400">
@@ -2173,7 +2173,7 @@ ${points}
               </div>
               <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
                 <div
-                  className="h-full bg-dji-primary transition-all duration-300"
+                  className="h-full bg-drone-primary transition-all duration-300"
                   style={{ width: `${(exportProgress.done / exportProgress.total) * 100}%` }}
                 />
               </div>
@@ -2190,7 +2190,7 @@ ${points}
       {/* Delete Progress Overlay */}
       {isDeleting && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-dji-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
+          <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">Deleting Flights</h3>
             <div className="space-y-3">
               <div className="flex justify-between text-sm text-gray-400">

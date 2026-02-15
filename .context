@@ -1,7 +1,7 @@
 {
   "project": {
-    "name": "DJI Logbook",
-    "goal": "Local-first DJI logbook with charts, maps, and analytics. Available as a Tauri v2 desktop app or a Docker-deployable web app.",
+    "name": "Drone Logbook",
+    "goal": "Local-first drone logbook with charts, maps, and analytics. Available as a Tauri v2 desktop app or a Docker-deployable web app.",
     "stack": {
       "desktop": "Tauri v2 (feature: tauri-app)",
       "web": "Axum 0.7 + Nginx (feature: web)",
@@ -360,7 +360,7 @@
     }
   },
   "database": {
-    "path": "~/.local/share/com.dji-logviewer.app/flights.db (desktop) or /data/dji-logviewer/flights.db (Docker)",
+    "path": "~/.local/share/com.drone-logbook.app/flights.db (desktop) or /data/drone-logbook/flights.db (Docker)",
     "tables": {
       "flights": [
         "id",
@@ -529,9 +529,9 @@
   ],
   "notes": {
     "api_key": "Stored locally in config.json; never sent except to DJI API.",
-    "db_location_desktop": "App data dir under ~/.local/share/com.dji-logviewer.app (flights.db + keychains/)",
-    "db_location_docker": "/data/dji-logviewer (persistent volume)",
-    "log_location": "Log files under ~/.local/share/com.dji-logviewer.app/logs/ (desktop) or stdout (Docker)",
+    "db_location_desktop": "App data dir under ~/.local/share/com.drone-logbook.app (flights.db + keychains/)",
+    "db_location_docker": "/data/drone-logbook (persistent volume)",
+    "log_location": "Log files under ~/.local/share/com.drone-logbook.app/logs/ (desktop) or stdout (Docker)",
     "git": {
       "branch": "main"
     }

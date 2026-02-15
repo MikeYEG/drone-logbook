@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DJI Logbook",
+  "productName": "Drone Logbook",
   "version": "2.7.0",
-  "identifier": "com.dji-logviewer",
+  "identifier": "com.drone-logbook",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "DJI Logbook",
+        "title": "Drone Logbook",
         "width": 1600,
         "height": 800,
         "minWidth": 1200,

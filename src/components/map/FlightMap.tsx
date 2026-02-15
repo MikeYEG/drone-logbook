@@ -1103,7 +1103,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
 
   if (track.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-dji-dark">
+      <div className="h-full flex items-center justify-center bg-drone-dark">
         <p className="text-gray-500">No GPS data available</p>
       </div>
     );
@@ -1149,7 +1149,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         <NavigationControl position="top-right" />
 
         {/* Map Controls */}
-        <div className="map-overlay absolute top-2 left-2 z-10 bg-dji-dark/80 border border-gray-700 rounded-xl px-3 py-2 space-y-2 shadow-lg">
+        <div className="map-overlay absolute top-2 left-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-xl px-3 py-2 space-y-2 shadow-lg">
           <ToggleRow
             label="3D Terrain"
             checked={is3D}
@@ -1231,7 +1231,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           <button
             type="button"
             onClick={resetView}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-dji-dark/80 hover:bg-dji-dark border border-gray-700 hover:border-gray-500 rounded-lg text-xs text-gray-300 hover:text-white shadow-lg transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-drone-dark/80 hover:bg-drone-dark border border-gray-700 hover:border-gray-500 rounded-lg text-xs text-gray-300 hover:text-white shadow-lg transition-all"
             title="Reset view to fit flight path"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -1300,11 +1300,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       {/* Replay telemetry overlay — fixed top-right during playback */}
       {replayActive && showTooltip && replayTelemetry && (
         <div className="absolute top-2 right-12 z-20 pointer-events-none">
-          <div className="map-overlay bg-dji-dark/80 backdrop-blur border border-gray-700 rounded-xl px-3.5 py-3 shadow-lg text-[11px] text-gray-200 min-w-[180px]">
+          <div className="map-overlay bg-drone-dark/80 backdrop-blur border border-gray-700 rounded-xl px-3.5 py-3 shadow-lg text-[11px] text-gray-200 min-w-[180px]">
             {/* Flight time */}
             {replayTelemetry.timeSecs !== null && (
               <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50">
-                <svg className="w-3.5 h-3.5 text-dji-accent flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 text-drone-accent flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
@@ -1406,13 +1406,13 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
 
           {/* Flight Replay Controls — Playbar */}
           <div
-            className="bg-dji-dark/90 backdrop-blur-sm border border-gray-700 rounded-xl px-3 py-2 shadow-xl flex items-center gap-3 pointer-events-auto"
+            className="bg-drone-dark/90 backdrop-blur-sm border border-gray-700 rounded-xl px-3 py-2 shadow-xl flex items-center gap-3 pointer-events-auto"
           >
           {/* Play / Pause */}
           <button
             type="button"
             onClick={handlePlayPause}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-dji-accent/20 text-dji-accent hover:bg-dji-accent/30 transition-colors"
+            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-drone-accent/20 text-drone-accent hover:bg-drone-accent/30 transition-colors"
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
@@ -1442,7 +1442,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
             onChange={(e) => handleReplaySeek(Number(e.target.value))}
             className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer replay-slider"
             style={{
-              background: `linear-gradient(to right, rgb(var(--dji-accent)) ${replayProgress * 100}%, #4a4e69 ${replayProgress * 100}%)`,
+              background: `linear-gradient(to right, rgb(var(--drone-accent)) ${replayProgress * 100}%, #4a4e69 ${replayProgress * 100}%)`,
             }}
           />
 
@@ -1500,8 +1500,8 @@ function ToggleRow({
       <span
         className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
           checked
-            ? 'bg-dji-primary/90 border-dji-primary'
-            : 'bg-dji-surface border-gray-600'
+            ? 'bg-drone-primary/90 border-drone-primary'
+            : 'bg-drone-surface border-gray-600'
         }`}
       >
         <span

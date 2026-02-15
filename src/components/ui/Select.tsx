@@ -175,7 +175,7 @@ export function Select({ value, onChange, options, className = '' }: SelectProps
                   onMouseEnter={() => setHighlightedIndex(index)}
                   className={`themed-select-option cursor-pointer px-3 py-1.5 text-sm truncate
                     ${opt.value === value ? 'font-medium' : ''}
-                    ${index === highlightedIndex ? 'bg-dji-primary/20' : ''}`}
+                    ${index === highlightedIndex ? 'bg-drone-primary/20' : ''}`}
                 >
                   {opt.label}
                 </div>

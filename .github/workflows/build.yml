@@ -56,4 +56,4 @@ jobs:
           releaseId: ${{ github.event.release.id }}
           includeRelease: true
           uploadPlainBinary: true
-          releaseAssetNamePattern: 'DJI_logbook_[version]_[platform]_[arch].[ext]'
+          releaseAssetNamePattern: 'Drone_logbook_[version]_[platform]_[arch].[ext]'

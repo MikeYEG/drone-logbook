@@ -280,11 +280,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative bg-dji-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-3xl mx-4 overflow-hidden">
+      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-3xl mx-4 overflow-hidden">
         {/* Blocking overlay while a long-running operation is in progress */}
         {isBusy && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px] rounded-xl">
-            <svg className="w-10 h-10 text-dji-primary animate-spin" viewBox="0 0 24 24" fill="none">
+            <svg className="w-10 h-10 text-drone-primary animate-spin" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
               <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
             </svg>
@@ -369,8 +369,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <span
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     hideSerialNumbers
-                      ? 'bg-dji-primary/90 border-dji-primary'
-                      : 'bg-dji-surface border-gray-600'
+                      ? 'bg-drone-primary/90 border-drone-primary'
+                      : 'bg-drone-surface border-gray-600'
                   }`}
                 >
                   <span
@@ -398,8 +398,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <span
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     smartTagsEnabled
-                      ? 'bg-dji-primary/90 border-dji-primary'
-                      : 'bg-dji-surface border-gray-600'
+                      ? 'bg-drone-primary/90 border-drone-primary'
+                      : 'bg-drone-surface border-gray-600'
                   }`}
                 >
                   <span
@@ -442,7 +442,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   href="https://github.com/arpanghosh8453/dji-logbook#how-to-obtain-your-own-dji-developer-api-key"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-dji-primary hover:underline"
+                  className="text-drone-primary hover:underline"
                 >
                   this guide
                 </a>
@@ -542,8 +542,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <span
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     donationAcknowledged
-                      ? 'bg-dji-primary/90 border-dji-primary'
-                      : 'bg-dji-surface border-gray-600'
+                      ? 'bg-drone-primary/90 border-drone-primary'
+                      : 'bg-drone-surface border-gray-600'
                   }`}
                 >
                   <span
@@ -618,14 +618,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <p className="text-xs text-gray-500 mt-2">
                 <strong className="text-gray-400">Data Location:</strong>
                 <br />
-                <code className="text-xs text-gray-400 bg-dji-dark px-1 py-0.5 rounded break-all">
+                <code className="text-xs text-gray-400 bg-drone-dark px-1 py-0.5 rounded break-all">
                   {appDataDir || 'Loading...'}
                 </code>
               </p>
               <p className="text-xs text-gray-500 mt-2">
                 <strong className="text-gray-400">Log Location:</strong>
                 <br />
-                <code className="text-xs text-gray-400 bg-dji-dark px-1 py-0.5 rounded break-all">
+                <code className="text-xs text-gray-400 bg-drone-dark px-1 py-0.5 rounded break-all">
                   {appLogDir || 'Loading...'}
                 </code>
               </p>
@@ -766,7 +766,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setShowBadgeModal(false)}
           />
-          <div className="relative bg-dji-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+          <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
               <h3 className="text-base font-semibold text-white flex items-center gap-2">
@@ -806,14 +806,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <>
                   <div className="space-y-2 text-sm text-gray-300">
                     <p className="flex gap-2">
-                      <span className="text-dji-primary font-semibold shrink-0">1.</span>
+                      <span className="text-drone-primary font-semibold shrink-0">1.</span>
                       <span>
                         Visit{' '}
                         <a
                           href="https://ko-fi.com/s/e06c1d4359"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-dji-primary hover:underline font-medium"
+                          className="text-drone-primary hover:underline font-medium"
                         >
                           this page
                         </a>
@@ -821,7 +821,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </span>
                     </p>
                     <p className="flex gap-2">
-                      <span className="text-dji-primary font-semibold shrink-0">2.</span>
+                      <span className="text-drone-primary font-semibold shrink-0">2.</span>
                       <span>Enter the code below to activate your Supporter Badge.</span>
                     </p>
                   </div>

@@ -1,4 +1,4 @@
-//! DJI Logbook - Backend
+//! Drone Logbook - Backend
 //!
 //! A high-performance application for analyzing DJI drone flight logs.
 //! Supports two build modes:
@@ -48,10 +48,109 @@ mod tauri_app {
             .map_err(|e| format!("Failed to get app data directory: {}", e))
     }
 
+    /// Migrate data from old app identifier (com.dji-logviewer) to new one (com.drone-logbook)
+    /// This preserves user data when upgrading from older versions
+    fn migrate_old_data(new_data_dir: &PathBuf) -> Result<(), String> {
+        // Determine the old data directory path based on platform
+        let old_data_dir = if cfg!(target_os = "macos") {
+            dirs::data_dir().map(|d| d.join("com.dji-logviewer.app"))
+        } else if cfg!(target_os = "windows") {
+            dirs::data_local_dir().map(|d| d.join("com.dji-logviewer.app"))
+        } else {
+            // Linux: ~/.local/share/com.dji-logviewer.app
+            dirs::data_dir().map(|d| d.join("com.dji-logviewer.app"))
+        };
+
+        let old_data_dir = match old_data_dir {
+            Some(dir) => dir,
+            None => {
+                log::debug!("Could not determine old data directory path");
+                return Ok(());
+            }
+        };
+
+        // Check if old directory exists and new one doesn't have data yet
+        if !old_data_dir.exists() {
+            log::debug!("No old data directory found at {:?}", old_data_dir);
+            return Ok(());
+        }
+
+        let old_db_path = old_data_dir.join("flights.db");
+        let new_db_path = new_data_dir.join("flights.db");
+
+        // Only migrate if old DB exists and new DB doesn't
+        if !old_db_path.exists() {
+            log::debug!("No old database found at {:?}", old_db_path);
+            return Ok(());
+        }
+
+        if new_db_path.exists() {
+            log::info!("New database already exists, skipping migration");
+            return Ok(());
+        }
+
+        log::info!("Migrating data from {:?} to {:?}", old_data_dir, new_data_dir);
+
+        // Create new data directory if it doesn't exist
+        std::fs::create_dir_all(new_data_dir)
+            .map_err(|e| format!("Failed to create new data directory: {}", e))?;
+
+        // Copy all files from old directory to new directory
+        for entry in std::fs::read_dir(&old_data_dir)
+            .map_err(|e| format!("Failed to read old data directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let file_name = entry.file_name();
+            let old_path = entry.path();
+            let new_path = new_data_dir.join(&file_name);
+
+            if old_path.is_dir() {
+                // Recursively copy directories (e.g., keychains/)
+                copy_dir_recursive(&old_path, &new_path)?;
+            } else {
+                // Copy files
+                std::fs::copy(&old_path, &new_path)
+                    .map_err(|e| format!("Failed to copy {:?}: {}", file_name, e))?;
+            }
+            log::debug!("Migrated: {:?}", file_name);
+        }
+
+        log::info!("Successfully migrated all data from old location");
+        Ok(())
+    }
+
+    /// Recursively copy a directory
+    fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
+        std::fs::create_dir_all(dst)
+            .map_err(|e| format!("Failed to create directory {:?}: {}", dst, e))?;
+
+        for entry in std::fs::read_dir(src)
+            .map_err(|e| format!("Failed to read directory {:?}: {}", src, e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+
+            if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &dst_path)?;
+            } else {
+                std::fs::copy(&src_path, &dst_path)
+                    .map_err(|e| format!("Failed to copy {:?}: {}", src_path, e))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Initialize the database in the app data directory
     fn init_database(app: &AppHandle) -> Result<Database, String> {
         let data_dir = app_data_dir_path(app)?;
         log::info!("Initializing database in: {:?}", data_dir);
+
+        // Attempt to migrate data from old app identifier
+        if let Err(e) = migrate_old_data(&data_dir) {
+            log::warn!("Migration from old data directory failed: {}", e);
+            // Continue anyway - this is not fatal
+        }
 
         Database::new(data_dir).map_err(|e| format!("Failed to initialize database: {}", e))
     }
@@ -556,7 +655,7 @@ mod tauri_app {
             .setup(|app| {
                 let db = init_database(app.handle())?;
                 app.manage(AppState { db: Arc::new(db) });
-                log::info!("DJI Logbook initialized successfully");
+                log::info!("Drone Logbook initialized successfully");
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
@@ -585,7 +684,7 @@ mod tauri_app {
                 regenerate_all_smart_tags,
             ])
             .run(tauri::generate_context!())
-            .expect("Failed to run DJI Logbook");
+            .expect("Failed to run Drone Logbook");
     }
 }
 
@@ -603,7 +702,7 @@ async fn run_web() {
         .unwrap_or_else(|_| {
             dirs::data_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/data"))
-                .join("dji-logviewer")
+                .join("drone-logbook")
         });
 
     log::info!("Data directory: {:?}", data_dir);

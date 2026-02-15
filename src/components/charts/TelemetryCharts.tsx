@@ -168,7 +168,7 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
           onClick={toggleDragZoom}
           className={`text-xs border rounded px-2 py-1 transition-colors ${
             dragZoomActive
-              ? 'text-dji-primary border-dji-primary/50 bg-dji-primary/10'
+              ? 'text-drone-primary border-drone-primary/50 bg-drone-primary/10'
               : 'text-gray-400 hover:text-white border-gray-700'
           }`}
           title={dragZoomActive ? 'Disable drag to zoom' : 'Enable drag to zoom'}

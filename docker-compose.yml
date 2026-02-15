@@ -1,14 +1,14 @@
 services:
-  dji-logbook:
-    image: ghcr.io/arpanghosh8453/dji-logbook:latest
+  drone-logbook:
+    image: ghcr.io/arpanghosh8453/drone-logbook:latest
     ports:
       - "8080:80"
     volumes:
-      - dji-data:/data/dji-logviewer
+      - drone-data:/data/drone-logbook
     environment:
-      - DATA_DIR=/data/dji-logviewer
+      - DATA_DIR=/data/drone-logbook
       - RUST_LOG=info
     restart: unless-stopped
 
 volumes:
-  dji-data:
+  drone-data:

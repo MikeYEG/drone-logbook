@@ -1,13 +1,13 @@
 [package]
-name = "dji-logviewer"
+name = "drone-logbook"
 version = "0.1.0"
-description = "DJI Logbook — A high-performance DJI drone flight log analyzer"
-authors = ["DJI Logbook Contributors"]
+description = "Drone Logbook — A high-performance drone flight log analyzer"
+authors = ["Drone Logbook Contributors"]
 edition = "2021"
 rust-version = "1.70"
 
 [lib]
-name = "dji_logviewer_lib"
+name = "drone_logbook_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

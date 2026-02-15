@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --dji-primary: 0 160 220;
-  --dji-secondary: 26 26 46;
-  --dji-accent: 0 212 170;
-  --dji-dark: 15 15 26;
-  --dji-surface: 22 33 62;
-  --dji-muted: 74 78 105;
+  --drone-primary: 0 160 220;
+  --drone-secondary: 26 26 46;
+  --drone-accent: 0 212 170;
+  --drone-dark: 15 15 26;
+  --drone-surface: 22 33 62;
+  --drone-muted: 74 78 105;
 
   /* RC stick overlay — dark mode defaults */
   --stick-idle: rgba(148, 163, 184, 0.35);
@@ -21,12 +21,12 @@
 }
 
 body.theme-light {
-  --dji-primary: 0 122 204;
-  --dji-secondary: 244 247 250;
-  --dji-accent: 16 185 129;
-  --dji-dark: 248 250 252;
-  --dji-surface: 255 255 255;
-  --dji-muted: 148 163 184;
+  --drone-primary: 0 122 204;
+  --drone-secondary: 244 247 250;
+  --drone-accent: 16 185 129;
+  --drone-dark: 248 250 252;
+  --drone-surface: 255 255 255;
+  --drone-muted: 148 163 184;
   scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
@@ -387,7 +387,7 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
   }
 
   body {
-    @apply bg-dji-dark text-gray-100;
+    @apply bg-drone-dark text-gray-100;
   }
 
   body.theme-light {
@@ -398,27 +398,27 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 /* Component layer */
 @layer components {
   .btn-primary {
-    @apply bg-dji-primary hover:bg-blue-500 text-white font-medium 
+    @apply bg-drone-primary hover:bg-blue-500 text-white font-medium 
            py-2 px-4 rounded-lg transition-colors duration-200
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply bg-dji-surface hover:bg-gray-700 text-white font-medium 
+    @apply bg-drone-surface hover:bg-gray-700 text-white font-medium 
            py-2 px-4 rounded-lg transition-colors duration-200
            border border-gray-600;
   }
 
   .card {
-    @apply bg-dji-surface rounded-xl border border-gray-700/50 
+    @apply bg-drone-surface rounded-xl border border-gray-700/50 
            shadow-lg shadow-black/20;
   }
 
   .input {
-    @apply bg-dji-dark border border-gray-600 rounded-lg px-4 py-2
+    @apply bg-drone-dark border border-gray-600 rounded-lg px-4 py-2
            text-gray-100 placeholder-gray-500
-           focus:outline-none focus:ring-2 focus:ring-dji-primary/50 
-           focus:border-dji-primary transition-all;
+           focus:outline-none focus:ring-2 focus:ring-drone-primary/50 
+           focus:border-drone-primary transition-all;
     color-scheme: dark;
   }
 
@@ -441,7 +441,7 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 
 /* Custom themed select component */
 .themed-select-trigger {
-  background-color: rgb(var(--dji-dark));
+  background-color: rgb(var(--drone-dark));
   border: 1px solid #4b5563;
   border-radius: 0.5rem;
   padding: 0.35rem 0.75rem;
@@ -454,8 +454,8 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 
 .themed-select-trigger:focus {
   outline: none;
-  border-color: rgb(var(--dji-primary));
-  box-shadow: 0 0 0 2px rgb(var(--dji-primary) / 0.3);
+  border-color: rgb(var(--drone-primary));
+  box-shadow: 0 0 0 2px rgb(var(--drone-primary) / 0.3);
 }
 
 .themed-select-dropdown {
@@ -470,12 +470,12 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 }
 
 .themed-select-option:hover {
-  background-color: rgb(var(--dji-primary) / 0.35);
+  background-color: rgb(var(--drone-primary) / 0.35);
   color: #ffffff;
 }
 
 .themed-select-option[data-active="true"] {
-  background-color: rgb(var(--dji-primary) / 0.25);
+  background-color: rgb(var(--drone-primary) / 0.25);
   color: #ffffff;
 }
 
@@ -496,12 +496,12 @@ body.theme-light .themed-select-option {
 }
 
 body.theme-light .themed-select-option:hover {
-  background-color: rgb(var(--dji-primary) / 0.2);
+  background-color: rgb(var(--drone-primary) / 0.2);
   color: #0f172a;
 }
 
 body.theme-light .themed-select-option[data-active="true"] {
-  background-color: rgb(var(--dji-primary) / 0.15);
+  background-color: rgb(var(--drone-primary) / 0.15);
   color: #0f172a;
 }
 
@@ -555,7 +555,7 @@ body.theme-light .maplibregl-ctrl-group {
   height: 4px;
   transform: translateY(-50%);
   border-radius: 2px;
-  background: rgb(var(--dji-primary));
+  background: rgb(var(--drone-primary));
   left: var(--lo-pct, 0%);
   right: calc(100% - var(--hi-pct, 100%));
   pointer-events: none;
@@ -582,7 +582,7 @@ body.theme-light .maplibregl-ctrl-group {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(var(--dji-primary));
+  background: rgb(var(--drone-primary));
   border: 2px solid #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   cursor: pointer;
@@ -611,7 +611,7 @@ body.theme-light .maplibregl-ctrl-group {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(var(--dji-primary));
+  background: rgb(var(--drone-primary));
   border: 2px solid #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   cursor: pointer;
@@ -742,10 +742,10 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 
 /* Day picker styling */
 .rdp-theme {
-  --rdp-accent-color: rgb(var(--dji-primary));
-  --rdp-background-color: rgb(var(--dji-primary) / 0.15);
-  --rdp-outline: 2px solid rgb(var(--dji-primary) / 0.5);
-  --rdp-outline-selected: 2px solid rgb(var(--dji-primary) / 0.6);
+  --rdp-accent-color: rgb(var(--drone-primary));
+  --rdp-background-color: rgb(var(--drone-primary) / 0.15);
+  --rdp-outline: 2px solid rgb(var(--drone-primary) / 0.5);
+  --rdp-outline-selected: 2px solid rgb(var(--drone-primary) / 0.6);
   --rdp-day_button-border-radius: 8px;
   --rdp-cell-size: 36px;
   font-family: inherit;
@@ -755,7 +755,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-dark {
   --rdp-selected-color: #e2e8f0;
   --rdp-range_middle-color: #e2e8f0;
-  --rdp-range_middle-background-color: rgb(var(--dji-primary) / 0.2);
+  --rdp-range_middle-background-color: rgb(var(--drone-primary) / 0.2);
 }
 
 .rdp-theme.rdp-dark .rdp {
@@ -784,7 +784,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-dark .rdp-day_range_middle .rdp-day_button,
 .rdp-theme.rdp-dark .rdp-day_selected:not(.rdp-day_range_start):not(.rdp-day_range_end),
 .rdp-theme.rdp-dark .rdp-day_selected:not(.rdp-day_range_start):not(.rdp-day_range_end) .rdp-day_button {
-  background-color: rgb(var(--dji-primary) / 0.2) !important;
+  background-color: rgb(var(--drone-primary) / 0.2) !important;
   color: #e2e8f0 !important;
 }
 
@@ -793,7 +793,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-dark .rdp-day_range_start .rdp-day_button,
 .rdp-theme.rdp-dark .rdp-day_range_end,
 .rdp-theme.rdp-dark .rdp-day_range_end .rdp-day_button {
-  background-color: rgb(var(--dji-primary)) !important;
+  background-color: rgb(var(--drone-primary)) !important;
   color: #ffffff !important;
 }
 
@@ -801,7 +801,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-light {
   --rdp-selected-color: #0f172a;
   --rdp-range_middle-color: #0f172a;
-  --rdp-range_middle-background-color: rgb(var(--dji-primary) / 0.15);
+  --rdp-range_middle-background-color: rgb(var(--drone-primary) / 0.15);
 }
 
 .rdp-theme.rdp-light .rdp {
@@ -830,7 +830,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-light .rdp-day_range_middle .rdp-day_button,
 .rdp-theme.rdp-light .rdp-day_selected:not(.rdp-day_range_start):not(.rdp-day_range_end),
 .rdp-theme.rdp-light .rdp-day_selected:not(.rdp-day_range_start):not(.rdp-day_range_end) .rdp-day_button {
-  background-color: rgb(var(--dji-primary) / 0.15) !important;
+  background-color: rgb(var(--drone-primary) / 0.15) !important;
   color: #0f172a !important;
 }
 
@@ -839,12 +839,12 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 .rdp-theme.rdp-light .rdp-day_range_start .rdp-day_button,
 .rdp-theme.rdp-light .rdp-day_range_end,
 .rdp-theme.rdp-light .rdp-day_range_end .rdp-day_button {
-  background-color: rgb(var(--dji-primary)) !important;
+  background-color: rgb(var(--drone-primary)) !important;
   color: #ffffff !important;
 }
 
 .rdp-theme .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
-  background-color: rgb(var(--dji-primary) / 0.15);
+  background-color: rgb(var(--drone-primary) / 0.15);
 }
 
 .rdp-theme .rdp-caption_label {
@@ -861,7 +861,7 @@ body.theme-light .echarts-tooltip .tooltip-time-tag {
 }
 
 /* Light mode: ensure spinner border is visible */
-body.theme-light .spinner.border-dji-primary {
+body.theme-light .spinner.border-drone-primary {
   border-color: rgb(0, 122, 204) !important;
   border-top-color: transparent !important;
 }
@@ -883,11 +883,11 @@ body.theme-light .spinner.border-dji-primary {
 
 .drop-zone:hover,
 .drop-zone.active {
-  @apply border-dji-primary bg-dji-primary/10;
+  @apply border-drone-primary bg-drone-primary/10;
 }
 
 .drop-zone.active {
-  @apply border-dji-accent bg-dji-accent/10;
+  @apply border-drone-accent bg-drone-accent/10;
 }
 
 /* Flight replay slider */
@@ -897,7 +897,7 @@ body.theme-light .spinner.border-dji-primary {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(var(--dji-accent));
+  background: rgb(var(--drone-accent));
   border: 2px solid #fff;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
@@ -907,7 +907,7 @@ body.theme-light .spinner.border-dji-primary {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(var(--dji-accent));
+  background: rgb(var(--drone-accent));
   border: 2px solid #fff;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);

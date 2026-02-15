@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for DJI Logbook
+about: Suggest an idea for Drone Logbook
 title: "[FEATURE] "
 labels: enhancement
 assignees: arpanghosh8453

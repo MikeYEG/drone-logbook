@@ -7,14 +7,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        // DJI-inspired color scheme
-        dji: {
-          primary: 'rgb(var(--dji-primary) / <alpha-value>)',
-          secondary: 'rgb(var(--dji-secondary) / <alpha-value>)',
-          accent: 'rgb(var(--dji-accent) / <alpha-value>)',
-          dark: 'rgb(var(--dji-dark) / <alpha-value>)',
-          surface: 'rgb(var(--dji-surface) / <alpha-value>)',
-          muted: 'rgb(var(--dji-muted) / <alpha-value>)',
+        // Drone Logbook color scheme
+        drone: {
+          primary: 'rgb(var(--drone-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--drone-secondary) / <alpha-value>)',
+          accent: 'rgb(var(--drone-accent) / <alpha-value>)',
+          dark: 'rgb(var(--drone-dark) / <alpha-value>)',
+          surface: 'rgb(var(--drone-surface) / <alpha-value>)',
+          muted: 'rgb(var(--drone-muted) / <alpha-value>)',
         },
       },
       animation: {

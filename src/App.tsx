@@ -19,7 +19,7 @@ class AppErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-full h-full bg-dji-dark text-gray-200 flex items-center justify-center p-6">
+        <div className="w-full h-full bg-drone-dark text-gray-200 flex items-center justify-center p-6">
           <div className="max-w-md text-center space-y-3">
             <h2 className="text-lg font-semibold text-white">Something went wrong</h2>
             <p className="text-sm text-gray-400">
@@ -91,10 +91,10 @@ function App() {
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-dji-dark overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-drone-dark overflow-hidden">
       {showDonationBanner && (
         <div
-          className={`w-full border-b border-dji-primary/40 text-gray-100 ${
+          className={`w-full border-b border-drone-primary/40 text-gray-100 ${
             resolvedTheme === 'light'
               ? 'bg-gradient-to-r from-violet-200 via-fuchsia-200 to-orange-200 text-gray-900'
               : 'bg-gradient-to-r from-violet-900 via-purple-900 to-orange-900'
@@ -112,7 +112,7 @@ function App() {
                 className={
                   resolvedTheme === 'light'
                     ? 'text-indigo-700 hover:underline font-semibold'
-                    : 'text-dji-primary hover:underline font-semibold'
+                    : 'text-drone-primary hover:underline font-semibold'
                 }
               >
                 GitHub

@@ -13,7 +13,7 @@
 
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { isWebMode, pickFiles } from '@/lib/api';
+import { isWebMode, pickFiles, computeFileHash, getFlights } from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
 
 // Storage keys for sync folder, blacklist, and autoscan
@@ -170,7 +170,6 @@ export function FlightImporter() {
       if (typeof item !== 'string') return null;
       
       try {
-        const { computeFileHash } = await import('@/lib/api');
         const hash = await computeFileHash(item);
         return blacklist.has(hash) ? hash : null;
       } catch {
@@ -342,7 +341,7 @@ export function FlightImporter() {
         multiple: true,
         filters: [
           {
-            name: 'DJI Log Files',
+            name: 'Drone Log Files',
             extensions: ['txt', 'dat', 'log', 'csv'],
           },
         ],
@@ -479,7 +478,6 @@ export function FlightImporter() {
         }
         
         // Get existing file hashes to check for new files
-        const { computeFileHash, getFlights } = await import('@/lib/api');
         const existingFlights = await getFlights();
         const existingHashes = new Set(existingFlights.map(f => f.fileHash).filter(Boolean));
         const blacklist = getBlacklist();
@@ -605,7 +603,7 @@ export function FlightImporter() {
 
       {isImporting || isBatchProcessing || isSyncing ? (
         <div className="flex flex-col items-center gap-2">
-          <div className="w-6 h-6 border-2 border-dji-primary border-t-transparent rounded-full spinner" />
+          <div className="w-6 h-6 border-2 border-drone-primary border-t-transparent rounded-full spinner" />
           <span className="text-sm text-gray-400 break-all text-center w-full px-2">
             {cooldownRemaining > 0
               ? `Cooling down... ${cooldownRemaining}s`
@@ -616,7 +614,7 @@ export function FlightImporter() {
               : 'Importing...'}
           </span>
           {batchTotal > 0 && (
-            <span className="text-xs text-dji-primary font-medium">
+            <span className="text-xs text-drone-primary font-medium">
               {batchIndex} of {batchTotal} file{batchTotal !== 1 ? 's' : ''}
             </span>
           )}
@@ -642,7 +640,7 @@ export function FlightImporter() {
           <p className="text-xs text-gray-400 mb-2">
             {isDragActive
               ? 'Drop the file here...'
-              : 'Import a DJI flight log'}
+              : 'Import a drone flight log'}
           </p>
 
           <div className="flex gap-2 justify-center">
@@ -688,7 +686,7 @@ export function FlightImporter() {
                   setAutoscanEnabledState(enabled);
                   setAutoscanEnabled(enabled);
                 }}
-                className="w-3 h-3 rounded border-gray-500 bg-dji-dark text-dji-primary focus:ring-1 focus:ring-dji-primary focus:ring-offset-0 cursor-pointer"
+                className="w-3 h-3 rounded border-gray-500 bg-drone-dark text-drone-primary focus:ring-1 focus:ring-drone-primary focus:ring-offset-0 cursor-pointer"
               />
               <span className="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">Autoscan on startup</span>
             </label>

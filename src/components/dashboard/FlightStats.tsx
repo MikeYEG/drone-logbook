@@ -200,7 +200,7 @@ export function FlightStats({ data }: FlightStatsProps) {
   };
 
   const buildGpx = () => {
-    const name = flight.displayName || flight.fileName || 'DJI Flight';
+    const name = flight.displayName || flight.fileName || 'Drone Flight';
     const points = data.track
       .map(([lng, lat, alt]) => {
         return `      <trkpt lat="${lat}" lon="${lng}"><ele>${alt}</ele></trkpt>`;
@@ -208,7 +208,7 @@ export function FlightStats({ data }: FlightStatsProps) {
       .join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="DJI Logbook" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="Drone Logbook" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata>
     <name>${escapeXml(name)}</name>
     <time>${new Date().toISOString()}</time>
@@ -223,7 +223,7 @@ ${points}
   };
 
   const buildKml = () => {
-    const name = flight.displayName || flight.fileName || 'DJI Flight';
+    const name = flight.displayName || flight.fileName || 'Drone Flight';
     const coordinates = data.track
       .map(([lng, lat, alt]) => `${lng},${lat},${alt}`)
       .join(' ');
@@ -302,7 +302,7 @@ ${points}
   };
 
   return (
-    <div className="bg-dji-secondary border-b border-gray-700 px-4 py-3">
+    <div className="bg-drone-secondary border-b border-gray-700 px-4 py-3">
       {/* Flight Header */}
       <div className="flex items-center justify-between mb-3">
         <div>
@@ -317,17 +317,17 @@ ${points}
           <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2 mt-2">
             {formatDateTime(flight.startTime)}
             {flight.aircraftName && (
-              <span className="px-2 py-0.5 rounded-full text-xs border border-dji-primary/40 text-dji-primary bg-dji-primary/10">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-drone-primary/40 text-drone-primary bg-drone-primary/10">
                 Device: {flight.aircraftName}
               </span>
             )}
             {flight.droneSerial && (
-              <span className="px-2 py-0.5 rounded-full text-xs border border-gray-600/60 text-gray-400 bg-dji-surface/60">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-gray-600/60 text-gray-400 bg-drone-surface/60">
                 SN: {getDisplaySerial(flight.droneSerial)}
               </span>
             )}
             {flight.batterySerial && (
-              <span className="px-2 py-0.5 rounded-full text-xs border border-dji-accent/40 text-dji-accent bg-dji-accent/10">
+              <span className="px-2 py-0.5 rounded-full text-xs border border-drone-accent/40 text-drone-accent bg-drone-accent/10">
                 Battery: {getBatteryDisplayName(flight.batterySerial)}
               </span>
             )}
@@ -378,10 +378,10 @@ ${points}
                       }
                     }}
                     placeholder="Tag name"
-                    className="h-6 w-28 text-xs px-2 rounded-full bg-dji-surface border border-gray-600 text-gray-200 focus:outline-none focus:border-violet-500"
+                    className="h-6 w-28 text-xs px-2 rounded-full bg-drone-surface border border-gray-600 text-gray-200 focus:outline-none focus:border-violet-500"
                   />
                   {tagSuggestions.length > 0 && (
-                    <div className="absolute left-0 top-full mt-1 z-50 w-40 rounded-lg border border-gray-700 bg-dji-surface shadow-xl max-h-40 overflow-auto">
+                    <div className="absolute left-0 top-full mt-1 z-50 w-40 rounded-lg border border-gray-700 bg-drone-surface shadow-xl max-h-40 overflow-auto">
                       {tagSuggestions.map((suggestion) => (
                         <button
                           key={suggestion}
@@ -458,7 +458,7 @@ ${points}
           <button
             type="button"
             onClick={() => setIsExportOpen((open) => !open)}
-            className="w-[126px] h-full min-h-[52px] flex items-center justify-center gap-2 rounded-lg border-2 border-dji-accent/70 text-dji-accent text-sm font-semibold px-2 transition-all duration-200 hover:bg-dji-accent hover:text-white hover:shadow-md"
+            className="w-[126px] h-full min-h-[52px] flex items-center justify-center gap-2 rounded-lg border-2 border-drone-accent/70 text-drone-accent text-sm font-semibold px-2 transition-all duration-200 hover:bg-drone-accent hover:text-white hover:shadow-md"
           >
             <ExportIcon />
             {isExporting ? 'Exporting...' : 'Export'}
@@ -514,10 +514,10 @@ interface StatCardProps {
 
 function StatCard({ label, value, icon, alert }: StatCardProps) {
   return (
-    <div className="bg-dji-surface/50 rounded-lg px-3 py-2 border border-gray-700/50 text-center">
+    <div className="bg-drone-surface/50 rounded-lg px-3 py-2 border border-gray-700/50 text-center">
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center justify-center gap-2">
-          <div className={`${alert ? 'text-red-400' : 'text-dji-primary'}`}>
+          <div className={`${alert ? 'text-red-400' : 'text-drone-primary'}`}>
             {icon}
           </div>
           <p

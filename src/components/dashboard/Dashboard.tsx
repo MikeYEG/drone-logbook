@@ -136,7 +136,7 @@ export function Dashboard() {
       {/* Left Sidebar - Flight List */}
       {!isSidebarHidden && (
         <aside
-          className="bg-dji-secondary border-r border-gray-700 flex flex-col relative overflow-visible z-40"
+          className="bg-drone-secondary border-r border-gray-700 flex flex-col relative overflow-visible z-40"
           style={{ width: sidebarWidth, minWidth: 300 }}
         >
         <div className="p-4 border-b border-gray-700 flex items-center justify-between">
@@ -144,12 +144,12 @@ export function Dashboard() {
             <h1 className="text-xl font-bold text-white flex items-center gap-2">
               <img
                 src={appIcon}
-                alt="DJI Logbook"
+                alt="Drone Logbook"
                 className="w-6 h-6 rounded-md"
                 loading="lazy"
                 decoding="async"
               />
-              DJI Logbook
+              Drone Logbook
             </h1>
             <p className="text-xs text-gray-400 mt-1">
               Flight Analysis Dashboard
@@ -206,7 +206,7 @@ export function Dashboard() {
               }}
               className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors ${
                 activeView === 'flights'
-                  ? 'bg-dji-primary/20 border-dji-primary text-white'
+                  ? 'bg-drone-primary/20 border-drone-primary text-white'
                   : 'border-gray-700 text-gray-400 hover:text-white'
               }`}
             >
@@ -216,7 +216,7 @@ export function Dashboard() {
               onClick={() => setActiveView('overview')}
               className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors ${
                 activeView === 'overview'
-                  ? 'bg-dji-primary/20 border-dji-primary text-white'
+                  ? 'bg-drone-primary/20 border-drone-primary text-white'
                   : 'border-gray-700 text-gray-400 hover:text-white'
               }`}
             >
@@ -327,7 +327,7 @@ export function Dashboard() {
         </div>
         <button
           onClick={() => setIsSidebarHidden(true)}
-          className="absolute -right-3 top-1 bg-dji-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white z-50"
+          className="absolute -right-3 top-1 bg-drone-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white z-50"
           title="Hide sidebar"
         >
           ‹
@@ -342,10 +342,10 @@ export function Dashboard() {
       )}
 
       {isSidebarHidden && (
-        <aside className="w-[1.8rem] bg-dji-secondary border-r border-gray-700 flex items-start justify-center relative">
+        <aside className="w-[1.8rem] bg-drone-secondary border-r border-gray-700 flex items-start justify-center relative">
           <button
             onClick={() => setIsSidebarHidden(false)}
-            className="mt-4 bg-dji-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white"
+            className="mt-4 bg-drone-secondary border border-gray-700 rounded-full w-6 h-6 text-gray-300 hover:text-white"
             title="Show sidebar"
           >
             ›
@@ -465,7 +465,7 @@ export function Dashboard() {
                 No Flight Selected
               </h2>
               <p className="text-gray-500">
-                Import a DJI flight log or select an existing flight from the
+                Import a drone flight log or select an existing flight from the
                 sidebar to view telemetry data and flight path.
               </p>
             </div>

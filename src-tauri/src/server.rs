@@ -67,7 +67,7 @@ async fn import_log(
         .map_err(|e| err_response(StatusCode::BAD_REQUEST, format!("Failed to read file: {}", e)))?;
 
     // Write to a temp file so the parser can read it
-    let temp_dir = std::env::temp_dir().join("dji-logviewer-uploads");
+    let temp_dir = std::env::temp_dir().join("drone-logbook-uploads");
     std::fs::create_dir_all(&temp_dir)
         .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create temp dir: {}", e)))?;
 
@@ -675,7 +675,7 @@ pub async fn start_server(data_dir: PathBuf) -> Result<(), Box<dyn std::error::E
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".to_string());
     let addr = format!("{}:{}", host, port);
 
-    log::info!("Starting DJI Logbook web server on {}", addr);
+    log::info!("Starting Drone Logbook web server on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;

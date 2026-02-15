@@ -508,7 +508,7 @@ export function FlightClusterMap({
           <NavigationControl position="top-right" />
 
           {/* Satellite toggle */}
-          <div className="map-overlay absolute top-2 left-2 z-10 bg-dji-dark/80 border border-gray-700 rounded-xl px-3 py-2 shadow-lg">
+          <div className="map-overlay absolute top-2 left-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-xl px-3 py-2 shadow-lg">
             <ToggleRow
               label="Satellite"
               checked={isSatellite}
@@ -520,7 +520,7 @@ export function FlightClusterMap({
           <button
             type="button"
             onClick={handleResetZoom}
-            className="absolute bottom-2 right-2 z-10 bg-dji-dark/80 border border-gray-700 rounded-lg px-2.5 py-1.5 shadow-lg text-xs text-gray-300 hover:text-white hover:bg-dji-dark transition-colors flex items-center gap-1.5"
+            className="absolute bottom-2 right-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-lg px-2.5 py-1.5 shadow-lg text-xs text-gray-300 hover:text-white hover:bg-drone-dark transition-colors flex items-center gap-1.5"
             title="Reset zoom to fit all flights"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -690,8 +690,8 @@ function ToggleRow({
       <span
         className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
           checked
-            ? 'bg-dji-primary/90 border-dji-primary'
-            : 'bg-dji-surface border-gray-600'
+            ? 'bg-drone-primary/90 border-drone-primary'
+            : 'bg-drone-surface border-gray-600'
         }`}
       >
         <span

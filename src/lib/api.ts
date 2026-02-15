@@ -353,15 +353,15 @@ export async function backupDatabase(): Promise<void> {
       throw new Error(body);
     }
     const blob = await response.blob();
-    downloadBlob('DJI_logbook.db.backup', blob);
+    downloadBlob('Drone_logbook.db.backup', blob);
     return;
   }
 
   // Tauri mode: use native save dialog
   const { save } = await import('@tauri-apps/plugin-dialog');
   const destPath = await save({
-    defaultPath: 'DJI_logbook.db.backup',
-    filters: [{ name: 'DJI Logbook Backup', extensions: ['backup'] }],
+    defaultPath: 'Drone_logbook.db.backup',
+    filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
   });
   if (!destPath) return; // user cancelled
   const invoke = await getTauriInvoke();
@@ -394,7 +394,7 @@ export async function restoreDatabase(file?: File): Promise<string> {
   const { open } = await import('@tauri-apps/plugin-dialog');
   const srcPath = await open({
     multiple: false,
-    filters: [{ name: 'DJI Logbook Backup', extensions: ['backup'] }],
+    filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
   });
   if (!srcPath) return ''; // user cancelled
   const filePath = typeof srcPath === 'string' ? srcPath : (srcPath as { path: string }).path;

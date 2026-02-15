@@ -1247,40 +1247,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dji-logviewer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "chrono",
- "dirs 5.0.1",
- "dji-log-parser",
- "duckdb",
- "env_logger",
- "flate2",
- "log",
- "reqwest 0.12.28",
- "reverse_geocoder",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-http",
- "tauri-plugin-log",
- "tauri-plugin-shell",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tower-http 0.5.2",
- "uuid",
-]
-
-[[package]]
 name = "dlopen2"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1325,6 +1291,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "drone-logbook"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "dirs 5.0.1",
+ "dji-log-parser",
+ "duckdb",
+ "env_logger",
+ "flate2",
+ "log",
+ "reqwest 0.12.28",
+ "reverse_geocoder",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-http",
+ "tauri-plugin-log",
+ "tauri-plugin-shell",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower-http 0.5.2",
+ "uuid",
 ]
 
 [[package]]

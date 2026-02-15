@@ -1,5 +1,5 @@
 {
-  "name": "dji-logbook",
+  "name": "drone-logbook",
   "private": true,
   "version": "2.7.0",
   "type": "module",
