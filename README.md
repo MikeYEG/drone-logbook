@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-    <a href="https://github.com/arpanghosh8453/dji-logbook/releases">
+    <a href="https://github.com/arpanghosh8453/drone-logbook/releases">
         <img src="assets/download-button.svg" alt="Download Latest Release" height="48"/>
     </a>
 </p>
@@ -89,7 +89,7 @@ Litchi flight logs can be exported as CSV files from the Litchi app. The parser 
 
 ## Setup and installation (Windows/MacOS)
 
-There is no installation step if you want to use the standalone binary builds, just visit the latest [release page](https://github.com/arpanghosh8453/dji-logbook/releases), and download the appropriate binary for Windows or MacOS and run them. 
+There is no installation step if you want to use the standalone binary builds, just visit the latest [release page](https://github.com/arpanghosh8453/drone-logbook/releases), and download the appropriate binary for Windows or MacOS and run them. 
 
 ### macOS Users: "Damaged File" Error Fix
 
@@ -127,7 +127,7 @@ xattr -d com.apple.quarantine <the-app-file> # you can drag and drop the app to 
 
 ```bash
 # Clone the repository
-git clone https://github.com/arpanghosh8453/dji-logbook
+git clone https://github.com/arpanghosh8453/drone-logbook
 cd dji-logbook
 
 # Install frontend dependencies
@@ -161,7 +161,7 @@ docker run -d \
 Or use docker-compose (uses the same pre-built image):
 
 ```bash
-git clone https://github.com/arpanghosh8453/dji-logbook
+git clone https://github.com/arpanghosh8453/drone-logbook
 cd dji-logbook
 docker compose up -d
 ```
@@ -173,7 +173,7 @@ Then open http://localhost:8080 in your browser.
 If you want to build the Docker image from source instead of pulling the pre-built one:
 
 ```bash
-git clone https://github.com/arpanghosh8453/dji-logbook
+git clone https://github.com/arpanghosh8453/drone-logbook
 cd dji-logbook
 docker compose -f docker-compose-build.yml up -d
 ```

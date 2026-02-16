@@ -762,15 +762,25 @@ export function FlightList({
   };
 
   const buildGpx = (data: FlightDataResponse): string => {
-    if (!data.track || data.track.length === 0) return '';
+    if (!data.telemetry.time || data.telemetry.time.length === 0) return '';
 
-    const points = data.track
-      .map(([lng, lat, alt], index) => {
+    // Get flight start time as Unix timestamp in milliseconds
+    const startTimeMs = data.flight.startTime ? new Date(data.flight.startTime).getTime() : null;
+    
+    // Use telemetry arrays directly (they're all aligned) instead of track which may be downsampled differently
+    const points = data.telemetry.time
+      .map((relativeTime, index) => {
+        const lat = data.telemetry.latitude?.[index];
+        const lng = data.telemetry.longitude?.[index];
+        const alt = data.telemetry.altitude?.[index];
         if (lat == null || lng == null) return null;
-        const time = data.telemetry.time && data.telemetry.time[index];
+        // telemetry.time is seconds from flight start, convert to absolute timestamp
+        const absoluteTimeMs = startTimeMs != null && relativeTime != null 
+          ? startTimeMs + (relativeTime * 1000) 
+          : null;
         return `    <trkpt lat="${lat}" lon="${lng}">
       ${alt != null ? `<ele>${alt}</ele>` : ''}
-      ${time != null ? `<time>${new Date(time * 1000).toISOString()}</time>` : ''}
+      ${absoluteTimeMs != null ? `<time>${new Date(absoluteTimeMs).toISOString()}</time>` : ''}
     </trkpt>`;
       })
       .filter(Boolean)

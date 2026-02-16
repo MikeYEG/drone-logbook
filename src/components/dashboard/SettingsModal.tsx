@@ -29,6 +29,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeduplicating, setIsDeduplicating] = useState(false);
+  const [confirmRemoveAutoTags, setConfirmRemoveAutoTags] = useState(false);
 
   const {
     unitSystem,
@@ -44,7 +45,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSmartTagsEnabled,
     loadSmartTagsEnabled,
     regenerateSmartTags,
+    removeAllAutoTags,
     isRegenerating,
+    isRemovingAutoTags,
     regenerationProgress,
     supporterBadgeActive,
     setSupporterBadge,
@@ -93,7 +96,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   // True when any long-running destructive/IO operation is in progress
-  const isBusy = isBackingUp || isRestoring || isDeleting || isRegenerating || isDeduplicating;
+  const isBusy = isBackingUp || isRestoring || isDeleting || isRegenerating || isRemovingAutoTags || isDeduplicating;
 
   // Check if API key exists on mount
   useEffect(() => {
@@ -315,6 +318,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               {isRestoring && 'Restoring backup…'}
               {isDeleting && 'Deleting all logs…'}
               {isDeduplicating && 'Removing duplicate flights…'}
+              {isRemovingAutoTags && 'Removing auto-generated tags…'}
               {isRegenerating && (
                 <>
                   Regenerating smart tags…
@@ -452,6 +456,51 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   Regenerate smart tags
                 </span>
               </button>
+
+              {/* Remove Auto Tags */}
+              {confirmRemoveAutoTags ? (
+                <div className="mt-3 rounded-lg border border-orange-600/60 bg-orange-500/10 p-3">
+                  <p className="text-xs text-orange-200">
+                    Remove all auto-generated tags from all flights? Manual tags will be preserved.
+                  </p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const msg = await removeAllAutoTags();
+                          setMessage({ type: 'success', text: msg });
+                        } catch (err) {
+                          setMessage({ type: 'error', text: `Failed to remove auto tags: ${err}` });
+                        }
+                        setConfirmRemoveAutoTags(false);
+                      }}
+                      className="text-xs text-orange-300 hover:text-orange-200"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={() => setConfirmRemoveAutoTags(false)}
+                      className="text-xs text-gray-400 hover:text-gray-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemoveAutoTags(true)}
+                  disabled={isBusy}
+                  className="mt-3 w-full py-2 px-3 rounded-lg border border-orange-600 text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Remove auto tags
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* API Key Section */}
@@ -462,7 +511,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <p className="text-xs text-gray-500 mb-3">
                 For decrypting V13+ flight logs. Get your own key following{' '}
                 <a
-                  href="https://github.com/arpanghosh8453/dji-logbook#how-to-obtain-your-own-dji-developer-api-key"
+                  href="https://github.com/arpanghosh8453/drone-logbook#how-to-obtain-your-own-dji-developer-api-key"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-drone-primary hover:underline"
@@ -621,7 +670,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 )}
                 {updateStatus === 'outdated' && latestVersion && (
                   <a
-                    href="https://github.com/arpanghosh8453/dji-logbook/releases/latest"
+                    href="https://github.com/arpanghosh8453/drone-logbook/releases/latest"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors cursor-pointer no-underline"

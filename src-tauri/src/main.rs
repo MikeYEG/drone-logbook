@@ -503,6 +503,14 @@ mod tauri_app {
     }
 
     #[tauri::command]
+    pub async fn remove_all_auto_tags(state: State<'_, AppState>) -> Result<usize, String> {
+        state
+            .db
+            .remove_all_auto_tags()
+            .map_err(|e| format!("Failed to remove auto tags: {}", e))
+    }
+
+    #[tauri::command]
     pub async fn get_smart_tags_enabled(state: State<'_, AppState>) -> Result<bool, String> {
         let config_path = state.db.data_dir.join("config.json");
         if config_path.exists() {
@@ -705,6 +713,7 @@ mod tauri_app {
                 add_flight_tag,
                 remove_flight_tag,
                 get_all_tags,
+                remove_all_auto_tags,
                 get_smart_tags_enabled,
                 set_smart_tags_enabled,
                 regenerate_flight_smart_tags,

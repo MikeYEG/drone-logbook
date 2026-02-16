@@ -292,6 +292,16 @@ export async function regenerateSmartTags(): Promise<string> {
   return invoke('regenerate_all_smart_tags') as Promise<string>;
 }
 
+export async function removeAllAutoTags(): Promise<number> {
+  if (isWeb) {
+    return fetchJson<number>('/tags/remove_auto', {
+      method: 'POST',
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('remove_all_auto_tags') as Promise<number>;
+}
+
 export async function regenerateFlightSmartTags(flightId: number): Promise<string> {
   if (isWeb) {
     return fetchJson<string>(`/regenerate_flight_smart_tags/${flightId}`, {

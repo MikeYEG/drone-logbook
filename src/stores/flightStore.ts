@@ -19,6 +19,7 @@ interface FlightState {
   isBatchProcessing: boolean;  // true during any batch import (manual, sync, background)
   setIsBatchProcessing: (value: boolean) => void;
   isRegenerating: boolean;
+  isRemovingAutoTags: boolean;
   regenerationProgress: { processed: number; total: number } | null;
   error: string | null;
   unitSystem: 'metric' | 'imperial';
@@ -53,6 +54,7 @@ interface FlightState {
   setSmartTagsEnabled: (enabled: boolean) => Promise<void>;
   loadSmartTagsEnabled: () => Promise<void>;
   regenerateSmartTags: () => Promise<string>;
+  removeAllAutoTags: () => Promise<string>;
   setUnitSystem: (unitSystem: 'metric' | 'imperial') => void;
   setThemeMode: (themeMode: 'system' | 'dark' | 'light') => void;
   setDonationAcknowledged: (value: boolean) => void;
@@ -95,6 +97,10 @@ interface FlightState {
   // Overview map highlighted flight (single-click preview in overview mode)
   overviewHighlightedFlightId: number | null;
   setOverviewHighlightedFlightId: (flightId: number | null) => void;
+
+  // Overview map viewport persistence (session state)
+  overviewMapViewport: { longitude: number; latitude: number; zoom: number } | null;
+  setOverviewMapViewport: (viewport: { longitude: number; latitude: number; zoom: number } | null) => void;
 }
 
 export const useFlightStore = create<FlightState>((set, get) => ({
@@ -109,6 +115,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   isBatchProcessing: false,
   setIsBatchProcessing: (value: boolean) => set({ isBatchProcessing: value }),
   isRegenerating: false,
+  isRemovingAutoTags: false,
   regenerationProgress: null,
   error: null,
   unitSystem:
@@ -168,6 +175,10 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   // Overview map highlighted flight (single-click preview in overview mode)
   overviewHighlightedFlightId: null,
   setOverviewHighlightedFlightId: (flightId) => set({ overviewHighlightedFlightId: flightId }),
+
+  // Overview map viewport persistence (session state)
+  overviewMapViewport: null,
+  setOverviewMapViewport: (viewport) => set({ overviewMapViewport: viewport }),
 
   // Load all flights from database
   loadFlights: async () => {
@@ -512,6 +523,31 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     const msg = `Regenerated smart tags for ${total} flights (${errors} errors) in ${elapsed}s`;
     set({ isRegenerating: false, regenerationProgress: null });
     return msg;
+  },
+
+  // Remove all auto-generated tags from all flights
+  removeAllAutoTags: async () => {
+    set({ isRemovingAutoTags: true, error: null });
+    const start = Date.now();
+
+    try {
+      const removed = await api.removeAllAutoTags();
+      // Reload flights to get updated tags
+      await get().loadFlights();
+      await get().loadAllTags();
+      // Also reload current flight data if one is selected to refresh displayed tags
+      const selectedId = get().selectedFlightId;
+      if (selectedId) {
+        await get().selectFlight(selectedId);
+      }
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      const msg = `Removed ${removed} auto-generated tag${removed === 1 ? '' : 's'} in ${elapsed}s`;
+      set({ isRemovingAutoTags: false });
+      return msg;
+    } catch (err) {
+      set({ isRemovingAutoTags: false, error: `Failed to remove auto tags: ${err}` });
+      throw err;
+    }
   },
 
   setUnitSystem: (unitSystem) => {

@@ -354,6 +354,13 @@ impl Database {
                 "CREATE INDEX IF NOT EXISTS idx_flight_tags_type ON flight_tags(tag_type);",
             )?;
         }
+        
+        // Update existing tags with NULL tag_type to 'auto' (migration backfill)
+        // This handles rows created before the tag_type column existed
+        conn.execute_batch(
+            "UPDATE flight_tags SET tag_type = 'auto' WHERE tag_type IS NULL;",
+        )?;
+        
         Ok(())
     }
 
@@ -1303,6 +1310,17 @@ impl Database {
         Ok(())
     }
 
+    /// Remove all auto-generated tags from all flights (keeps manual tags)
+    /// Returns the number of auto tags removed
+    pub fn remove_all_auto_tags(&self) -> Result<usize, DatabaseError> {
+        let conn = self.conn.lock().unwrap();
+        let removed = conn.execute(
+            "DELETE FROM flight_tags WHERE tag_type = 'auto'",
+            [],
+        )?;
+        Ok(removed)
+    }
+
     /// Get all flight IDs (for bulk operations like tag regeneration)
     pub fn get_all_flight_ids(&self) -> Result<Vec<i64>, DatabaseError> {
         let conn = self.conn.lock().unwrap();
@@ -1367,51 +1385,88 @@ impl Database {
         let start = std::time::Instant::now();
         log::info!("Starting flight deduplication...");
 
-        // Find and delete duplicates, keeping the one with most points
-        // A duplicate is defined as same drone_serial + battery_serial + start_time within 60 seconds
-        let result = conn.execute(
+        let mut total_removed = 0;
+
+        // Method 1: Remove exact file_hash duplicates (keep the one with most telemetry points)
+        let hash_duplicates = conn.execute(
             r#"
-            WITH ranked AS (
-                SELECT 
-                    id,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY 
-                            drone_serial, 
-                            battery_serial, 
-                            DATE_TRUNC('minute', start_time)
-                        ORDER BY point_count DESC, id ASC
-                    ) as rn
+            WITH hash_duplicates AS (
+                SELECT file_hash, COUNT(*) as cnt
                 FROM flights
-                WHERE drone_serial IS NOT NULL 
-                  AND drone_serial != ''
-                  AND battery_serial IS NOT NULL 
-                  AND battery_serial != ''
-                  AND start_time IS NOT NULL
+                WHERE file_hash IS NOT NULL AND file_hash != ''
+                GROUP BY file_hash
+                HAVING COUNT(*) > 1
+            ),
+            ranked_flights AS (
+                SELECT f.id, f.file_hash, f.point_count,
+                       ROW_NUMBER() OVER (PARTITION BY f.file_hash ORDER BY f.point_count DESC, f.id ASC) as rn
+                FROM flights f
+                WHERE f.file_hash IN (SELECT file_hash FROM hash_duplicates)
             )
-            DELETE FROM flights WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+            DELETE FROM flights WHERE id IN (
+                SELECT id FROM ranked_flights WHERE rn > 1
+            )
             "#,
             [],
         )?;
+        total_removed += hash_duplicates;
+        log::info!("Removed {} file_hash duplicates", hash_duplicates);
+
+        // Method 2: Remove signature-based duplicates (same drone + battery + start_time within 60 seconds)
+        // This catches re-imports of the same flight from different sources
+        let signature_duplicates = conn.execute(
+            r#"
+            WITH flight_pairs AS (
+                SELECT 
+                    f1.id as id1,
+                    f2.id as id2,
+                    f1.point_count as points1,
+                    f2.point_count as points2
+                FROM flights f1
+                JOIN flights f2 ON f1.drone_serial = f2.drone_serial
+                    AND f1.battery_serial = f2.battery_serial
+                    AND f1.id < f2.id
+                    AND ABS(EPOCH(f1.start_time) - EPOCH(f2.start_time)) < 60
+                WHERE f1.drone_serial IS NOT NULL AND f1.drone_serial != ''
+                  AND f1.battery_serial IS NOT NULL AND f1.battery_serial != ''
+                  AND f1.start_time IS NOT NULL
+                  AND f2.start_time IS NOT NULL
+            ),
+            ids_to_delete AS (
+                SELECT CASE 
+                    WHEN points1 >= points2 THEN id2
+                    ELSE id1
+                END as id
+                FROM flight_pairs
+            )
+            DELETE FROM flights WHERE id IN (SELECT DISTINCT id FROM ids_to_delete)
+            "#,
+            [],
+        )?;
+        total_removed += signature_duplicates;
+        log::info!("Removed {} signature-based duplicates", signature_duplicates);
 
         // Clean up orphaned telemetry data
-        conn.execute(
+        let orphaned_telemetry = conn.execute(
             "DELETE FROM telemetry WHERE flight_id NOT IN (SELECT id FROM flights)",
             [],
         )?;
+        log::info!("Cleaned up {} orphaned telemetry records", orphaned_telemetry);
 
         // Clean up orphaned tags
-        conn.execute(
+        let orphaned_tags = conn.execute(
             "DELETE FROM flight_tags WHERE flight_id NOT IN (SELECT id FROM flights)",
             [],
         )?;
+        log::info!("Cleaned up {} orphaned tags", orphaned_tags);
 
         log::info!(
-            "Deduplication complete in {:.1}s: {} duplicate flights removed",
+            "Deduplication complete in {:.1}s: {} total duplicate flights removed",
             start.elapsed().as_secs_f64(),
-            result
+            total_removed
         );
 
-        Ok(result)
+        Ok(total_removed)
     }
 
     /// Get a setting value by key

@@ -358,7 +358,9 @@ impl<'a> LogParser<'a> {
     }
 
     /// Offline reverse geocoding using the `reverse_geocoder` crate.
-    /// Returns location tags for city, country, and continent.
+    /// Returns location tags for country and continent only.
+    /// Note: We skip the city/name field as GeoNames data often returns small towns,
+    /// suburbs, or other local names that may not be meaningful or accurate.
     pub fn reverse_geocode(lat: f64, lon: f64) -> Vec<String> {
         // Skip invalid coordinates
         if lat.abs() < 0.001 && lon.abs() < 0.001 {
@@ -370,11 +372,6 @@ impl<'a> LogParser<'a> {
         let record = result.record;
 
         let mut tags = Vec::new();
-
-        // City name
-        if !record.name.is_empty() {
-            tags.push(record.name.to_string());
-        }
 
         // Country from 2-letter country code
         if let Some(country) = Self::country_from_cc(&record.cc) {

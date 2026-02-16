@@ -201,10 +201,26 @@ export function FlightStats({ data }: FlightStatsProps) {
 
   const buildGpx = () => {
     const name = flight.displayName || flight.fileName || 'Drone Flight';
-    const points = data.track
-      .map(([lng, lat, alt]) => {
-        return `      <trkpt lat="${lat}" lon="${lng}"><ele>${alt}</ele></trkpt>`;
+    // Get flight start time as Unix timestamp in milliseconds
+    const startTimeMs = flight.startTime ? new Date(flight.startTime).getTime() : null;
+    
+    // Use telemetry arrays directly (they're all aligned) instead of track which may be downsampled differently
+    const points = telemetry.time
+      .map((relativeTime, index) => {
+        const lat = telemetry.latitude?.[index];
+        const lng = telemetry.longitude?.[index];
+        const alt = telemetry.altitude?.[index];
+        if (lat == null || lng == null) return null;
+        // telemetry.time is seconds from flight start, convert to absolute timestamp
+        const absoluteTimeMs = startTimeMs != null && relativeTime != null 
+          ? startTimeMs + (relativeTime * 1000) 
+          : null;
+        return `      <trkpt lat="${lat}" lon="${lng}">
+        ${alt != null ? `<ele>${alt}</ele>` : ''}
+        ${absoluteTimeMs != null ? `<time>${new Date(absoluteTimeMs).toISOString()}</time>` : ''}
+      </trkpt>`;
       })
+      .filter(Boolean)
       .join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>

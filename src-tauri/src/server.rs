@@ -479,6 +479,18 @@ async fn get_all_tags(
         .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get tags: {}", e)))
 }
 
+/// POST /api/tags/remove_auto — Remove all auto-generated tags from all flights
+async fn remove_all_auto_tags(
+    AxumState(state): AxumState<WebAppState>,
+) -> Result<Json<usize>, (StatusCode, Json<ErrorResponse>)> {
+    log::info!("Removing all auto-generated tags");
+    state
+        .db
+        .remove_all_auto_tags()
+        .map(Json)
+        .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to remove auto tags: {}", e)))
+}
+
 /// GET /api/settings/smart_tags — Check if smart tags are enabled
 async fn get_smart_tags_enabled(
     AxumState(state): AxumState<WebAppState>,
@@ -676,6 +688,7 @@ pub fn build_router(state: WebAppState) -> Router {
         .route("/api/flights/tags/add", post(add_flight_tag))
         .route("/api/flights/tags/remove", post(remove_flight_tag))
         .route("/api/tags", get(get_all_tags))
+        .route("/api/tags/remove_auto", post(remove_all_auto_tags))
         .route("/api/settings/smart_tags", get(get_smart_tags_enabled))
         .route("/api/settings/smart_tags", post(set_smart_tags_enabled))
         .route("/api/regenerate_smart_tags", post(regenerate_smart_tags))

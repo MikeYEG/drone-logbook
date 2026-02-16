@@ -197,11 +197,16 @@ export function FlightClusterMap({
   const mapAreaFilterEnabled = useFlightStore((s) => s.mapAreaFilterEnabled);
   const setMapVisibleBounds = useFlightStore((s) => s.setMapVisibleBounds);
 
+  // Overview map viewport persistence from store
+  const savedViewport = useFlightStore((s) => s.overviewMapViewport);
+  const setOverviewMapViewport = useFlightStore((s) => s.setOverviewMapViewport);
+
   // Store initial bounds for reset
   const initialBoundsRef = useRef<{ west: number; south: number; east: number; north: number } | null>(null);
 
   // Track viewport so we can preserve it across style-driven remounts
-  const [viewport, setViewport] = useState({
+  // Initialize from saved state if available
+  const [viewport, setViewport] = useState(() => savedViewport || {
     longitude: 0,
     latitude: 20,
     zoom: 1.5,
@@ -346,8 +351,14 @@ export function FlightClusterMap({
   }, [highlightedFlightId, flights]);
 
   // Fit bounds to all points on first render / when flights change
+  // Skip if we have a saved viewport from previous session
   useEffect(() => {
     if (hasFittedRef.current) return;
+    // If we have a saved viewport, don't auto-fit, just mark as fitted
+    if (savedViewport) {
+      hasFittedRef.current = true;
+      return;
+    }
     const map = mapRef.current;
     if (!map || geojson.features.length === 0) return;
 
@@ -498,7 +509,11 @@ export function FlightClusterMap({
             const { longitude, latitude, zoom } = evt.viewState;
             setViewport({ longitude, latitude, zoom });
           }}
-          onMoveEnd={updateBounds}
+          onMoveEnd={() => {
+            updateBounds();
+            // Save viewport to store for persistence across tab switches
+            setOverviewMapViewport(viewport);
+          }}
           onLoad={updateBounds}
           onClick={handleClick}
           interactiveLayerIds={['clusters', 'unclustered-point']}
