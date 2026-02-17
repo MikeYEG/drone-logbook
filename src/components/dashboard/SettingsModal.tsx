@@ -397,7 +397,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     hideSerialNumbers
                       ? 'bg-drone-primary/90 border-drone-primary'
-                      : 'bg-drone-surface border-gray-600'
+                      : 'bg-drone-surface border-gray-600 toggle-track-off'
                   }`}
                 >
                   <span
@@ -426,7 +426,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     smartTagsEnabled
                       ? 'bg-drone-primary/90 border-drone-primary'
-                      : 'bg-drone-surface border-gray-600'
+                      : 'bg-drone-surface border-gray-600 toggle-track-off'
                   }`}
                 >
                   <span
@@ -615,7 +615,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     donationAcknowledged
                       ? 'bg-drone-primary/90 border-drone-primary'
-                      : 'bg-drone-surface border-gray-600'
+                      : 'bg-drone-surface border-gray-600 toggle-track-off'
                   }`}
                 >
                   <span

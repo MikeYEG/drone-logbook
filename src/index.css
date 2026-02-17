@@ -59,6 +59,12 @@ body.theme-light .border-gray-700 {
   border-color: #e2e8f0 !important;
 }
 
+/* Light mode: toggle switch off state - darker gray background */
+body.theme-light .toggle-track-off {
+  background-color: rgb(203, 213, 225) !important; /* slate-300 */
+  border-color: rgb(148, 163, 184) !important; /* slate-400 */
+}
+
 /* Light mode hover overrides */
 body.theme-light .hover\:bg-gray-700\/30:hover {
   background-color: rgba(0, 0, 0, 0.05) !important;

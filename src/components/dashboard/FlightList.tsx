@@ -1195,7 +1195,7 @@ ${points}
               className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                 mapAreaFilterEnabled
                   ? 'bg-drone-primary/90 border-drone-primary'
-                  : 'bg-drone-surface border-gray-600'
+                  : 'bg-drone-surface border-gray-600 toggle-track-off'
               }`}
             >
               <span
