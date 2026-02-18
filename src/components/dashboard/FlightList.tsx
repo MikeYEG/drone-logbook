@@ -2131,8 +2131,8 @@ ${points}
             disabled={filteredFlights.length === 0 || selectedTags.length === 0}
             className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors flex-1 ${
               filteredFlights.length > 0 && selectedTags.length > 0
-                ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
-                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                ? 'bg-orange-500/20 text-orange-600 hover:bg-orange-500/30'
+                : 'bg-gray-500/10 text-gray-400 cursor-not-allowed'
             }`}
           >
             Untag filtered
@@ -2147,8 +2147,8 @@ ${points}
             disabled={filteredFlights.length === 0}
             className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors flex-1 ${
               filteredFlights.length > 0
-                ? 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
-                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                ? 'bg-violet-500/20 text-violet-600 hover:bg-violet-500/30'
+                : 'bg-gray-500/10 text-gray-400 cursor-not-allowed'
             }`}
           >
             Bulk tag filtered

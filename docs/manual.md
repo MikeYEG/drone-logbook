@@ -298,6 +298,17 @@ When enabled, the app automatically generates descriptive tags during import:
 | **Regenerate Smart Tags** | Re-apply automatic tags to all existing flights |
 | **Remove Auto Tags** | Remove all auto-generated tags while preserving manual tags |
 
+### Bulk Tag Operations
+
+The sidebar provides two buttons for bulk tag management on filtered flights:
+
+| Button | Description |
+|--------|-------------|
+| **Untag filtered** | Removes the currently selected tag filter(s) from all filtered flights. Requires at least one tag filter to be selected. Shows confirmation before proceeding. |
+| **Bulk tag filtered** | Adds a manual tag to all filtered flights. Enter a tag name and press Enter or click the checkmark to apply. Supports autocomplete from existing tags. |
+
+Both operations show a progress overlay while processing and automatically refresh the flight list when complete.
+
 ---
 
 ## Flight Statistics

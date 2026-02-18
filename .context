@@ -118,6 +118,7 @@
       "Smart Tags: Auto-generated descriptive tags on import (Night Flight, High Speed, Cold Battery, Heavy Load, Low Battery, High Altitude, Long Distance, Long Flight, Short Flight, Aggressive Flying, No GPS) plus offline reverse geocoding (city, country, continent) via reverse_geocoder crate.",
       "Smart Tags: Two tag types — auto (teal capsules) and manual (violet capsules). Add/remove manual tags via FlightStats. Settings toggle to enable/disable auto-tagging on import. Regenerate smart tags for all flights button in Settings.",
       "Smart Tags: flight_tags table in DuckDB with tag_type column (auto/manual), migration for older DBs, included in backup/restore.",
+      "Smart Tags: Bulk tag operations — 'Untag filtered' removes selected tags from all filtered flights, 'Bulk tag filtered' adds a manual tag to all filtered flights. Both show progress overlay during operation.",
       "Flight list: Tag filter (multi-select dropdown with checkboxes). Filter inversion button (circular arrows icon) to negate all active filters.",
       "Flight list: Keyboard navigation — Up/Down arrows to browse flights (preview highlight), Enter to select and load. Selection auto-clears when filtered out.",
       "UI: Select dropdowns (drone, battery, settings) are searchable — type to filter options, arrow keys to navigate, Enter selects, Escape closes.",
@@ -343,6 +344,13 @@
     "light_mode_contrast_fix": {
       "description": "Fixed low contrast text in light mode for filter value labels.",
       "flightlist": "FlightList.tsx: Duration/Altitude/Distance filter value spans ('Any', range values) now use isLight ? 'text-gray-700' : 'text-gray-200' for proper contrast. Added themeMode from store and isLight computed value."
+    },
+    "bulk_tag_operations": {
+      "description": "Added bulk tag management buttons in sidebar for operating on filtered flights.",
+      "untag_filtered": "FlightList.tsx: 'Untag filtered' button removes selected tag filter(s) from all filtered flights. Requires tag filter selection, shows inline confirmation before proceeding, progress overlay during operation.",
+      "bulk_tag_filtered": "FlightList.tsx: 'Bulk tag filtered' button adds a manual tag to all filtered flights. Inline input with autocomplete suggestions, progress overlay during operation.",
+      "ui": "Both buttons positioned below Export/Delete buttons in sidebar. Orange color for untag, violet for bulk tag. Disabled with gray background when prerequisites not met.",
+      "store": "flightStore.ts: Added clearFlightDataCache() to invalidate cached flight data after bulk operations so UI reflects tag changes immediately."
     }
   },
   "behavior": {
