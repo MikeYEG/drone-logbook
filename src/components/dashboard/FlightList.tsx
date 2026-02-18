@@ -452,8 +452,9 @@ export function FlightList({
     const start = dateRange?.from ?? null;
     const end = dateRange?.to ? new Date(dateRange.to) : null;
     if (end) end.setHours(23, 59, 59, 999);
+    const normalizedSearch = searchQuery.trim().toLowerCase();
 
-    const hasAnyFilter = !!(start || end || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || (mapAreaFilterEnabled && mapVisibleBounds));
+    const hasAnyFilter = !!(start || end || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || (mapAreaFilterEnabled && mapVisibleBounds) || normalizedSearch);
 
     return flights.filter((flight) => {
       // When no filters are active, show all
@@ -527,9 +528,15 @@ export function FlightList({
         if (!inBounds) return false;
       }
 
+      // Search filter (not affected by inversion - always AND)
+      if (normalizedSearch) {
+        const title = (flight.displayName || flight.fileName || '').toString().toLowerCase();
+        if (!title.includes(normalizedSearch)) return false;
+      }
+
       return true;
     });
-  }, [dateRange, flights, selectedBatteries, selectedDrones, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds]);
+  }, [dateRange, flights, selectedBatteries, selectedDrones, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds, searchQuery]);
 
   // Sync filtered flight IDs to the store so Overview can use them
   // Use useLayoutEffect to ensure sync happens synchronously before browser paint
@@ -554,25 +561,12 @@ export function FlightList({
     }
   }, [filteredFlights, selectedFlightId, clearSelection]);
 
-  const normalizedSearch = useMemo(
-    () => searchQuery.trim().toLowerCase(),
-    [searchQuery]
-  );
-
   const getFlightTitle = useCallback((flight: { displayName?: string | null; fileName?: string | null }) => {
     return (flight.displayName || flight.fileName || '').toString();
   }, []);
 
-  const searchedFlights = useMemo(() => {
-    if (!normalizedSearch) return filteredFlights;
-    return filteredFlights.filter((flight) => {
-      const title = getFlightTitle(flight).toLowerCase();
-      return title.includes(normalizedSearch);
-    });
-  }, [filteredFlights, getFlightTitle, normalizedSearch]);
-
   const sortedFlights = useMemo(() => {
-    const list = [...searchedFlights];
+    const list = [...filteredFlights];
     list.sort((a, b) => {
       if (sortOption === 'name') {
         const nameA = getFlightTitle(a).toLowerCase();
@@ -599,7 +593,7 @@ export function FlightList({
       return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
     });
     return list;
-  }, [getFlightTitle, searchedFlights, sortDirection, sortOption]);
+  }, [getFlightTitle, filteredFlights, sortDirection, sortOption]);
 
   // Keyboard navigation: Up/Down arrows to navigate flights
   useEffect(() => {
@@ -1454,12 +1448,12 @@ ${points}
           className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors"
         >
           <span className="flex items-center gap-1.5">
-            <span className={`font-medium ${(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
-              {dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled
+            <span className={`font-medium ${(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled || searchQuery.trim()) ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
+              {dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled || searchQuery.trim()
                 ? isFilterInverted ? 'Filters — Active — Inverted' : 'Filters — Active'
                 : isFiltersCollapsed ? 'Filters — click to expand' : 'Filters'}
             </span>
-            {(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled) && (
+            {(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || mapAreaFilterEnabled || searchQuery.trim()) && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -2079,6 +2073,96 @@ ${points}
           </div>
         )}
 
+        {/* Search filter and Sort */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-400 whitespace-nowrap w-[52px] flex-shrink-0">Search</label>
+          <div className="relative flex-1 min-w-0">
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search by name..."
+              className="input w-full text-xs h-8 px-3"
+              aria-label="Search flights"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                aria-label="Clear search"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            )}
+          </div>
+          {/* Sort buttons */}
+          <div className="relative flex items-center flex-shrink-0">
+            <button
+              ref={sortButtonRef}
+              type="button"
+              onClick={() => setIsSortOpen((open) => !open)}
+              className="h-8 w-8 rounded-l-md border border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
+              aria-label={`Sort flights: ${activeSortLabel}`}
+            >
+              <SortIcon />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortDirection((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
+              className="h-8 w-7 rounded-r-md border border-l-0 border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
+              aria-label={`Toggle sort direction: ${sortDirection === 'asc' ? 'ascending' : 'descending'}`}
+            >
+              <SortDirectionIcon direction={sortDirection} />
+            </button>
+            {isSortOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsSortOpen(false)}
+                />
+                <div
+                  ref={sortDropdownRef}
+                  tabIndex={-1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setSortHighlightedIndex(prev => prev < sortOptions.length - 1 ? prev + 1 : 0);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setSortHighlightedIndex(prev => prev > 0 ? prev - 1 : sortOptions.length - 1);
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      setSortOption(sortOptions[sortHighlightedIndex].value as typeof sortOption);
+                      setIsSortOpen(false);
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setIsSortOpen(false);
+                    }
+                  }}
+                  className="themed-select-dropdown absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-gray-700 p-1 shadow-xl outline-none"
+                >
+                  {sortOptions.map((option, index) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setSortOption(option.value as typeof sortOption);
+                        setIsSortOpen(false);
+                      }}
+                      onMouseEnter={() => setSortHighlightedIndex(index)}
+                      className={`themed-select-option w-full text-left px-3 py-2 text-xs rounded-lg transition-colors ${
+                        sortOption === option.value ? 'font-medium' : ''
+                      } ${index === sortHighlightedIndex ? 'bg-drone-primary/20' : ''}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* Filtered count and Clear filters on same line */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-400">
@@ -2098,6 +2182,7 @@ ${points}
               setSelectedTags([]);
               setIsFilterInverted(false);
               setMapAreaFilterEnabled(false);
+              setSearchQuery('');
             }}
             className="text-xs text-gray-400 hover:text-white"
           >
@@ -2374,83 +2459,6 @@ ${points}
 
         </div>
         </div>
-        {/* Search + sort — always visible */}
-        <div className="px-3 py-2 space-y-0">
-        <div className="flex items-center gap-2">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search flights"
-            className="input w-full text-xs h-8 px-3"
-            aria-label="Search flights"
-          />
-          <div className="relative flex items-center">
-            <button
-              ref={sortButtonRef}
-              type="button"
-              onClick={() => setIsSortOpen((open) => !open)}
-              className="h-8 w-8 rounded-l-md border border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
-              aria-label={`Sort flights: ${activeSortLabel}`}
-            >
-              <SortIcon />
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortDirection((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
-              className="h-8 w-7 rounded-r-md border border-l-0 border-gray-700/70 bg-drone-dark text-gray-300 hover:text-white hover:border-gray-600 transition-colors flex items-center justify-center"
-              aria-label={`Toggle sort direction: ${sortDirection === 'asc' ? 'ascending' : 'descending'}`}
-            >
-              <SortDirectionIcon direction={sortDirection} />
-            </button>
-            {isSortOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setIsSortOpen(false)}
-                />
-                <div
-                  ref={sortDropdownRef}
-                  tabIndex={-1}
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      setSortHighlightedIndex(prev => prev < sortOptions.length - 1 ? prev + 1 : 0);
-                    } else if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setSortHighlightedIndex(prev => prev > 0 ? prev - 1 : sortOptions.length - 1);
-                    } else if (e.key === 'Enter') {
-                      e.preventDefault();
-                      setSortOption(sortOptions[sortHighlightedIndex].value as typeof sortOption);
-                      setIsSortOpen(false);
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      setIsSortOpen(false);
-                    }
-                  }}
-                  className="themed-select-dropdown absolute right-0 z-50 mt-2 w-56 rounded-xl border border-gray-700 p-1 shadow-xl outline-none"
-                >
-                  {sortOptions.map((option, index) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        setSortOption(option.value as typeof sortOption);
-                        setIsSortOpen(false);
-                      }}
-                      onMouseEnter={() => setSortHighlightedIndex(index)}
-                      className={`themed-select-option w-full text-left px-3 py-2 text-xs rounded-lg transition-colors ${
-                        sortOption === option.value ? 'font-medium' : ''
-                      } ${index === sortHighlightedIndex ? 'bg-drone-primary/20' : ''}`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
       </div>
 
       {/* Scrollable flight list */}
@@ -2625,9 +2633,9 @@ ${points}
           )}
         </div>
       ))}
-      {sortedFlights.length === 0 && normalizedSearch.length === 0 && (
+      {sortedFlights.length === 0 && (
         <div className="p-4 text-center text-gray-500 text-xs">
-          No flights match the current filters or search.
+          No flights match the current filters.
         </div>
       )}
       </div>
