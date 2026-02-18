@@ -20,7 +20,7 @@ Before implementing a new feature and opening a pull request, please **open an i
 
 ## Custom User Scripts
 
-Looking to extend Drone Logbook with custom functionality? Check out the **Discussions** channel with the `User-Script` tag!
+Looking to extend Drone Logbook with custom functionality? Check out the **[Discussions](https://github.com/arpanghosh8453/drone-logbook/discussions)** channel with the `User-Script` tag!
 
 In the User Scripts discussions, you can:
 

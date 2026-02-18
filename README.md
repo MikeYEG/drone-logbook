@@ -367,7 +367,7 @@ For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### User Scripts
 
-Looking to extend functionality without waiting for official features? Check out the **Discussions** channel with the `User-Script` tag, where community members share custom scripts, collaborate with developers, and find useful enhancements for custom workflow.
+Looking to extend functionality without waiting for official features? Check out the **[Discussions](https://github.com/arpanghosh8453/drone-logbook/discussions)** channel with the `User-Script` tag, where community members share custom scripts, collaborate with developers, and find useful enhancements for custom workflow.
 
 
 ## Love this project?
