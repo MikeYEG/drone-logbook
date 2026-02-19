@@ -91,9 +91,7 @@ custom-protocol = ["tauri/custom-protocol"]
 tempfile = "3"
 
 [profile.release]
-# IMPORTANT: Use "unwind" instead of "abort" to allow catch_unwind() to work.
 # The dji-log-parser library can panic on truncated/corrupted log files,
-# and we wrap parsing in catch_unwind to gracefully handle these cases.
 # Using "abort" would bypass catch_unwind entirely, causing app crashes.
 panic = "unwind"
 codegen-units = 1
