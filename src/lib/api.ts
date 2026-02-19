@@ -176,6 +176,20 @@ export async function updateFlightName(
   return invoke('update_flight_name', { flightId, displayName }) as Promise<boolean>;
 }
 
+export async function updateFlightNotes(
+  flightId: number,
+  notes: string | null,
+): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/flights/notes', {
+      method: 'PUT',
+      body: JSON.stringify({ flight_id: flightId, notes }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('update_flight_notes', { flightId, notes }) as Promise<boolean>;
+}
+
 export async function hasApiKey(): Promise<boolean> {
   if (isWeb) {
     return fetchJson<boolean>('/has_api_key');

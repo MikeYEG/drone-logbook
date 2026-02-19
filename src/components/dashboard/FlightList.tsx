@@ -120,6 +120,7 @@ export function FlightList({
     selectFlight,
     deleteFlight,
     updateFlightName,
+    updateFlightNotes,
     unitSystem,
     themeMode,
     getBatteryDisplayName,
@@ -214,6 +215,9 @@ export function FlightList({
   // FlyCard generator state
   const [flyCardFlightId, setFlyCardFlightId] = useState<number | null>(null);
   const [flyCardPending, setFlyCardPending] = useState<number | null>(null); // Flight ID waiting for map load
+  // Notes modal state
+  const [notesModalFlightId, setNotesModalFlightId] = useState<number | null>(null);
+  const [notesInput, setNotesInput] = useState('');
   const dateButtonRef = useRef<HTMLButtonElement | null>(null);
   const sortButtonRef = useRef<HTMLButtonElement | null>(null);
   const sortDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -718,6 +722,7 @@ export function FlightList({
       max_speed_ms: flight.maxSpeed,
       home_lat: flight.homeLat ?? null,
       home_lon: flight.homeLon ?? null,
+      notes: flight.notes ?? null,
     };
     // Remove null values for cleaner JSON
     const cleanMetadata = Object.fromEntries(
@@ -968,6 +973,7 @@ ${points}
       'Max Velocity (m/s)',
       'Takeoff Lat',
       'Takeoff Lon',
+      'Notes',
     ];
 
     const escapeCsv = (value: string) => {
@@ -1069,6 +1075,7 @@ ${points}
         escapeCsv(flight.maxSpeed != null ? flight.maxSpeed.toFixed(2) : ''),
         escapeCsv(takeoffLat != null ? takeoffLat.toFixed(7) : ''),
         escapeCsv(takeoffLon != null ? takeoffLon.toFixed(7) : ''),
+        escapeCsv(flight.notes || ''),
       ].join(',');
     });
 
@@ -1418,6 +1425,23 @@ ${points}
     
     // Now open the FlyCard generator
     setFlyCardFlightId(flightId);
+  };
+
+  // Handle add/edit notes from context menu
+  const handleContextAddNotes = (flightId: number) => {
+    setContextMenu(null);
+    const flight = flights.find(f => f.id === flightId);
+    setNotesInput(flight?.notes || '');
+    setNotesModalFlightId(flightId);
+  };
+
+  // Save notes
+  const handleSaveNotes = async () => {
+    if (notesModalFlightId === null) return;
+    const trimmed = notesInput.trim();
+    await updateFlightNotes(notesModalFlightId, trimmed.length > 0 ? trimmed : null);
+    setNotesModalFlightId(null);
+    setNotesInput('');
   };
 
   if (flights.length === 0) {
@@ -2562,7 +2586,11 @@ ${points}
                   setDraftName(flight.displayName || flight.fileName);
                   setConfirmDeleteId(null);
                 }}
-                title={flight.displayName || flight.fileName}
+                title={[
+                  flight.displayName || flight.fileName,
+                  formatDateTime(flight.startTime),
+                  flight.notes ? `Notes: ${flight.notes}` : null
+                ].filter(Boolean).join('\n')}
               >
                 {flight.displayName || flight.fileName}
               </p>
@@ -2660,6 +2688,18 @@ ${points}
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
             Rename
+          </button>
+
+          {/* Add/Edit Notes */}
+          <button
+            type="button"
+            onClick={() => handleContextAddNotes(contextMenu.flightId)}
+            className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-700/50 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {flights.find(f => f.id === contextMenu.flightId)?.notes ? 'Edit notes' : 'Add notes'}
           </button>
 
           {/* Delete */}
@@ -2900,6 +2940,56 @@ ${points}
             </svg>
             <p className="text-white font-medium">Loading flight map...</p>
             <p className="text-gray-400 text-sm mt-1">Preparing FlyCard preview</p>
+          </div>
+        </div>
+      )}
+
+      {/* Notes Modal */}
+      {notesModalFlightId !== null && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => {
+            setNotesModalFlightId(null);
+            setNotesInput('');
+          }}
+        >
+          <div 
+            className="bg-drone-dark rounded-xl p-5 shadow-xl border border-gray-700 w-[400px] max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {flights.find(f => f.id === notesModalFlightId)?.notes ? 'Edit notes' : 'Add notes'}
+            </h3>
+            <textarea
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value.slice(0, 500))}
+              placeholder="Add a note for this flight..."
+              className="w-full h-32 px-3 py-2 rounded-lg bg-drone-surface border border-gray-700 text-gray-200 text-sm placeholder-gray-500 resize-none focus:outline-none focus:border-drone-primary"
+              autoFocus
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-xs text-gray-500">{notesInput.length}/500</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setNotesModalFlightId(null);
+                    setNotesInput('');
+                  }}
+                  className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveNotes}
+                  className="px-4 py-1.5 text-sm bg-drone-primary text-white rounded-lg hover:bg-drone-primary/80 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

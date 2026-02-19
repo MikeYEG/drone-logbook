@@ -48,6 +48,7 @@ interface FlightState {
   loadApiKeyType: () => Promise<void>;
   deleteFlight: (flightId: number) => Promise<void>;
   updateFlightName: (flightId: number, displayName: string) => Promise<void>;
+  updateFlightNotes: (flightId: number, notes: string | null) => Promise<void>;
   addTag: (flightId: number, tag: string) => Promise<void>;
   removeTag: (flightId: number, tag: string) => Promise<void>;
   loadAllTags: () => Promise<void>;
@@ -481,6 +482,39 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       }
     } catch (err) {
       set({ error: `Failed to update flight name: ${err}` });
+    }
+  },
+
+  // Update flight notes
+  updateFlightNotes: async (flightId: number, notes: string | null) => {
+    try {
+      await api.updateFlightNotes(flightId, notes);
+
+      // Update local list
+      const flights = get().flights.map((flight) =>
+        flight.id === flightId
+          ? { ...flight, notes }
+          : flight
+      );
+      set({ flights });
+
+      // If selected, update current flight data too
+      const current = get().currentFlightData;
+      if (current && current.flight.id === flightId) {
+        const updated = {
+          ...current,
+          flight: { ...current.flight, notes },
+        };
+        // Update cache too
+        const cache = new Map(get()._flightDataCache);
+        cache.set(flightId, updated);
+        set({
+          currentFlightData: updated,
+          _flightDataCache: cache,
+        });
+      }
+    } catch (err) {
+      set({ error: `Failed to update flight notes: ${err}` });
     }
   },
 

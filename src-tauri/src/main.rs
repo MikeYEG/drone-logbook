@@ -420,6 +420,26 @@ mod tauri_app {
     }
 
     #[tauri::command]
+    pub async fn update_flight_notes(
+        flight_id: i64,
+        notes: Option<String>,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let notes_ref = notes.as_ref().map(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() { None } else { Some(trimmed) }
+        }).flatten();
+
+        log::info!("Updating notes for flight {}", flight_id);
+
+        state
+            .db
+            .update_flight_notes(flight_id, notes_ref)
+            .map(|_| true)
+            .map_err(|e| format!("Failed to update flight notes: {}", e))
+    }
+
+    #[tauri::command]
     pub async fn has_api_key(state: State<'_, AppState>) -> Result<bool, String> {
         let api = DjiApi::with_app_data_dir(state.db.data_dir.clone());
         Ok(api.has_api_key())
@@ -761,6 +781,7 @@ mod tauri_app {
                 delete_all_flights,
                 deduplicate_flights,
                 update_flight_name,
+                update_flight_notes,
                 has_api_key,
                 get_api_key_type,
                 set_api_key,

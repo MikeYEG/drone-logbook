@@ -127,6 +127,7 @@ export function FlightStats({ data }: FlightStatsProps) {
       max_speed_ms: flight.maxSpeed,
       home_lat: flight.homeLat ?? null,
       home_lon: flight.homeLon ?? null,
+      notes: flight.notes ?? null,
     };
     // Remove null values for cleaner JSON
     const cleanMetadata = Object.fromEntries(
@@ -383,6 +384,14 @@ ${points}
           <h2 className="text-lg font-semibold text-white">
             {flight.displayName || flight.fileName}
           </h2>
+          {flight.notes && (
+            <p className="text-sm text-amber-400/80 mt-1 flex items-start gap-1.5">
+              <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="italic">{flight.notes}</span>
+            </p>
+          )}
           {flight.droneModel && !flight.droneModel.startsWith('Unknown') && (
             <p className="text-xs text-gray-500 mt-2">
               {flight.droneModel}

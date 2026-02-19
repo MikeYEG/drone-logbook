@@ -590,7 +590,7 @@ impl Database {
                 drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count
+                max_altitude, max_speed, home_lat, home_lon, point_count, notes
             FROM flights
             ORDER BY start_time DESC
             "#,
@@ -616,6 +616,7 @@ impl Database {
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
                     tags: Vec::new(),
+                    notes: row.get(16)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -662,7 +663,7 @@ impl Database {
                 file_hash, drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count
+                max_altitude, max_speed, home_lat, home_lon, point_count, notes
             FROM flights
             WHERE id = ?
             "#,
@@ -686,6 +687,7 @@ impl Database {
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
                     tags: Vec::new(),
+                    notes: row.get(16)?,
                 })
             },
         )
@@ -1205,6 +1207,19 @@ impl Database {
         )?;
 
         log::debug!("Updated flight {} display name to '{}'", flight_id, display_name);
+        Ok(())
+    }
+
+    /// Update the notes for a flight
+    pub fn update_flight_notes(&self, flight_id: i64, notes: Option<&str>) -> Result<(), DatabaseError> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            "UPDATE flights SET notes = ? WHERE id = ?",
+            params![notes, flight_id],
+        )?;
+
+        log::debug!("Updated flight {} notes", flight_id);
         Ok(())
     }
 

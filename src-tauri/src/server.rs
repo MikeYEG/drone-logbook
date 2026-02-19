@@ -321,6 +321,30 @@ async fn update_flight_name(
         .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update flight name: {}", e)))
 }
 
+#[derive(Deserialize)]
+struct UpdateNotesPayload {
+    flight_id: i64,
+    notes: Option<String>,
+}
+
+async fn update_flight_notes(
+    AxumState(state): AxumState<WebAppState>,
+    Json(payload): Json<UpdateNotesPayload>,
+) -> Result<Json<bool>, (StatusCode, Json<ErrorResponse>)> {
+    let notes_ref = payload.notes.as_ref().map(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    }).flatten();
+
+    log::info!("Updating notes for flight {}", payload.flight_id);
+
+    state
+        .db
+        .update_flight_notes(payload.flight_id, notes_ref)
+        .map(|_| Json(true))
+        .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update flight notes: {}", e)))
+}
+
 /// GET /api/has_api_key — Check if DJI API key is configured
 async fn has_api_key(
     AxumState(state): AxumState<WebAppState>,
@@ -1171,6 +1195,7 @@ pub fn build_router(state: WebAppState) -> Router {
         .route("/api/flights/delete_all", delete(delete_all_flights))
         .route("/api/flights/deduplicate", post(deduplicate_flights))
         .route("/api/flights/name", put(update_flight_name))
+        .route("/api/flights/notes", put(update_flight_notes))
         .route("/api/flights/tags/add", post(add_flight_tag))
         .route("/api/flights/tags/remove", post(remove_flight_tag))
         .route("/api/tags", get(get_all_tags))

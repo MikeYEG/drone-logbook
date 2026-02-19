@@ -206,6 +206,10 @@ body.theme-light .text-amber-400 {
   color: #92400e !important;
 }
 
+body.theme-light .text-amber-400\/80 {
+  color: #78350f !important;
+}
+
 body.theme-light .text-amber-300 {
   color: #78350f !important;
 }

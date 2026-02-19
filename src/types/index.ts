@@ -28,6 +28,7 @@ export interface Flight {
   homeLon?: number | null;
   pointCount: number | null;
   tags?: FlightTag[];
+  notes?: string | null;
 }
 
 /** Telemetry data formatted for ECharts */

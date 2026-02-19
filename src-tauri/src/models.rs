@@ -50,6 +50,7 @@ pub struct Flight {
     pub point_count: Option<i32>,
     #[serde(default)]
     pub tags: Vec<FlightTag>,
+    pub notes: Option<String>,
 }
 
 /// A tag attached to a flight, with a type indicator
