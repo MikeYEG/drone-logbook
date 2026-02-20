@@ -137,3 +137,9 @@ export function getTrackCenter(
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
+/** Normalize a serial number (trim whitespace and convert to uppercase) */
+export function normalizeSerial(serial: string | null | undefined): string {
+  if (!serial) return '';
+  return serial.trim().toUpperCase();
+}

@@ -510,9 +510,13 @@ impl<'a> DroneLogbookParser<'a> {
             display_name,
             file_hash: Some(file_hash.to_string()),
             drone_model: meta_drone_model,
-            drone_serial: meta_drone_serial,
+            drone_serial: meta_drone_serial
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty()),
             aircraft_name: meta_aircraft_name,
-            battery_serial: meta_battery_serial,
+            battery_serial: meta_battery_serial
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty()),
             start_time,
             end_time: start_time.map(|st| {
                 st + chrono::Duration::seconds(duration_secs.unwrap_or(0.0) as i64)

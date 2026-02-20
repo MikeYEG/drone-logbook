@@ -14,7 +14,7 @@ import {
 import * as api from '@/lib/api';
 import { isWebMode, downloadFile, downloadBlob } from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
-import { formatDuration, formatDateTime, formatDistance, formatAltitude } from '@/lib/utils';
+import { formatDuration, formatDateTime, formatDistance, formatAltitude, normalizeSerial } from '@/lib/utils';
 import { DayPicker, type DateRange } from 'react-day-picker';
 import type { FlightDataResponse, Flight, TelemetryData } from '@/types';
 import { addToBlacklist } from './FlightImporter';
@@ -361,16 +361,17 @@ export function FlightList({
 
   const droneOptions = useMemo(() => {
     const entries = flights
-      .map((flight) => ({
-        key: `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`,
-        label: (() => {
-          const fallback = flight.aircraftName || flight.droneModel || 'Unknown';
-          const displayName = flight.droneSerial
-            ? getDroneDisplayName(flight.droneSerial, fallback)
-            : fallback;
-          return `${displayName}${flight.droneSerial ? ` : ${getDisplaySerial(flight.droneSerial)}` : ''}`;
-        })(),
-      }))
+      .map((flight) => {
+        const serial = normalizeSerial(flight.droneSerial);
+        // Use serial as unique key if available, otherwise fall back to model
+        const key = serial || `model:${flight.droneModel ?? 'Unknown'}`;
+        const fallback = flight.aircraftName || flight.droneModel || 'Unknown';
+        const displayName = flight.droneSerial
+          ? getDroneDisplayName(flight.droneSerial, fallback)
+          : fallback;
+        const label = `${displayName}${flight.droneSerial ? ` : ${getDisplaySerial(flight.droneSerial)}` : ''}`;
+        return { key, label };
+      })
       .filter((entry) => entry.label.trim().length > 0);
 
     const unique = new Map<string, string>();
@@ -387,7 +388,7 @@ export function FlightList({
     const unique = new Set<string>();
     flights.forEach((flight) => {
       if (flight.batterySerial) {
-        unique.add(flight.batterySerial);
+        unique.add(normalizeSerial(flight.batterySerial));
       }
     });
     return Array.from(unique);
@@ -482,13 +483,14 @@ export function FlightList({
       }
 
       if (selectedDrones.length > 0) {
-        const key = `${flight.droneModel ?? ''}||${flight.droneSerial ?? ''}`;
+        const serial = normalizeSerial(flight.droneSerial);
+        const key = serial || `model:${flight.droneModel ?? 'Unknown'}`;
         const matchesDrone = selectedDrones.includes(key);
         if (isFilterInverted ? matchesDrone : !matchesDrone) return false;
       }
 
       if (selectedBatteries.length > 0) {
-        const matchesBattery = flight.batterySerial ? selectedBatteries.includes(flight.batterySerial) : false;
+        const matchesBattery = flight.batterySerial ? selectedBatteries.includes(normalizeSerial(flight.batterySerial)) : false;
         if (isFilterInverted ? matchesBattery : !matchesBattery) return false;
       }
 

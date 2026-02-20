@@ -382,9 +382,13 @@ impl<'a> LitchiParser<'a> {
             display_name,
             file_hash: Some(file_hash.to_string()),
             drone_model,
-            drone_serial: col_map.get_str(first_row, "FlyControllerSerialNumber"),
+            drone_serial: col_map.get_str(first_row, "FlyControllerSerialNumber")
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty()),
             aircraft_name: col_map.get_str(first_row, "Planename").filter(|s| !s.is_empty()),
-            battery_serial: col_map.get_str(first_row, "BatterySerialNumber"),
+            battery_serial: col_map.get_str(first_row, "BatterySerialNumber")
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty()),
             start_time,
             end_time,
             duration_secs,

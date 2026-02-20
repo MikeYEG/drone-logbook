@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
 import type { Flight, FlightDataResponse, ImportResult, OverviewStats } from '@/types';
+import { normalizeSerial } from '@/lib/utils';
 
 interface FlightState {
   // State
@@ -235,17 +236,19 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     set({ maintenanceThresholds: thresholds });
   },
   performMaintenance: (type, serial, date) => {
+    const normalizedSerial = normalizeSerial(serial);
     const lastReset = { ...get().maintenanceLastReset };
     // Use provided date or default to now
     const maintenanceDate = date ? date.toISOString() : new Date().toISOString();
-    lastReset[type] = { ...lastReset[type], [serial]: maintenanceDate };
+    lastReset[type] = { ...lastReset[type], [normalizedSerial]: maintenanceDate };
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('maintenanceLastReset', JSON.stringify(lastReset));
     }
     set({ maintenanceLastReset: lastReset });
   },
   getMaintenanceLastReset: (type, serial) => {
-    return get().maintenanceLastReset[type][serial] || null;
+    const normalizedSerial = normalizeSerial(serial);
+    return get().maintenanceLastReset[type][normalizedSerial] || null;
   },
 
   // Load all flights from database
@@ -691,12 +694,13 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   },
 
   renameBattery: (serial: string, displayName: string) => {
+    const normalizedSerial = normalizeSerial(serial);
     const map = { ...get().batteryNameMap };
-    if (displayName.trim() === '' || displayName.trim() === serial) {
+    if (displayName.trim() === '' || displayName.trim() === normalizedSerial) {
       // Reset to original serial name
-      delete map[serial];
+      delete map[normalizedSerial];
     } else {
-      map[serial] = displayName.trim();
+      map[normalizedSerial] = displayName.trim();
     }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('batteryNameMap', JSON.stringify(map));
@@ -705,18 +709,20 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   },
 
   getBatteryDisplayName: (serial: string) => {
-    const customName = get().batteryNameMap[serial];
+    const normalizedSerial = normalizeSerial(serial);
+    const customName = get().batteryNameMap[normalizedSerial];
     if (customName) return customName;
-    return get().hideSerialNumbers ? '*****' : serial;
+    return get().hideSerialNumbers ? '*****' : normalizedSerial;
   },
 
   renameDrone: (serial: string, displayName: string) => {
+    const normalizedSerial = normalizeSerial(serial);
     const map = { ...get().droneNameMap };
     if (displayName.trim() === '') {
       // Reset to original name
-      delete map[serial];
+      delete map[normalizedSerial];
     } else {
-      map[serial] = displayName.trim();
+      map[normalizedSerial] = displayName.trim();
     }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('droneNameMap', JSON.stringify(map));
@@ -725,7 +731,8 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   },
 
   getDroneDisplayName: (serial: string, fallbackName: string) => {
-    return get().droneNameMap[serial] || fallbackName;
+    const normalizedSerial = normalizeSerial(serial);
+    return get().droneNameMap[normalizedSerial] || fallbackName;
   },
 
   setHideSerialNumbers: (hide: boolean) => {

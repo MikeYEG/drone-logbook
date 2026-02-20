@@ -15,6 +15,7 @@ import {
   formatSpeed,
   formatAltitude,
   formatDateTime,
+  normalizeSerial,
   type UnitSystem,
 } from '@/lib/utils';
 import { useFlightStore } from '@/stores/flightStore';
@@ -70,12 +71,13 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
     const totalPoints = filteredFlights.reduce((sum, f) => sum + (f.pointCount ?? 0), 0);
     const maxAltitudeM = Math.max(0, ...filteredFlights.map((f) => f.maxAltitude ?? 0));
 
-    // Battery usage
+    // Battery usage (normalize serials for consistent aggregation)
     const batteryMap = new Map<string, { count: number; duration: number }>();
     filteredFlights.forEach((f) => {
-      if (f.batterySerial) {
-        const existing = batteryMap.get(f.batterySerial) || { count: 0, duration: 0 };
-        batteryMap.set(f.batterySerial, {
+      const serial = normalizeSerial(f.batterySerial);
+      if (serial) {
+        const existing = batteryMap.get(serial) || { count: 0, duration: 0 };
+        batteryMap.set(serial, {
           count: existing.count + 1,
           duration: existing.duration + (f.durationSecs ?? 0),
         });
@@ -89,18 +91,28 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       }))
       .sort((a, b) => b.flightCount - a.flightCount);
 
-    // Drone usage with disambiguation for same model names
+    // Drone usage with disambiguation for same model names (normalize serials)
     const droneMap = new Map<string, { model: string; serial: string | null; name: string | null; count: number; totalDurationSecs: number }>();
     filteredFlights.forEach((f) => {
-      const key = `${f.droneModel ?? 'Unknown'}||${f.droneSerial ?? ''}`;
+      const serial = normalizeSerial(f.droneSerial);
+      // Use serial as the unique key if available, otherwise fall back to model
+      const key = serial || `model:${f.droneModel ?? 'Unknown'}`;
       const existing = droneMap.get(key);
       if (existing) {
         existing.count++;
         existing.totalDurationSecs += f.durationSecs ?? 0;
+        // Keep the first non-null aircraft name encountered
+        if (!existing.name && f.aircraftName) {
+          existing.name = f.aircraftName;
+        }
+        // Prefer a more specific model name if available
+        if (f.droneModel && existing.model === 'Unknown') {
+          existing.model = f.droneModel;
+        }
       } else {
         droneMap.set(key, {
           model: f.droneModel ?? 'Unknown',
-          serial: f.droneSerial ?? null,
+          serial: serial || null,
           name: f.aircraftName ?? null,
           count: 1,
           totalDurationSecs: f.durationSecs ?? 0,
@@ -1717,12 +1729,13 @@ function MaintenanceSection({
 
   // Calculate maintenance progress for a battery
   const getBatteryProgress = (batterySerial: string) => {
-    const lastResetTime = maintenanceLastReset.battery[batterySerial];
+    const normalizedSerial = normalizeSerial(batterySerial);
+    const lastResetTime = maintenanceLastReset.battery[normalizedSerial];
     const lastResetDate = lastResetTime ? new Date(lastResetTime) : null;
     
-    // Filter flights for this battery since last maintenance
+    // Filter flights for this battery since last maintenance (use normalized comparison)
     const batteryFlights = flights.filter(f => {
-      if (f.batterySerial !== batterySerial) return false;
+      if (normalizeSerial(f.batterySerial) !== normalizedSerial) return false;
       if (!lastResetDate) return true;
       if (!f.startTime) return true;
       return new Date(f.startTime) > lastResetDate;
@@ -1740,12 +1753,13 @@ function MaintenanceSection({
 
   // Calculate maintenance progress for an aircraft
   const getAircraftProgress = (droneSerial: string) => {
-    const lastResetTime = maintenanceLastReset.aircraft[droneSerial];
+    const normalizedSerial = normalizeSerial(droneSerial);
+    const lastResetTime = maintenanceLastReset.aircraft[normalizedSerial];
     const lastResetDate = lastResetTime ? new Date(lastResetTime) : null;
     
-    // Filter flights for this aircraft since last maintenance
+    // Filter flights for this aircraft since last maintenance (use normalized comparison)
     const aircraftFlights = flights.filter(f => {
-      if (f.droneSerial !== droneSerial) return false;
+      if (normalizeSerial(f.droneSerial) !== normalizedSerial) return false;
       if (!lastResetDate) return true;
       if (!f.startTime) return true;
       return new Date(f.startTime) > lastResetDate;

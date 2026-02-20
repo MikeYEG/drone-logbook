@@ -902,8 +902,8 @@ impl<'a> LogParser<'a> {
 
     /// Extract serial number from parser
     fn extract_serial(&self, parser: &DJILog) -> Option<String> {
-        let sn = parser.details.aircraft_sn.clone();
-        if sn.trim().is_empty() {
+        let sn = parser.details.aircraft_sn.trim().to_uppercase();
+        if sn.is_empty() {
             None
         } else {
             Some(sn)
@@ -922,8 +922,8 @@ impl<'a> LogParser<'a> {
 
     /// Extract battery serial from parser
     fn extract_battery_serial(&self, parser: &DJILog) -> Option<String> {
-        let sn = parser.details.battery_sn.clone();
-        if sn.trim().is_empty() {
+        let sn = parser.details.battery_sn.trim().to_uppercase();
+        if sn.is_empty() {
             None
         } else {
             Some(sn)

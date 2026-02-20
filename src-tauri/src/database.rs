@@ -1020,16 +1020,26 @@ impl Database {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Drone usage stats
+        // Drone usage stats - group by serial when available, otherwise by model
         let mut stmt = conn.prepare(
             r#"
             SELECT 
-                COALESCE(drone_model, 'Unknown') AS drone_model, 
+                COALESCE(MAX(drone_model), 'Unknown') AS drone_model, 
                 drone_serial,
-                aircraft_name,
+                MAX(aircraft_name) AS aircraft_name,
                 COUNT(*)::BIGINT AS flight_count
             FROM flights
-            GROUP BY drone_model, drone_serial, aircraft_name
+            WHERE drone_serial IS NOT NULL AND drone_serial != ''
+            GROUP BY drone_serial
+            UNION ALL
+            SELECT 
+                COALESCE(drone_model, 'Unknown') AS drone_model, 
+                NULL AS drone_serial,
+                MAX(aircraft_name) AS aircraft_name,
+                COUNT(*)::BIGINT AS flight_count
+            FROM flights
+            WHERE drone_serial IS NULL OR drone_serial = ''
+            GROUP BY drone_model
             ORDER BY flight_count DESC
             "#,
         )?;
