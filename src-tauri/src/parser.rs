@@ -19,6 +19,7 @@ use thiserror::Error;
 use tokio::time::timeout;
 
 use dji_log_parser::frame::Frame;
+use dji_log_parser::layout::auxiliary::Department;
 use dji_log_parser::DJILog;
 
 use crate::api::DjiApi;
@@ -193,7 +194,7 @@ impl<'a> LogParser<'a> {
         );
 
         // Check if we need an encryption key for V13+ logs
-        let frames = self.get_frames(&parser).await?;
+        let (frames, used_djifly_fallback) = self.get_frames(&parser).await?;
         log::info!("Extracted {} frames from log", frames.len());
 
         if frames.is_empty() {
@@ -275,7 +276,14 @@ impl<'a> LogParser<'a> {
         );
 
         // Generate smart tags based on flight characteristics
-        let tags = Self::generate_smart_tags(&metadata, &stats);
+        let mut tags = Self::generate_smart_tags(&metadata, &stats);
+        
+        // Add M-SDK tag if DJIFly department override was used (third-party app like Dronelink/DroneDeploy)
+        if used_djifly_fallback {
+            tags.push("M-SDK".to_string());
+            log::info!("Added M-SDK tag (third-party app detected via DJIFly fallback)");
+        }
+        
         log::info!("Generated smart tags: {:?}", tags);
 
         Ok(ParseResult { metadata, points, tags, manual_tags: Vec::new(), notes: None, messages })
@@ -583,16 +591,39 @@ impl<'a> LogParser<'a> {
     /// Get frames from the parser, handling encryption if needed.
     /// Runs the CPU-bound parsing in spawn_blocking with catch_unwind
     /// to prevent panics from crashing the application.
-    async fn get_frames(&self, parser: &DJILog) -> Result<Vec<Frame>, ParserError> {
+    /// Returns (frames, used_djifly_fallback) where used_djifly_fallback indicates
+    /// if the DJIFly department override was needed (third-party app like Dronelink).
+    async fn get_frames(&self, parser: &DJILog) -> Result<(Vec<Frame>, bool), ParserError> {
         // Version 13+ requires keychains for decryption
-        let keychains = if parser.version >= 13 {
+        let (keychains, used_djifly_fallback) = if parser.version >= 13 {
             let api_key = self.api.get_api_key().ok_or(ParserError::EncryptionKeyRequired)?;
-            let kc = parser.fetch_keychains(&api_key).map_err(|e| {
-                ParserError::Api(e.to_string())
-            })?;
-            Some(kc)
+            
+            // Try standard keychain fetch first
+            match parser.fetch_keychains(&api_key) {
+                Ok(kc) => (Some(kc), false),
+                Err(e) => {
+                    // Standard fetch failed — try fallback for third-party apps (Dronelink, DroneDeploy)
+                    // These apps write non-standard metadata that causes DJI API to reject keychains.
+                    // Solution: Override department to DJIFly (3) and use log's default app version.
+                    log::warn!(
+                        "Standard keychain fetch failed: {}. Retrying with DJIFly department override for third-party app compatibility...",
+                        e
+                    );
+                    
+                    let request = parser
+                        .keychains_request_with_custom_params(Some(Department::DJIFly), None)
+                        .map_err(|e| ParserError::Api(format!("Failed to create keychain request: {}", e)))?;
+                    
+                    let kc = request.fetch(&api_key, None).map_err(|e| {
+                        ParserError::Api(format!("Keychain fetch failed (both standard and DJIFly fallback): {}", e))
+                    })?;
+                    
+                    log::info!("Successfully fetched keychains using DJIFly department override");
+                    (Some(kc), true)
+                }
+            }
         } else {
-            None
+            (None, false)
         };
 
         // Clone what we need to move into spawn_blocking
@@ -626,7 +657,9 @@ impl<'a> LogParser<'a> {
                 Err(ParserError::Panic(msg))
             }
             Ok(Ok(Ok(frames_result))) => {
-                frames_result.map_err(|e| ParserError::Parse(e.to_string()))
+                frames_result
+                    .map(|frames| (frames, used_djifly_fallback))
+                    .map_err(|e| ParserError::Parse(e.to_string()))
             }
         }
     }
