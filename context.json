@@ -81,7 +81,7 @@
   },
   "scope": {
     "features": [
-      "Import and parse DJI flight logs (bulk import with cooldown).",
+      "Import and parse DJI flight logs (bulk import with cooldown). Third-party app logs (Dronelink, DroneDeploy) supported via DJIFly department fallback.",
       "Import Litchi CSV exports with automatic unit detection (metric/imperial) and 'Litchi' auto-tag.",
       "Flight deduplication: prevents importing same flight from different export versions (signature: drone_serial + battery_serial + exact start_time match). One-time startup cleanup for existing duplicates.",
       "Local DuckDB storage with telemetry schema, WAL recovery, and migration support.",
@@ -90,7 +90,8 @@
       "Overview donut charts for flights by drone model, batteries used, and flight duration (short/mid/long).",
       "Overview top 3 longest and furthest (distance-from-home) flights.",
       "Overview map area filter: toggle in sidebar filters flights to only those visible on the overview map. Map shows green glow border and 'Global filter active' title when enabled. Reset zoom button fits all flights.",
-      "Battery health: per-serial health bars, inline rename (pencil icon, uniqueness-validated, persisted to localStorage), and per-minute usage history plot (scatter + smoothed line) with zoom slider and drag-to-zoom.",
+      "Battery health: per-serial health bars, inline rename (pencil icon, uniqueness-validated, persisted to database for cross-device sync), and per-minute usage history plot (scatter + smoothed line) with zoom slider and drag-to-zoom.",
+      "Flight messages: Display tips and warnings from DJI flight logs in collapsible section within flight stats. Messages color-coded by type (tip/warning) with timestamps.",
       "Maintenance tracking: Configurable flight and airtime thresholds for batteries and aircraft. Progress bars show usage since last maintenance with color-coded warnings (green <60%, yellow 60-74%, orange 75-89%, red 90%+). Record maintenance with date picker, resets counters for flights after that date. Multi-select for tracking multiple items.",
       "Flight list with rename (pencil icon), delete (trash icon), filters (date range, drone, battery, duration/altitude/distance range sliders, map area), search, and sorting.",
       "Flight list sidebar: collapsible Filters section (default collapsed) and Import section (auto-collapsed when flights exist, auto-expanded when empty).",
@@ -105,7 +106,7 @@
       "Map: deck.gl 3D path overlay; map toggles persist in session.",
       "Map: Catmull-Rom spline smoothing, color-by modes (progress/height/speed/distance), hover tooltip.",
       "Map: Flight replay with play/pause, seek slider, speed selector (0.5x-16x), and 3D-aware aircraft marker.",
-      "Map: Replay telemetry overlay (top-right) showing live-interpolated height, speed, distance, battery, satellites, attitude, and coordinates synced to playback position. RC stick input overlay above playbar with progressive-fill bar indicators for throttle, rudder, elevator, and aileron — theme-aware with visible track rails. Hover tooltip paused during replay.",
+      "Map: Replay telemetry overlay (top-right) showing live-interpolated height, speed, distance, battery, satellites, attitude, and coordinates synced to playback position. RC stick input overlay above playbar with progressive-fill bar indicators for throttle, rudder, elevator, and aileron — theme-aware with visible track rails. Hover tooltip paused during replay. Battery status indicator in hover tooltip.",
       "Map: Aircraft toggle to show/hide replay controls and marker. Satellite maxzoom 18, terrain DEM maxzoom 12.",
       "Export: CSV/JSON/GPX/KML downloads from flight stats. KML uses relativeToGround altitude mode. Manual entries (no telemetry) export with home coordinates: CSV includes single row with metadata, GPX creates waypoint, KML creates point placemark.",
       "FlyCard: Shareable 1080x1080 flight stats image generated from context menu. Captures current map view (satellite/terrain + flight path), overlays flight stats (distance, altitude, duration, speed, aircraft name), and adds branding. Uses html2canvas for rendering. Available only in Flights view (disabled in Overview). Desktop uses native save dialog via Tauri.",
@@ -117,10 +118,10 @@
       "UI polish: Import progress counter showing current file out of total during batch imports.",
       "UI polish: Sidebar width remembered across sessions via localStorage.",
       "UI polish: Layout clipping fixes for Tauri on Linux (100vh -> 100% for title bar area).",
-      "UI polish: Battery serial rename mapping (frontend-only, persisted to localStorage, shown everywhere).",
+      "UI polish: Battery/aircraft serial rename mapping persisted to database for cross-device sync in Docker/web mode. localStorage used as cache for fast page load.",
       "UI polish: Horizontal scrollbar on Overview (min-w-[1100px]) and Flights detail view (min-w-[1100px]) when window is narrower than content.",
       "UI polish: WeatherModal rendered via createPortal to document.body with modal-open class for scrollbar suppression.",
-      "Smart Tags: Auto-generated descriptive tags on import (Night Flight, High Speed, Cold Battery, Heavy Load, Low Battery, High Altitude, Long Distance, Long Flight, Short Flight, Aggressive Flying, No GPS) plus offline reverse geocoding (city, country, continent) via reverse_geocoder crate.",
+      "Smart Tags: Auto-generated descriptive tags on import (Night Flight, High Speed, Cold Battery, Heavy Load, Low Battery, High Altitude, Long Distance, Long Flight, Short Flight, Aggressive Flying, No GPS, M-SDK) plus offline reverse geocoding (city, country, continent) via reverse_geocoder crate.",
       "Smart Tags: Two tag types — auto (teal capsules) and manual (violet capsules). Add/remove manual tags via FlightStats. Settings toggle to enable/disable auto-tagging on import. Regenerate smart tags for all flights button in Settings.",
       "Smart Tags: flight_tags table in DuckDB with tag_type column (auto/manual), migration for older DBs, included in backup/restore.",
       "Smart Tags: Bulk tag operations — 'Untag filtered' removes selected tags from all filtered flights, 'Bulk tag filtered' adds a manual tag to all filtered flights. Both show progress overlay during operation.",
@@ -164,7 +165,7 @@
         "src/index.css",
         "tailwind.config.js"
       ],
-      "state_store": "src/stores/flightStore.ts (includes batteryNameMap persisted to localStorage, sidebarFilteredFlightIds for Overview filter sync, allTags, smartTagsEnabled, isRegenerating, addTag/removeTag/regenerateSmartTags actions, supporterBadgeActive persisted to localStorage, setSupporterBadge action)",
+      "state_store": "src/stores/flightStore.ts (includes batteryNameMap and droneNameMap synced to database via API, sidebarFilteredFlightIds for Overview filter sync, allTags, smartTagsEnabled, isRegenerating, addTag/removeTag/regenerateSmartTags actions, supporterBadgeActive persisted to localStorage, setSupporterBadge action, loadEquipmentNames action)",
       "api_adapter": "src/lib/api.ts",
       "types": "src/types/index.ts",
       "env_types": "src/vite-env.d.ts"
@@ -358,6 +359,37 @@
       "bulk_tag_filtered": "FlightList.tsx: 'Bulk tag filtered' button adds a manual tag to all filtered flights. Inline input with autocomplete suggestions, progress overlay during operation.",
       "ui": "Both buttons positioned below Export/Delete buttons in sidebar. Orange color for untag, violet for bulk tag. Disabled with gray background when prerequisites not met.",
       "store": "flightStore.ts: Added clearFlightDataCache() to invalidate cached flight data after bulk operations so UI reflects tag changes immediately."
+    },
+    "third_party_app_support": {
+      "description": "Added support for DJI logs created by third-party apps (Dronelink, DroneDeploy) with automatic fallback keychain fetching and M-SDK auto-tag.",
+      "fallback_mechanism": "parser.rs: get_frames() tries standard keychain fetch first. On failure, retries with Department::DJIFly override via keychains_request_with_custom_params(). This works because third-party apps write non-standard metadata (app_version: '0.0.0') that DJI API rejects.",
+      "m_sdk_tag": "parser.rs: When DJIFly fallback succeeds, 'M-SDK' auto-tag is added to the flight to identify third-party app logs.",
+      "cli_equivalent": "dji-log --api-key KEY file.txt --csv out.csv --api-custom-department 3"
+    },
+    "equipment_names_sync": {
+      "description": "Battery and aircraft custom names now persist to database instead of localStorage, enabling cross-device sync in Docker/web deployments.",
+      "database": "database.rs: New equipment_names table (serial, equipment_type, display_name, updated_at). CRUD methods: set_equipment_name(), get_equipment_names(), get_all_equipment_names().",
+      "server": "server.rs: GET /api/equipment_names returns all names, POST /api/equipment_names saves individual name.",
+      "tauri": "main.rs: get_equipment_names and set_equipment_name commands for desktop mode.",
+      "frontend": "api.ts: getEquipmentNames() and setEquipmentName() with dual-mode support. flightStore.ts: renameBattery/renameDrone now call API (optimistic update + localStorage cache). loadEquipmentNames() fetches from server on app load.",
+      "behavior": "Names load from localStorage instantly on page load, then sync from server. Rename operations update state immediately, cache to localStorage, then persist to server."
+    },
+    "flight_messages": {
+      "description": "Display flight tips and warnings from DJI logs in the flight stats view.",
+      "database": "database.rs: New flight_messages table (flight_id, timestamp_ms, message, message_type). CRUD methods for insert/query/delete messages.",
+      "parser": "parser.rs: extract_messages() pulls AppTip and AppWarn messages from parsed frames. Messages included in ParseResult.",
+      "server": "server.rs: Messages returned with flight data response.",
+      "frontend": "FlightStats.tsx: Collapsible 'Flight Messages' section shows tips and warnings with timestamps, color-coded by type.",
+      "csv_export": "CSV export includes messages column as JSON for re-import preservation."
+    },
+    "map_hover_battery_status": {
+      "description": "Added battery status indicator to flight map hover tooltip.",
+      "component": "FlightMap.tsx: Hover tooltip now shows battery percentage with color-coded styling matching replay overlay (green/yellow/orange/red based on level)."
+    },
+    "csv_notes_reimport": {
+      "description": "Notes field preserved during CSV re-import.",
+      "parser": "dronelogbook_parser.rs: Parses notes field from CSV metadata column. Notes included in ParseResult.",
+      "database": "database.rs: Notes saved to flights table on import."
     }
   },
   "behavior": {
