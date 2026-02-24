@@ -2,6 +2,8 @@
     <img src="src-tauri/icons/icon.png" alt="Open DroneLog" width="96" />
 </p>
 
+<H1 align="center"> OPEN DRONELOG </H1>
+
 <p align="center">
     <a href="https://github.com/arpanghosh8453/drone-logbook/releases">
         <img src="https://img.shields.io/badge/Download-Latest%20Release-1a7f37?style=for-the-badge&logo=github" alt="Download Latest Release" height="48"/>
