@@ -61,6 +61,7 @@ RUN npm ci
 # Copy frontend source
 COPY index.html tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.js ./
 COPY src/ ./src/
+COPY public/ ./public/
 
 # Build with web backend mode
 ENV VITE_BACKEND=web
