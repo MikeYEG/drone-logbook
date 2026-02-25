@@ -419,12 +419,16 @@ The telemetry panel displays synchronized charts:
 | **Height / VPS** | Altitude and Visual Positioning System height |
 | **Speed** | Ground speed over time |
 | **Battery** | Battery percentage and voltage |
+| **Cell Voltages** | Individual battery cell voltages (dynamic legend per cell) |
 | **Attitude** | Pitch, roll, and yaw angles |
 | **RC Signal** | Remote controller signal strength |
 | **GPS Satellites** | Number of connected satellites |
 | **RC Uplink/Downlink** | Signal quality metrics |
 | **Distance to Home** | How far from takeoff point |
 | **Velocity X/Y/Z** | Speed components in 3D space |
+
+> [!NOTE]
+> The Cell Voltages chart is only displayed when cell voltage data is available from the flight log. Not all DJI drones record per-cell voltages.
 
 ### Interacting with Charts
 

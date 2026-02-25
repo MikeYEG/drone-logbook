@@ -94,7 +94,7 @@
 - **Multi-Format Support**: Import DJI logs (.txt) and Litchi CSV exports with automatic unit detection. Third-party apps (Dronelink, DroneDeploy) supported.
 - **Smart Deduplication**: Prevents duplicate imports based on drone serial, battery serial, and start time.
 - **Interactive Flight Maps**: 3D terrain, satellite toggle, flight replay with speed control (0.5x-16x), live telemetry overlay, and RC stick input visualization.
-- **Telemetry Charts**: Height, speed, battery, attitude, RC signal, GPS, distance-to-home, and velocity with synchronized drag-to-zoom.
+- **Telemetry Charts**: Height, speed, battery, cell voltages, attitude, RC signal, GPS, distance-to-home, and velocity with synchronized drag-to-zoom.
 - **Local-First Storage**: All data in a local DuckDB database. No cloud upload required (except DJI key fetch during first import).
 - **Smart Tags**: Auto-tagging (Night Flight, High Speed, Low Battery, etc.) and offline reverse geocoding for location tags. Manual tags and bulk operations supported.
 - **Filters & Search**: Date range, drone/battery filters, duration/altitude/distance sliders, tag filter, map area filter, and filter inversion.
@@ -315,6 +315,7 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 - **DJI API Key**: Stored locally in `config.json`. You can also provide it via `.env` or via the `settings` menu inside the application. The standalone app ships with a default key, but users should enter their own to avoid rate limits for log file decryption key fetching.
 - **Sync folder**: Set and use the `sync folder` (application interface for Desktop and ENV variable for docker) for seamless log file import and re-import with de-duplication. The files uploaded through drag and drop or browse are also collected by default in the `Uploaded` folder of application storage (customizable via settings options for Desktop and ENV variable for docker). You can use a common folder (essentially unifying the raw log files storage location), but that is not generally recommended to prevent any mishaps or file overwrites.  
 - **Database Location**: Stored in the platform-specific app data directory (e.g., AppData on Windows, Application Support on macOS, and local share on Linux). In Docker mode, data is stored in `/data/drone-logbook` (persisted via a Docker volume).
+- **API Guide**: Available API request paths and response structure is provided in the [API documentation](/docs/api-guide.md) page. 
 - **Log Files**: App logs are written to the platform-specific log directory and surfaced in Settings. In Docker mode, logs are written to stdout.
 
 ## Tech Stack

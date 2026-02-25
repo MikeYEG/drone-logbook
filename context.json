@@ -100,7 +100,7 @@
       "Settings: Keep uploaded files toggle (desktop only) with folder picker to retain copies of imported log files with hash-based deduplication.",
       "Settings: shows app data + log directory for troubleshooting.",
       "Charts: height/VPS/speed (metric in km/h), battery, attitude, RC signal, GPS satellites.",
-      "Charts: RC uplink/downlink, distance-to-home, and velocity XYZ panels.",
+      "Charts: RC uplink/downlink, distance-to-home, velocity XYZ panels, and cell voltages (dynamic legend per cell).",
       "Charts: synchronized zoom, drag-to-zoom toggle, reset zoom, auto-scaled Y axes, aligned X-axis ticks, custom tooltip header with pills.",
       "Map: 3D terrain view via MapLibre, global theme styling.",
       "Map: satellite style toggle, gradient flight path with start/end markers.",
@@ -109,7 +109,7 @@
       "Map: Flight replay with play/pause, seek slider, speed selector (0.5x-16x), and 3D-aware aircraft marker.",
       "Map: Replay telemetry overlay (top-right) showing live-interpolated height, speed, distance, battery, satellites, attitude, and coordinates synced to playback position. RC stick input overlay above playbar with progressive-fill bar indicators for throttle, rudder, elevator, and aileron — theme-aware with visible track rails. Hover tooltip paused during replay. Battery status indicator in hover tooltip.",
       "Map: Aircraft toggle to show/hide replay controls and marker. Satellite maxzoom 18, terrain DEM maxzoom 12.",
-      "Export: CSV/JSON/GPX/KML downloads from flight stats. KML uses relativeToGround altitude mode. Manual entries (no telemetry) export with home coordinates: CSV includes single row with metadata, GPX creates waypoint, KML creates point placemark.",
+      "Export: CSV/JSON/GPX/KML downloads from flight stats. Shared export utilities in src/lib/exportUtils.ts for consistent output across all export methods (stats panel, bulk export, context menu). CSV includes cell_voltages as JSON array. KML uses relativeToGround altitude mode. Manual entries (no telemetry) export with home coordinates: CSV includes single row with metadata, GPX creates waypoint, KML creates point placemark.",
       "FlyCard: Shareable 1080x1080 flight stats image generated from context menu. Captures current map view (satellite/terrain + flight path), overlays flight stats (distance, altitude, duration, speed, aircraft name), and adds branding. Uses html2canvas for rendering. Available only in Flights view (disabled in Overview). Desktop uses native save dialog via Tauri.",
       "Manual Flight Entry: Create flight records without log files via ManualEntryModal. Collects optional flight title (custom display name), aircraft name, drone/battery serial, date (DayPicker opens downward), time (12h local format, converted to UTC), duration, optional distance/altitude (unit-aware), and takeoff coordinates with validation. Auto-tagged as 'Manual Entry' with smart location tags. Available via centered 'Manual Entry' button in FlightImporter.",
       "Single Instance Guard: tauri-plugin-single-instance ensures only one desktop app instance runs at a time. Opening a second instance focuses the existing window instead of launching a new one.",
@@ -399,6 +399,15 @@
       "frontend": "api.ts: KeepUploadSettings interface (enabled, folderPath), getKeepUploadSettings/setKeepUploadSettings functions (return null in web mode). SettingsModal.tsx: Toggle switch and folder picker (desktop only, hidden in web mode).",
       "docker": "docker-compose.yml: KEEP_UPLOADED_FILES env var (commented by default). Volume mount for uploaded folder.",
       "behavior": "Enabled by default on desktop. Files are copied using their SHA256 hash as filename to deduplicate identical files. Files are copied even when flight is skipped as duplicate, ensuring the original log is preserved."
+    },
+    "cell_voltages": {
+      "description": "Per-cell battery voltage tracking from DJI logs with telemetry chart and CSV export.",
+      "parser": "parser.rs: Extracts cell_voltages (Vec<f64>) from battery.cell_voltages for each telemetry frame. Stored as ordered list of cell voltages (e.g., [4.038, 4.037, 4.027]).",
+      "database": "database.rs: cell_voltages VARCHAR column added to telemetry table. Stored as JSON string on insert, deserialized on query. Migration adds column to existing databases.",
+      "models": "models.rs: cell_voltages: Option<Vec<f64>> in TelemetryPoint and TelemetryRecord. TelemetryData has cell_voltages: Vec<Option<Vec<f64>>>.",
+      "frontend": "TelemetryCharts.tsx: Cell Voltages chart with dynamic legend (Cell 1, Cell 2, etc.). Shows individual cell voltage trends over time. Chart only rendered when cell voltage data exists.",
+      "export": "exportUtils.ts: CSV export includes cell_voltages column as JSON array. CSV import via dronelogbook_parser.rs parses JSON arrays with backward compatibility (missing column = None). Uses parse_csv_line() for quoted field handling.",
+      "backup": "Automatic via COPY telemetry. Cell voltages included in backup/restore cycle."
     }
   },
   "behavior": {
@@ -437,6 +446,7 @@
         "battery",
         "batteryVoltage",
         "batteryTemp",
+        "cellVoltages",
         "pitch",
         "roll",
         "yaw",
@@ -495,6 +505,7 @@
         "battery_voltage",
         "battery_current",
         "battery_temp",
+        "cell_voltages",
         "flight_mode",
         "gps_signal",
         "satellites",
@@ -559,7 +570,7 @@
     "inputs": "DJI .dat/.txt logs, Litchi CSV exports",
     "outputs": [
       "Flight metadata (aircraft name, drone model/serial, battery serial, start/end, duration)",
-      "Telemetry arrays (time, position, orientation, battery, RC, GPS)"
+      "Telemetry arrays (time, position, orientation, battery, RC, GPS, cell voltages)"
     ],
     "notes": [
       "Height uses OSD height when available; VPS height stored separately.",
