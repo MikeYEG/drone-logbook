@@ -1229,16 +1229,22 @@ function DonutChart({
     legend: {
       type: 'scroll' as const,
       orient: 'vertical' as const,
-      right: 10,
+      right: 0,
       top: 'center',
-      textStyle: { color: '#9ca3af', fontSize: 11 },
+      width: '45%',
+      textStyle: { color: '#9ca3af', fontSize: 11, overflow: 'truncate' as const },
       pageTextStyle: { color: '#9ca3af' },
+      formatter: (name: string) => {
+        // Truncate long legend names to prevent overlap
+        return name.length > 18 ? name.slice(0, 16) + '…' : name;
+      },
+      tooltip: { show: true },
     },
     series: [
       {
         type: 'pie' as const,
         radius: ['50%', '75%'],
-        center: ['35%', '50%'],
+        center: ['28%', '50%'],
         avoidLabelOverlap: true,
         padAngle: 2,
         itemStyle: {
