@@ -2239,8 +2239,15 @@ export function FlightList({
           key={flight.id}
           data-flight-id={flight.id}
           onContextMenu={(e) => handleContextMenu(e, flight.id)}
-          onClick={() => {
+          onClick={(e) => {
             setPreviewFlightId(null);
+            // CTRL+click (or Cmd+click on Mac) always navigates to flight details
+            if (e.ctrlKey || e.metaKey) {
+              setOverviewHighlightedFlightId(null);
+              selectFlight(flight.id);
+              onSelectFlight?.(flight.id);
+              return;
+            }
             if (activeView === 'overview') {
               // Single click in overview mode: scroll to map then highlight
               const mapElement = document.getElementById('overview-cluster-map');
