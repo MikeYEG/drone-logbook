@@ -209,14 +209,15 @@ mod tauri_app {
             Ok(result) => result,
             Err(crate::parser::ParserError::AlreadyImported(matching_flight)) => {
                 log::info!("Skipping already-imported file: {} — matches flight '{}' in database", file_path, matching_flight);
-                // Still copy the file even though flight is already imported
-                try_copy_file(None);
+                // Compute file hash so copy_uploaded_file can properly deduplicate
+                let file_hash = LogParser::calculate_file_hash(&path).ok();
+                try_copy_file(file_hash.as_deref());
                 return Ok(ImportResult {
                     success: false,
                     flight_id: None,
                     message: format!("This flight log has already been imported (matches: {})", matching_flight),
                     point_count: 0,
-                    file_hash: None,
+                    file_hash,
                 });
             }
             Err(e) => {
@@ -873,17 +874,26 @@ mod tauri_app {
         
         let dest_path = dest_folder.join(file_name);
         
+        // Compute source file hash if not provided
+        let computed_hash: String;
+        let src_hash = match file_hash {
+            Some(h) => h,
+            None => {
+                computed_hash = LogParser::calculate_file_hash(src_path)
+                    .map_err(|e| format!("Failed to hash source file: {}", e))?;
+                &computed_hash
+            }
+        };
+        
         // If file with same name exists, check hash
         if dest_path.exists() {
             let existing_hash = LogParser::calculate_file_hash(&dest_path)
                 .map_err(|e| format!("Failed to hash existing file: {}", e))?;
             
             // If hashes match, skip (file already exists)
-            if let Some(hash) = file_hash {
-                if existing_hash == hash {
-                    log::info!("File already exists with same hash, skipping: {}", file_name);
-                    return Ok(());
-                }
+            if existing_hash == src_hash {
+                log::info!("File already exists with same hash, skipping: {}", file_name);
+                return Ok(());
             }
             
             // Hashes don't match - save with hash suffix
@@ -894,7 +904,7 @@ mod tauri_app {
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
             
-            let hash_suffix = file_hash.map(|h| &h[..8]).unwrap_or("unknown");
+            let hash_suffix = &src_hash[..8.min(src_hash.len())];
             let new_name = if extension.is_empty() {
                 format!("{}_{}", stem, hash_suffix)
             } else {
