@@ -26,6 +26,8 @@ pub struct FlightMetadata {
     pub home_lat: Option<f64>,
     pub home_lon: Option<f64>,
     pub point_count: i32,
+    pub photo_count: i32,
+    pub video_count: i32,
 }
 
 /// Flight summary for list display
@@ -48,6 +50,8 @@ pub struct Flight {
     pub home_lat: Option<f64>,
     pub home_lon: Option<f64>,
     pub point_count: Option<i32>,
+    pub photo_count: Option<i32>,
+    pub video_count: Option<i32>,
     #[serde(default)]
     pub tags: Vec<FlightTag>,
     pub notes: Option<String>,
@@ -177,6 +181,8 @@ pub struct OverviewStats {
     pub total_distance_m: f64,
     pub total_duration_secs: f64,
     pub total_points: i64,
+    pub total_photos: i64,
+    pub total_videos: i64,
     pub max_altitude_m: f64,
     pub max_distance_from_home_m: f64,
     pub batteries_used: Vec<BatteryUsage>,
@@ -441,6 +447,34 @@ impl TelemetryData {
             .step_by(stride.max(1))
             .collect()
     }
+}
+
+/// Count photo and video capture events from telemetry points.
+/// Photos are counted as false→true transitions in `is_photo`.
+/// Videos are counted as false→true transitions in `is_video`.
+/// Returns (photo_count, video_count).
+pub fn count_media_events(points: &[TelemetryPoint]) -> (i32, i32) {
+    let mut photo_count = 0i32;
+    let mut video_count = 0i32;
+    let mut was_photo = false;
+    let mut was_video = false;
+
+    for p in points {
+        let is_photo = p.is_photo.unwrap_or(false);
+        let is_video = p.is_video.unwrap_or(false);
+
+        if is_photo && !was_photo {
+            photo_count += 1;
+        }
+        if is_video && !was_video {
+            video_count += 1;
+        }
+
+        was_photo = is_photo;
+        was_video = is_video;
+    }
+
+    (photo_count, video_count)
 }
 
 /// Import result returned to frontend

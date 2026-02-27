@@ -166,6 +166,8 @@ impl Database {
                 home_lat        DOUBLE,
                 home_lon        DOUBLE,
                 point_count     INTEGER,                 -- Number of telemetry points
+                photo_count     INTEGER,                 -- Number of photos taken
+                video_count     INTEGER,                 -- Number of video recordings
                 imported_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 notes           VARCHAR
             );
@@ -330,7 +332,11 @@ impl Database {
             ("display_name", "ALTER TABLE flights ADD COLUMN display_name VARCHAR"),
             ("aircraft_name", "ALTER TABLE flights ADD COLUMN aircraft_name VARCHAR"),
             ("battery_serial", "ALTER TABLE flights ADD COLUMN battery_serial VARCHAR"),
+            ("photo_count", "ALTER TABLE flights ADD COLUMN photo_count INTEGER"),
+            ("video_count", "ALTER TABLE flights ADD COLUMN video_count INTEGER"),
         ];
+
+        let need_backfill = !columns.contains("photo_count");
 
         for (col_name, sql) in migrations {
             if !columns.contains(*col_name) {
@@ -338,6 +344,32 @@ impl Database {
                 conn.execute_batch(sql)?;
             }
         }
+
+        // Backfill photo/video counts from telemetry for existing flights
+        if need_backfill {
+            log::info!("Backfilling photo_count and video_count from telemetry data...");
+            let backfill_sql = r#"
+                UPDATE flights SET
+                    photo_count = COALESCE((
+                        SELECT COUNT(*) FROM (
+                            SELECT is_photo, LAG(is_photo) OVER (ORDER BY timestamp_ms) AS prev_photo
+                            FROM telemetry WHERE flight_id = flights.id
+                        ) sub WHERE is_photo = true AND (prev_photo IS NULL OR prev_photo = false)
+                    ), 0),
+                    video_count = COALESCE((
+                        SELECT COUNT(*) FROM (
+                            SELECT is_video, LAG(is_video) OVER (ORDER BY timestamp_ms) AS prev_video
+                            FROM telemetry WHERE flight_id = flights.id
+                        ) sub WHERE is_video = true AND (prev_video IS NULL OR prev_video = false)
+                    ), 0)
+                WHERE photo_count IS NULL OR video_count IS NULL
+            "#;
+            match conn.execute_batch(backfill_sql) {
+                Ok(()) => log::info!("Backfilled photo/video counts successfully"),
+                Err(e) => log::warn!("Failed to backfill photo/video counts: {}", e),
+            }
+        }
+
         Ok(())
     }
 
@@ -493,8 +525,9 @@ impl Database {
                 id, file_name, display_name, file_hash, drone_model, drone_serial,
                 aircraft_name, battery_serial,
                 start_time, end_time, duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             params![
                 flight.id,
@@ -514,6 +547,8 @@ impl Database {
                 flight.home_lat,
                 flight.home_lon,
                 flight.point_count,
+                flight.photo_count,
+                flight.video_count,
             ],
         )?;
 
@@ -623,7 +658,8 @@ impl Database {
                 drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count, notes
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count, notes
             FROM flights
             ORDER BY start_time DESC
             "#,
@@ -648,8 +684,10 @@ impl Database {
                     home_lat: row.get(13)?,
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
+                    photo_count: row.get(16)?,
+                    video_count: row.get(17)?,
                     tags: Vec::new(),
-                    notes: row.get(16)?,
+                    notes: row.get(18)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -696,7 +734,8 @@ impl Database {
                 file_hash, drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count, notes
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count, notes
             FROM flights
             WHERE id = ?
             "#,
@@ -719,8 +758,10 @@ impl Database {
                     home_lat: row.get(13)?,
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
+                    photo_count: row.get(16)?,
+                    video_count: row.get(17)?,
                     tags: Vec::new(),
-                    notes: row.get(16)?,
+                    notes: row.get(18)?,
                 })
             },
         )
@@ -1040,7 +1081,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         // Basic aggregate stats
-        let (total_flights, total_distance, total_duration, total_points, max_altitude): (i64, f64, f64, i64, f64) =
+        let (total_flights, total_distance, total_duration, total_points, total_photos, total_videos, max_altitude): (i64, f64, f64, i64, i64, i64, f64) =
             conn.query_row(
                 r#"
                 SELECT
@@ -1048,11 +1089,13 @@ impl Database {
                     COALESCE(SUM(total_distance), 0)::DOUBLE,
                     COALESCE(SUM(duration_secs), 0)::DOUBLE,
                     COALESCE(SUM(point_count), 0)::BIGINT,
+                    COALESCE(SUM(photo_count), 0)::BIGINT,
+                    COALESCE(SUM(video_count), 0)::BIGINT,
                     COALESCE(MAX(max_altitude), 0)::DOUBLE
                 FROM flights
                 "#,
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
             )?;
 
         // Battery usage with total duration
@@ -1252,6 +1295,8 @@ impl Database {
             total_distance_m: total_distance,
             total_duration_secs: total_duration,
             total_points,
+            total_photos,
+            total_videos,
             max_altitude_m: max_altitude,
             max_distance_from_home_m: max_distance_from_home,
             batteries_used,

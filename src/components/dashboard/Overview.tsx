@@ -69,7 +69,8 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
     const totalFlights = filteredFlights.length;
     const totalDistanceM = filteredFlights.reduce((sum, f) => sum + (f.totalDistance ?? 0), 0);
     const totalDurationSecs = filteredFlights.reduce((sum, f) => sum + (f.durationSecs ?? 0), 0);
-    const totalPoints = filteredFlights.reduce((sum, f) => sum + (f.pointCount ?? 0), 0);
+    const totalPhotos = filteredFlights.reduce((sum, f) => sum + (f.photoCount ?? 0), 0);
+    const totalVideos = filteredFlights.reduce((sum, f) => sum + (f.videoCount ?? 0), 0);
     const maxAltitudeM = Math.max(0, ...filteredFlights.map((f) => f.maxAltitude ?? 0));
 
     // Battery usage (normalize serials for consistent aggregation)
@@ -181,15 +182,16 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
     // For max distance from home, compute from per-flight data (works with filters)
     const maxDistanceFromHomeM = stats.topDistanceFlights
       ? stats.topDistanceFlights
-          .filter((df) => filteredIdSet.has(df.id))
-          .reduce((max, df) => Math.max(max, df.maxDistanceFromHomeM), 0)
+        .filter((df) => filteredIdSet.has(df.id))
+        .reduce((max, df) => Math.max(max, df.maxDistanceFromHomeM), 0)
       : stats.maxDistanceFromHomeM;
 
     return {
       totalFlights,
       totalDistanceM,
       totalDurationSecs,
-      totalPoints,
+      totalPhotos,
+      totalVideos,
       maxAltitudeM,
       maxDistanceFromHomeM,
       batteriesUsed,
@@ -229,19 +231,20 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
 
   return (
     <div className="min-w-[1100px] px-4 pt-4 pb-24 space-y-5">
-        {/* Pilot Milestone Timeline */}
-        <PilotMilestoneTimeline totalHours={filteredStats.totalDurationSecs / 3600} />
+      {/* Pilot Milestone Timeline */}
+      <PilotMilestoneTimeline totalHours={filteredStats.totalDurationSecs / 3600} />
 
-        {/* Primary Stats */}
-        <div className="grid grid-cols-4 gap-3">
+      {/* Primary Stats */}
+      <div className="grid grid-cols-5 gap-3">
         <StatCard label="Total Flights" value={filteredStats.totalFlights.toLocaleString()} icon={<FlightIcon />} />
         <StatCard label="Total Distance" value={formatDistance(filteredStats.totalDistanceM, unitSystem)} icon={<DistanceIcon />} />
         <StatCard label="Total Time" value={formatDuration(filteredStats.totalDurationSecs)} icon={<ClockIcon />} />
-        <StatCard label="Data Points" value={filteredStats.totalPoints.toLocaleString()} icon={<DataIcon />} />
+        <StatCard label="Total Photos" value={filteredStats.totalPhotos.toLocaleString()} icon={<CameraIcon />} />
+        <StatCard label="Total Videos" value={filteredStats.totalVideos.toLocaleString()} icon={<VideoIcon />} />
       </div>
 
       {/* Secondary Stats */}
-        <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <StatCard label="Max Altitude" value={formatAltitude(filteredStats.maxAltitudeM, unitSystem)} small />
         <StatCard
           label="Max Distance from Home"
@@ -274,7 +277,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       </div>
 
       {/* Charts Row */}
-        <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {/* Drone Model Chart */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-white mb-3">Flights by Drone</h3>
@@ -335,7 +338,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
       </div>
 
       {/* Battery Health & Top Flights Row */}
-        <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {/* Battery Health Indicators */}
         <div className="card p-4">
           <h3 className="text-sm font-semibold text-white mb-3">Battery Health</h3>
@@ -363,13 +366,12 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700/30 cursor-pointer transition-colors"
                 >
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      index === 0
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : index === 1
-                          ? 'bg-gray-400/20 text-gray-300'
-                          : 'bg-amber-700/20 text-amber-600'
-                    }`}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index === 0
+                      ? 'bg-yellow-500/20 text-yellow-400'
+                      : index === 1
+                        ? 'bg-gray-400/20 text-gray-300'
+                        : 'bg-amber-700/20 text-amber-600'
+                      }`}
                   >
                     {index + 1}
                   </div>
@@ -398,13 +400,12 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
                     className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700/30 cursor-pointer transition-colors"
                   >
                     <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        index === 0
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : index === 1
-                            ? 'bg-gray-400/20 text-gray-300'
-                            : 'bg-amber-700/20 text-amber-600'
-                      }`}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index === 0
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : index === 1
+                          ? 'bg-gray-400/20 text-gray-300'
+                          : 'bg-amber-700/20 text-amber-600'
+                        }`}
                     >
                       {index + 1}
                     </div>
@@ -421,7 +422,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
             )}
           </div>
         </div>
-        </div>
+      </div>
 
       {/* Maintenance Section */}
       <MaintenanceSection
@@ -436,7 +437,7 @@ export function Overview({ stats, flights, unitSystem, onSelectFlight }: Overvie
         setMaintenanceThreshold={setMaintenanceThreshold}
         performMaintenance={performMaintenance}
       />
-      </div>
+    </div>
   );
 }
 
@@ -542,10 +543,10 @@ function PilotMilestoneTimeline({ totalHours }: { totalHours: number }) {
   const getSegmentProgress = (segmentIndex: number) => {
     const segmentStart = MILESTONES[segmentIndex].hours;
     const segmentEnd = MILESTONES[segmentIndex + 1]?.hours ?? segmentStart;
-    
+
     if (totalHours <= segmentStart) return 0;
     if (totalHours >= segmentEnd) return 100;
-    
+
     return ((totalHours - segmentStart) / (segmentEnd - segmentStart)) * 100;
   };
 
@@ -600,25 +601,23 @@ function PilotMilestoneTimeline({ totalHours }: { totalHours: number }) {
               const isFuture = idx > currentMilestoneIndex;
               const isFirst = idx === 0;
               const isLast = idx === MILESTONES.length - 1;
-              
+
               return (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   className={`flex flex-col items-center ${isFirst ? 'items-start' : isLast ? 'items-end' : ''}`}
                   style={{ width: 0 }}
                 >
                   {/* Node - positioned to center on track */}
                   <div
-                    className={`milestone-node rounded-full border-2 border-drone-dark z-10 ${
-                      isActive ? 'active w-4 h-4' : 'w-3 h-3'
-                    } ${isCompleted ? 'completed' : ''}`}
+                    className={`milestone-node rounded-full border-2 border-drone-dark z-10 ${isActive ? 'active w-4 h-4' : 'w-3 h-3'
+                      } ${isCompleted ? 'completed' : ''}`}
                     style={{ marginTop: isActive ? '-2px' : '0' }}
                   />
-                  
+
                   {/* Combined label - pushed down more */}
-                  <div className={`mt-3 text-[10px] whitespace-nowrap ${
-                    isFuture ? 'text-gray-500' : isActive ? 'text-white font-semibold' : 'text-gray-400'
-                  }`}>
+                  <div className={`mt-3 text-[10px] whitespace-nowrap ${isFuture ? 'text-gray-500' : isActive ? 'text-white font-semibold' : 'text-gray-400'
+                    }`}>
                     {milestone.hours === 0 ? 'Start' : milestone.hours === 200 ? '200+' : `${milestone.hours}h`}
                   </div>
                 </div>
@@ -696,7 +695,7 @@ function ActivityHeatmapCard({
 
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
-    
+
     if (pickingDate === 'from') {
       // If picking 'from' and it's after current 'to', adjust 'to'
       const newTo = dateRange?.to && date > dateRange.to ? date : dateRange?.to;
@@ -719,11 +718,10 @@ function ActivityHeatmapCard({
             ref={fromButtonRef}
             type="button"
             onClick={() => setPickingDate(pickingDate === 'from' ? null : 'from')}
-            className={`px-1.5 py-0.5 rounded transition-colors ${
-              pickingDate === 'from'
-                ? 'bg-drone-primary/20 text-drone-primary'
-                : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
-            }`}
+            className={`px-1.5 py-0.5 rounded transition-colors ${pickingDate === 'from'
+              ? 'bg-drone-primary/20 text-drone-primary'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+              }`}
             title="Select start date"
           >
             {formatDate(dateRange?.from)}
@@ -733,11 +731,10 @@ function ActivityHeatmapCard({
             ref={toButtonRef}
             type="button"
             onClick={() => setPickingDate(pickingDate === 'to' ? null : 'to')}
-            className={`px-1.5 py-0.5 rounded transition-colors ${
-              pickingDate === 'to'
-                ? 'bg-drone-primary/20 text-drone-primary'
-                : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
-            }`}
+            className={`px-1.5 py-0.5 rounded transition-colors ${pickingDate === 'to'
+              ? 'bg-drone-primary/20 text-drone-primary'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700/50'
+              }`}
             title="Select end date"
           >
             {formatDate(dateRange?.to)}
@@ -1647,11 +1644,11 @@ function MaintenanceSection({
   const [batteryAirtimeThreshold, setBatteryAirtimeThreshold] = useState(String(maintenanceThresholds.battery.airtime));
   const [aircraftFlightThreshold, setAircraftFlightThreshold] = useState(String(maintenanceThresholds.aircraft.flights));
   const [aircraftAirtimeThreshold, setAircraftAirtimeThreshold] = useState(String(maintenanceThresholds.aircraft.airtime));
-  
+
   // Maintenance date state for each battery/aircraft (keyed by serial)
   const [batteryMaintenanceDates, setBatteryMaintenanceDates] = useState<Record<string, Date>>({});
   const [aircraftMaintenanceDates, setAircraftMaintenanceDates] = useState<Record<string, Date>>({});
-  
+
   // Date picker open state (keyed by serial)
   const [openBatteryDatePicker, setOpenBatteryDatePicker] = useState<string | null>(null);
   const [openAircraftDatePicker, setOpenAircraftDatePicker] = useState<string | null>(null);
@@ -1748,7 +1745,7 @@ function MaintenanceSection({
     const normalizedSerial = normalizeSerial(batterySerial);
     const lastResetTime = maintenanceLastReset.battery[normalizedSerial];
     const lastResetDate = lastResetTime ? new Date(lastResetTime) : null;
-    
+
     // Filter flights for this battery since last maintenance (use normalized comparison)
     const batteryFlights = flights.filter(f => {
       if (normalizeSerial(f.batterySerial) !== normalizedSerial) return false;
@@ -1772,7 +1769,7 @@ function MaintenanceSection({
     const normalizedSerial = normalizeSerial(droneSerial);
     const lastResetTime = maintenanceLastReset.aircraft[normalizedSerial];
     const lastResetDate = lastResetTime ? new Date(lastResetTime) : null;
-    
+
     // Filter flights for this aircraft since last maintenance (use normalized comparison)
     const aircraftFlights = flights.filter(f => {
       if (normalizeSerial(f.droneSerial) !== normalizedSerial) return false;
@@ -1871,18 +1868,18 @@ function MaintenanceSection({
 
   // Toggle battery selection
   const toggleBatterySelection = (serial: string) => {
-    setSelectedBatteries(prev => 
-      prev.includes(serial) 
-        ? prev.filter(s => s !== serial) 
+    setSelectedBatteries(prev =>
+      prev.includes(serial)
+        ? prev.filter(s => s !== serial)
         : [...prev, serial]
     );
   };
 
   // Toggle aircraft selection
   const toggleAircraftSelection = (serial: string) => {
-    setSelectedAircrafts(prev => 
-      prev.includes(serial) 
-        ? prev.filter(s => s !== serial) 
+    setSelectedAircrafts(prev =>
+      prev.includes(serial)
+        ? prev.filter(s => s !== serial)
         : [...prev, serial]
     );
   };
@@ -1945,22 +1942,20 @@ function MaintenanceSection({
                   const isSelected = selectedBatteries.includes(b.serial);
 
                   return (
-                    <div 
+                    <div
                       key={b.serial}
                       onClick={() => toggleBatterySelection(b.serial)}
-                      className={`p-2.5 rounded cursor-pointer transition-colors ${
-                        isSelected 
-                          ? (isLight ? 'bg-green-100 ring-1 ring-green-300' : 'bg-green-500/20 ring-1 ring-green-500/50')
-                          : (isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700/30')
-                      }`}
+                      className={`p-2.5 rounded cursor-pointer transition-colors ${isSelected
+                        ? (isLight ? 'bg-green-100 ring-1 ring-green-300' : 'bg-green-500/20 ring-1 ring-green-500/50')
+                        : (isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700/30')
+                        }`}
                     >
                       <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2">
-                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
-                            isSelected 
-                              ? (isLight ? 'border-green-500 bg-green-500' : 'border-green-400 bg-green-500') 
-                              : (isLight ? 'border-gray-400' : 'border-gray-600')
-                          }`}>
+                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${isSelected
+                            ? (isLight ? 'border-green-500 bg-green-500' : 'border-green-400 bg-green-500')
+                            : (isLight ? 'border-gray-400' : 'border-gray-600')
+                            }`}>
                             {isSelected && (
                               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                             )}
@@ -2014,24 +2009,23 @@ function MaintenanceSection({
           {/* Individual Battery Section */}
           <div className={`pt-4 border-t ${isLight ? 'border-gray-200' : 'border-gray-600/30'}`}>
             <h5 className={`text-xs font-medium ${textSecondary} mb-3`}>Selected Battery Details</h5>
-            
+
             {/* Battery Multi-Select Dropdown */}
             <div className="relative mb-3">
               <button
                 type="button"
                 onClick={() => setIsBatteryDropdownOpen(v => !v)}
-                className={`w-full h-8 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  isLight 
-                    ? 'bg-white border-gray-300 text-gray-900' 
-                    : 'bg-drone-surface border-gray-600 text-gray-100'
-                }`}
+                className={`w-full h-8 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${isLight
+                  ? 'bg-white border-gray-300 text-gray-900'
+                  : 'bg-drone-surface border-gray-600 text-gray-100'
+                  }`}
               >
                 <span className={`truncate ${selectedBatteries.length > 0 ? '' : (isLight ? 'text-gray-500' : 'text-gray-400')}`}>
                   {selectedBatteries.length > 0
                     ? selectedBatteries.map(s => getBatteryDisplayName(s)).join(', ')
                     : 'Select batteries'}
                 </span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
               {isBatteryDropdownOpen && (
                 <>
@@ -2048,17 +2042,15 @@ function MaintenanceSection({
                             key={b.batterySerial}
                             type="button"
                             onClick={() => toggleBatterySelection(b.batterySerial)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                              isSelected 
-                                ? (isLight ? 'bg-green-100 text-green-800' : 'bg-green-500/20 text-green-200') 
-                                : (isLight ? 'text-gray-700' : 'text-gray-300')
-                            } ${dropdownItemHover}`}
+                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${isSelected
+                              ? (isLight ? 'bg-green-100 text-green-800' : 'bg-green-500/20 text-green-200')
+                              : (isLight ? 'text-gray-700' : 'text-gray-300')
+                              } ${dropdownItemHover}`}
                           >
-                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
-                              isSelected 
-                                ? (isLight ? 'border-green-500 bg-green-500' : 'border-green-400 bg-green-500')
-                                : (isLight ? 'border-gray-400' : 'border-gray-600')
-                            }`}>
+                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${isSelected
+                              ? (isLight ? 'border-green-500 bg-green-500' : 'border-green-400 bg-green-500')
+                              : (isLight ? 'border-gray-400' : 'border-gray-600')
+                              }`}>
                               {isSelected && (
                                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                               )}
@@ -2072,9 +2064,8 @@ function MaintenanceSection({
                       <button
                         type="button"
                         onClick={() => { setSelectedBatteries([]); setIsBatteryDropdownOpen(false); }}
-                        className={`w-full text-left px-3 py-1.5 text-xs border-t ${
-                          isLight ? 'text-gray-500 hover:text-gray-700 border-gray-200' : 'text-gray-400 hover:text-white border-gray-700'
-                        }`}
+                        className={`w-full text-left px-3 py-1.5 text-xs border-t ${isLight ? 'text-gray-500 hover:text-gray-700 border-gray-200' : 'text-gray-400 hover:text-white border-gray-700'
+                          }`}
                       >
                         Clear selection
                       </button>
@@ -2142,14 +2133,13 @@ function MaintenanceSection({
                           <button
                             type="button"
                             onClick={() => setOpenBatteryDatePicker(openBatteryDatePicker === serial ? null : serial)}
-                            className={`w-full h-9 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                              isLight 
-                                ? 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50' 
-                                : 'bg-drone-surface border-gray-600 text-gray-100 hover:bg-gray-700/30'
-                            }`}
+                            className={`w-full h-9 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${isLight
+                              ? 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
+                              : 'bg-drone-surface border-gray-600 text-gray-100 hover:bg-gray-700/30'
+                              }`}
                           >
                             <span className="truncate text-[11px]">{formatDateDisplay(getBatteryMaintenanceDate(serial))}</span>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                           </button>
                           {openBatteryDatePicker === serial && (
                             <>
@@ -2158,11 +2148,10 @@ function MaintenanceSection({
                                 onClick={() => setOpenBatteryDatePicker(null)}
                               />
                               <div
-                                className={`absolute left-0 bottom-full mb-1 z-50 rounded-xl border p-3 shadow-xl ${
-                                  isLight 
-                                    ? 'bg-white border-gray-200' 
-                                    : 'bg-drone-surface border-gray-700'
-                                }`}
+                                className={`absolute left-0 bottom-full mb-1 z-50 rounded-xl border p-3 shadow-xl ${isLight
+                                  ? 'bg-white border-gray-200'
+                                  : 'bg-drone-surface border-gray-700'
+                                  }`}
                               >
                                 <DayPicker
                                   mode="single"
@@ -2182,11 +2171,10 @@ function MaintenanceSection({
                         </div>
                         <button
                           onClick={() => handleBatteryMaintenance(serial)}
-                          className={`flex-1 h-9 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
-                            isLight 
-                              ? 'border-green-500 text-green-600 hover:bg-green-50' 
-                              : 'border-green-500/50 text-green-400 hover:bg-green-500/10'
-                          }`}
+                          className={`flex-1 h-9 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${isLight
+                            ? 'border-green-500 text-green-600 hover:bg-green-50'
+                            : 'border-green-500/50 text-green-400 hover:bg-green-500/10'
+                            }`}
                         >
                           ✓ Maintenance Done
                         </button>
@@ -2249,22 +2237,20 @@ function MaintenanceSection({
                   const isSelected = selectedAircrafts.includes(a.serial);
 
                   return (
-                    <div 
+                    <div
                       key={a.serial}
                       onClick={() => toggleAircraftSelection(a.serial)}
-                      className={`p-2.5 rounded cursor-pointer transition-colors ${
-                        isSelected 
-                          ? (isLight ? 'bg-sky-100 ring-1 ring-sky-300' : 'bg-sky-500/20 ring-1 ring-sky-500/50')
-                          : (isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700/30')
-                      }`}
+                      className={`p-2.5 rounded cursor-pointer transition-colors ${isSelected
+                        ? (isLight ? 'bg-sky-100 ring-1 ring-sky-300' : 'bg-sky-500/20 ring-1 ring-sky-500/50')
+                        : (isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700/30')
+                        }`}
                     >
                       <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2">
-                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
-                            isSelected 
-                              ? (isLight ? 'border-sky-500 bg-sky-500' : 'border-sky-400 bg-sky-500') 
-                              : (isLight ? 'border-gray-400' : 'border-gray-600')
-                          }`}>
+                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${isSelected
+                            ? (isLight ? 'border-sky-500 bg-sky-500' : 'border-sky-400 bg-sky-500')
+                            : (isLight ? 'border-gray-400' : 'border-gray-600')
+                            }`}>
                             {isSelected && (
                               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                             )}
@@ -2318,27 +2304,26 @@ function MaintenanceSection({
           {/* Individual Aircraft Section */}
           <div className={`pt-4 border-t ${isLight ? 'border-gray-200' : 'border-gray-600/30'}`}>
             <h5 className={`text-xs font-medium ${textSecondary} mb-3`}>Selected Aircraft Details</h5>
-            
+
             {/* Aircraft Multi-Select Dropdown */}
             <div className="relative mb-3">
               <button
                 type="button"
                 onClick={() => setIsAircraftDropdownOpen(v => !v)}
-                className={`w-full h-8 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  isLight 
-                    ? 'bg-white border-gray-300 text-gray-900' 
-                    : 'bg-drone-surface border-gray-600 text-gray-100'
-                }`}
+                className={`w-full h-8 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${isLight
+                  ? 'bg-white border-gray-300 text-gray-900'
+                  : 'bg-drone-surface border-gray-600 text-gray-100'
+                  }`}
               >
                 <span className={`truncate ${selectedAircrafts.length > 0 ? '' : (isLight ? 'text-gray-500' : 'text-gray-400')}`}>
                   {selectedAircrafts.length > 0
                     ? selectedAircrafts.map(s => {
-                        const drone = drones.find(d => d.droneSerial === s);
-                        return drone ? getDroneDisplayName(s, drone.aircraftName || drone.droneModel) : s;
-                      }).join(', ')
+                      const drone = drones.find(d => d.droneSerial === s);
+                      return drone ? getDroneDisplayName(s, drone.aircraftName || drone.droneModel) : s;
+                    }).join(', ')
                     : 'Select aircraft'}
                 </span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
               {isAircraftDropdownOpen && (
                 <>
@@ -2356,17 +2341,15 @@ function MaintenanceSection({
                             key={d.droneSerial}
                             type="button"
                             onClick={() => toggleAircraftSelection(d.droneSerial!)}
-                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                              isSelected 
-                                ? (isLight ? 'bg-sky-100 text-sky-800' : 'bg-sky-500/20 text-sky-200') 
-                                : (isLight ? 'text-gray-700' : 'text-gray-300')
-                            } ${dropdownItemHover}`}
+                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${isSelected
+                              ? (isLight ? 'bg-sky-100 text-sky-800' : 'bg-sky-500/20 text-sky-200')
+                              : (isLight ? 'text-gray-700' : 'text-gray-300')
+                              } ${dropdownItemHover}`}
                           >
-                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
-                              isSelected 
-                                ? (isLight ? 'border-sky-500 bg-sky-500' : 'border-sky-400 bg-sky-500')
-                                : (isLight ? 'border-gray-400' : 'border-gray-600')
-                            }`}>
+                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${isSelected
+                              ? (isLight ? 'border-sky-500 bg-sky-500' : 'border-sky-400 bg-sky-500')
+                              : (isLight ? 'border-gray-400' : 'border-gray-600')
+                              }`}>
                               {isSelected && (
                                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                               )}
@@ -2380,9 +2363,8 @@ function MaintenanceSection({
                       <button
                         type="button"
                         onClick={() => { setSelectedAircrafts([]); setIsAircraftDropdownOpen(false); }}
-                        className={`w-full text-left px-3 py-1.5 text-xs border-t ${
-                          isLight ? 'text-gray-500 hover:text-gray-700 border-gray-200' : 'text-gray-400 hover:text-white border-gray-700'
-                        }`}
+                        className={`w-full text-left px-3 py-1.5 text-xs border-t ${isLight ? 'text-gray-500 hover:text-gray-700 border-gray-200' : 'text-gray-400 hover:text-white border-gray-700'
+                          }`}
                       >
                         Clear selection
                       </button>
@@ -2451,14 +2433,13 @@ function MaintenanceSection({
                           <button
                             type="button"
                             onClick={() => setOpenAircraftDatePicker(openAircraftDatePicker === serial ? null : serial)}
-                            className={`w-full h-9 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                              isLight 
-                                ? 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50' 
-                                : 'bg-drone-surface border-gray-600 text-gray-100 hover:bg-gray-700/30'
-                            }`}
+                            className={`w-full h-9 px-3 text-xs rounded-lg border flex items-center justify-between gap-2 focus:outline-none focus:ring-1 focus:ring-drone-primary ${isLight
+                              ? 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
+                              : 'bg-drone-surface border-gray-600 text-gray-100 hover:bg-gray-700/30'
+                              }`}
                           >
                             <span className="truncate text-[11px]">{formatDateDisplay(getAircraftMaintenanceDate(serial))}</span>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                           </button>
                           {openAircraftDatePicker === serial && (
                             <>
@@ -2467,11 +2448,10 @@ function MaintenanceSection({
                                 onClick={() => setOpenAircraftDatePicker(null)}
                               />
                               <div
-                                className={`absolute left-0 bottom-full mb-1 z-50 rounded-xl border p-3 shadow-xl ${
-                                  isLight 
-                                    ? 'bg-white border-gray-200' 
-                                    : 'bg-drone-surface border-gray-700'
-                                }`}
+                                className={`absolute left-0 bottom-full mb-1 z-50 rounded-xl border p-3 shadow-xl ${isLight
+                                  ? 'bg-white border-gray-200'
+                                  : 'bg-drone-surface border-gray-700'
+                                  }`}
                               >
                                 <DayPicker
                                   mode="single"
@@ -2491,11 +2471,10 @@ function MaintenanceSection({
                         </div>
                         <button
                           onClick={() => handleAircraftMaintenance(serial)}
-                          className={`flex-1 h-9 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
-                            isLight 
-                              ? 'border-green-500 text-green-600 hover:bg-green-50' 
-                              : 'border-green-500/50 text-green-400 hover:bg-green-500/10'
-                          }`}
+                          className={`flex-1 h-9 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${isLight
+                            ? 'border-green-500 text-green-600 hover:bg-green-50'
+                            : 'border-green-500/50 text-green-400 hover:bg-green-500/10'
+                            }`}
                         >
                           ✓ Maintenance Done
                         </button>
@@ -2581,15 +2560,43 @@ function ClockIcon() {
   );
 }
 
-function DataIcon() {
+// function DataIcon() {
+//   return (
+//     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+//       <path
+//         strokeLinecap="round"
+//         strokeLinejoin="round"
+//         strokeWidth={1.5}
+//         d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+//       />
+//     </svg>
+//   );
+// }
+
+function CameraIcon() {
   return (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+        strokeWidth={2}
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+      />
+      <circle cx="12" cy="13" r="3" strokeWidth={2} />
+    </svg>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
       />
     </svg>
   );
 }
+

@@ -199,11 +199,10 @@ export function FlightStats({ data }: FlightStatsProps) {
               return (
                 <span
                   key={tagName}
-                  className={`group relative px-2 py-0.5 rounded-full text-xs border cursor-default ${
-                    isAuto
-                      ? 'border-teal-500/40 text-teal-300 bg-teal-500/10'
-                      : 'border-violet-500/40 text-violet-300 bg-violet-500/10'
-                  }`}
+                  className={`group relative px-2 py-0.5 rounded-full text-xs border cursor-default ${isAuto
+                    ? 'border-teal-500/40 text-teal-300 bg-teal-500/10'
+                    : 'border-violet-500/40 text-violet-300 bg-violet-500/10'
+                    }`}
                 >
                   {tagName}
                   <button
@@ -277,7 +276,7 @@ export function FlightStats({ data }: FlightStatsProps) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_auto_auto] gap-2">
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_0.8fr_0.8fr_auto_auto] gap-2">
         <StatCard
           label="Duration"
           value={formatDuration(flight.durationSecs)}
@@ -303,6 +302,16 @@ export function FlightStats({ data }: FlightStatsProps) {
           value={minBattery !== null ? `${minBattery}%` : '--'}
           icon={<BatteryIcon percent={minBattery} />}
           alert={minBattery !== null && minBattery < 20}
+        />
+        <StatCard
+          label="Photos"
+          value={(flight.photoCount ?? 0).toLocaleString()}
+          icon={<CameraIcon />}
+        />
+        <StatCard
+          label="Videos"
+          value={(flight.videoCount ?? 0).toLocaleString()}
+          icon={<VideoIcon />}
         />
         {/* Weather button */}
         <button
@@ -381,9 +390,8 @@ function StatCard({ label, value, icon, alert }: StatCardProps) {
             {icon}
           </div>
           <p
-            className={`text-lg font-semibold ${
-              alert ? 'text-red-400' : 'text-white'
-            }`}
+            className={`text-lg font-semibold ${alert ? 'text-red-400' : 'text-white'
+              }`}
           >
             {value}
           </p>
@@ -523,5 +531,32 @@ function ChevronIcon() {
 
 function WeatherBtnIcon() {
   return <img src={weatherIcon} alt="Weather" className="w-[25px] h-[25px]" />;
+}
+
+function CameraIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+      />
+      <circle cx="12" cy="13" r="3" strokeWidth={2} />
+    </svg>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+      />
+    </svg>
+  );
 }
 

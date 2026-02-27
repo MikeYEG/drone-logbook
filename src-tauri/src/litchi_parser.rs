@@ -399,6 +399,9 @@ impl<'a> LitchiParser<'a> {
             .get_str(first_row, "Dronetype")
             .map(|dt| self.map_drone_type(&dt));
 
+        // Count photo and video capture events
+        let (photo_count, video_count) = crate::models::count_media_events(points);
+
         Ok(FlightMetadata {
             id: self.db.generate_flight_id(),
             file_name,
@@ -421,6 +424,8 @@ impl<'a> LitchiParser<'a> {
             home_lat,
             home_lon,
             point_count: points.len() as i32,
+            photo_count,
+            video_count,
         })
     }
 

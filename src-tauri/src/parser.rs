@@ -238,6 +238,9 @@ impl<'a> LogParser<'a> {
             .unwrap_or(&file_name)
             .to_string();
 
+        // Count photo and video capture events from telemetry transitions
+        let (photo_count, video_count) = crate::models::count_media_events(&points);
+
         let metadata = FlightMetadata {
             id: self.db.generate_flight_id(),
             file_name,
@@ -262,6 +265,8 @@ impl<'a> LogParser<'a> {
             home_lat: stats.home_location.map(|h| h[1]),
             home_lon: stats.home_location.map(|h| h[0]),
             point_count: points.len() as i32,
+            photo_count,
+            video_count,
         };
 
         log::info!(

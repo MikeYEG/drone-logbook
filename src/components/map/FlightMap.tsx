@@ -323,6 +323,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   const [showAircraft, setShowAircraft] = useState(() => getSessionBool('map:showAircraft', true));
   const [showMedia, setShowMedia] = useState(() => getSessionBool('map:showMedia', false));
   const [showMessages, setShowMessages] = useState(() => getSessionBool('map:showMessages', true));
+  const [lineThickness, setLineThickness] = useState(() => {
+    if (typeof window === 'undefined') return 3;
+    const stored = window.sessionStorage.getItem('map:lineThickness');
+    return stored ? Number(stored) : 3;
+  });
   const [hoverInfo, setHoverInfo] = useState<{
     x: number; y: number;
     height: number; speed: number; distance: number; progress: number;
@@ -339,30 +344,30 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       console.warn('Map ref not available for capture');
       return null;
     }
-    
+
     try {
       // Force both map and deck.gl to render
       map.triggerRepaint();
       const deckInstance = deckRef.current?.deck;
       deckInstance?.redraw('capture');
-      
+
       // Get the map canvas
       const mapCanvas = map.getCanvas();
       if (!mapCanvas) {
         console.warn('Map canvas not available');
         return null;
       }
-      
+
       // Create a new canvas to combine map + deck.gl overlay
       const combinedCanvas = document.createElement('canvas');
       combinedCanvas.width = mapCanvas.width;
       combinedCanvas.height = mapCanvas.height;
       const ctx = combinedCanvas.getContext('2d');
       if (!ctx) return null;
-      
+
       // Draw the map base layer
       ctx.drawImage(mapCanvas, 0, 0);
-      
+
       // Get deck.gl canvas using the getCanvas() method
       const deckCanvas = deckInstance?.getCanvas();
       if (deckCanvas && deckCanvas.width > 0 && deckCanvas.height > 0) {
@@ -387,7 +392,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           }
         }
       }
-      
+
       return combinedCanvas.toDataURL('image/png');
     } catch (err) {
       console.error('Failed to capture map snapshot:', err);
@@ -638,16 +643,16 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   const activeMessage = useMemo(() => {
     if (!showMessages || !messages || messages.length === 0) return null;
     if (!replayActive) return null;
-    
+
     const currentTimeMs = durationSecs != null && durationSecs > 0
       ? replayProgress * durationSecs * 1000
       : 0;
-    
+
     // Find message closest to current time within a 2-second window
     const tolerance = 2000; // 2 seconds
     let closest: FlightMessage | null = null;
     let closestDist = tolerance;
-    
+
     for (const msg of messages) {
       const dist = Math.abs(msg.timestampMs - currentTimeMs);
       if (dist < closestDist) {
@@ -655,7 +660,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         closestDist = dist;
       }
     }
-    
+
     return closest;
   }, [showMessages, messages, replayActive, replayProgress, durationSecs]);
 
@@ -820,7 +825,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       const ptA = smoothedTrack[i];
       const ptB = smoothedTrack[i + 1];
       if (!ptA || !ptB) continue;
-      
+
       let color: [number, number, number];
       if (colorBy === 'videoSegment') {
         // Use red for video recording, blue for normal flight
@@ -830,7 +835,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         const t = values ? (values[i] - minVal) / range : i / Math.max(1, n - 2);
         color = valueToColor(t, ramp);
       }
-      
+
       const [lng1, lat1, alt1] = ptA;
       const [lng2, lat2, alt2] = ptB;
       segments.push({
@@ -856,6 +861,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
 
   const deckLayers = useMemo(() => {
     if (deckPathData.length === 0) return [];
+    const shadowWidth = lineThickness + 3;
     return [
       // Shadow / outline layer
       new PathLayer({
@@ -863,9 +869,9 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         data: deckPathData,
         getPath: (d) => d.path,
         getColor: [0, 0, 0, 40],
-        getWidth: 7,
+        getWidth: shadowWidth,
         widthUnits: 'pixels',
-        widthMinPixels: 6,
+        widthMinPixels: shadowWidth - 1,
         capRounded: true,
         jointRounded: true,
         billboard: true,
@@ -879,9 +885,9 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         data: deckPathData,
         getPath: (d) => d.path,
         getColor: (d) => d.color,
-        getWidth: 4,
+        getWidth: lineThickness,
         widthUnits: 'pixels',
-        widthMinPixels: 3,
+        widthMinPixels: Math.max(1, lineThickness - 1),
         capRounded: true,
         jointRounded: true,
         billboard: true,
@@ -890,14 +896,14 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         parameters: { depthTest: false },
       }),
     ];
-  }, [deckPathData, showTooltip]);
+  }, [deckPathData, showTooltip, lineThickness]);
 
   // ─── Media markers (photo/video locations) with clustering ────────
   interface MediaPoint {
     position: [number, number, number];
     type: 'photo' | 'videoStart' | 'videoStop';
   }
-  
+
   interface MediaCluster {
     position: [number, number, number];
     type: 'photo' | 'videoStart' | 'videoStop';
@@ -909,25 +915,25 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     if (!telemetry || !showMedia) return [];
     const points: MediaPoint[] = [];
     const n = telemetry.time?.length ?? 0;
-    
+
     // Track previous states to detect transitions (capture moment)
     let wasPhoto = false;
     let wasVideo = false;
-    
+
     for (let i = 0; i < n; i++) {
       const lat = telemetry.latitude?.[i];
       const lng = telemetry.longitude?.[i];
       const height = telemetry.height?.[i] ?? telemetry.altitude?.[i] ?? 0;
       const isPhoto = telemetry.isPhoto?.[i] === true;
       const isVideo = telemetry.isVideo?.[i] === true;
-      
+
       // Skip if no valid coordinates
       if (lat == null || lng == null || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)) {
         wasPhoto = isPhoto;
         wasVideo = isVideo;
         continue;
       }
-      
+
       // Detect photo capture (transition to true)
       if (isPhoto && !wasPhoto) {
         points.push({
@@ -935,7 +941,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           type: 'photo',
         });
       }
-      
+
       // Detect video recording start (transition to true)
       if (isVideo && !wasVideo) {
         points.push({
@@ -943,7 +949,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           type: 'videoStart',
         });
       }
-      
+
       // Detect video recording stop (transition to false)
       if (!isVideo && wasVideo) {
         points.push({
@@ -951,11 +957,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           type: 'videoStop',
         });
       }
-      
+
       wasPhoto = isPhoto;
       wasVideo = isVideo;
     }
-    
+
     return points;
   }, [telemetry, showMedia, is3D]);
 
@@ -963,20 +969,20 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   // For mixed types at same location, create separate markers for each type
   const mediaClusters = useMemo<MediaCluster[]>(() => {
     if (mediaPoints.length === 0) return [];
-    
+
     const CLUSTER_THRESHOLD_M = 0.5; // 0.5 meters
     const used = new Set<number>();
     const clusteredPoints: { points: MediaPoint[]; position: [number, number, number] }[] = [];
-    
+
     // Group nearby points together
     for (let i = 0; i < mediaPoints.length; i++) {
       if (used.has(i)) continue;
-      
+
       const pt = mediaPoints[i];
       const [lng, lat] = pt.position;
       const cluster: MediaPoint[] = [pt];
       used.add(i);
-      
+
       // Find nearby points to cluster together
       for (let j = i + 1; j < mediaPoints.length; j++) {
         if (used.has(j)) continue;
@@ -987,28 +993,28 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           used.add(j);
         }
       }
-      
+
       // Calculate cluster center
       const avgLng = cluster.reduce((s, p) => s + p.position[0], 0) / cluster.length;
       const avgLat = cluster.reduce((s, p) => s + p.position[1], 0) / cluster.length;
       const avgAlt = cluster.reduce((s, p) => s + p.position[2], 0) / cluster.length;
-      
+
       clusteredPoints.push({
         points: cluster,
         position: [avgLng, avgLat, avgAlt],
       });
     }
-    
+
     // Now split each cluster by type
     const clusters: MediaCluster[] = [];
-    
+
     for (const { points, position } of clusteredPoints) {
       // Group by type at this location - create separate clusters for each type
       const byType: Record<string, number> = {};
       for (const p of points) {
         byType[p.type] = (byType[p.type] ?? 0) + 1;
       }
-      
+
       // Create a cluster for each type present at this location
       for (const type of Object.keys(byType)) {
         clusters.push({
@@ -1018,20 +1024,20 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         });
       }
     }
-    
+
     return clusters;
   }, [mediaPoints]);
 
   // DeckGL layers for media markers (3D positioned)
   const mediaLayers = useMemo(() => {
     if (!showMedia || mediaClusters.length === 0) return [];
-    
+
     // Use meters for radius so markers scale with zoom
     const baseRadius = 3; // meters
-    
+
     // Define offset cluster type
     type OffsetCluster = MediaCluster & { offset: [number, number] };
-    
+
     // Offset positions slightly for overlapping markers at same location
     // Group by position to detect overlaps
     const positionGroups: Record<string, MediaCluster[]> = {};
@@ -1040,7 +1046,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       if (!positionGroups[key]) positionGroups[key] = [];
       positionGroups[key].push(cluster);
     }
-    
+
     // Apply small offsets for overlapping markers
     const offsetClusters: OffsetCluster[] = [];
     for (const key of Object.keys(positionGroups)) {
@@ -1052,18 +1058,18 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         const spacing = 8; // pixels
         const totalWidth = (group.length - 1) * spacing;
         group.forEach((cluster: MediaCluster, i: number) => {
-          offsetClusters.push({ 
-            ...cluster, 
-            offset: [i * spacing - totalWidth / 2, 0] 
+          offsetClusters.push({
+            ...cluster,
+            offset: [i * spacing - totalWidth / 2, 0]
           });
         });
       }
     }
-    
+
     // Separate by type
     const photoClusters = offsetClusters.filter((d: OffsetCluster) => d.type === 'photo');
     const videoClusters = offsetClusters.filter((d: OffsetCluster) => d.type !== 'photo');
-    
+
     return [
       // === PHOTO MARKERS ===
       // Photo border (white outline)
@@ -1170,17 +1176,17 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   // Reset view to fit the track (same as initial load)
   const resetView = useCallback(() => {
     if (track.length === 0) return;
-    
+
     const map = mapRef.current?.getMap();
     if (!map) return;
-    
+
     // Check if map is ready to avoid MapLibre tile errors during style transitions
     if (!map.isStyleLoaded()) {
       // Defer reset until style is loaded
       map.once('styledata', () => resetView());
       return;
     }
-    
+
     const [lng, lat] = getTrackCenter(track);
     const bounds = calculateBounds(track);
 
@@ -1266,6 +1272,12 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       window.sessionStorage.setItem('map:colorBy', colorBy);
     }
   }, [colorBy]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('map:lineThickness', String(lineThickness));
+    }
+  }, [lineThickness]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1399,6 +1411,23 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
               options={COLOR_BY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
             />
           </div>
+
+          {/* Line thickness dropdown */}
+          <div className="pt-1 border-t border-gray-600/50">
+            <label className="block text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Line Thickness</label>
+            <Select
+              value={String(lineThickness)}
+              onChange={(v) => setLineThickness(Number(v))}
+              className="text-xs"
+              options={[
+                { value: '1', label: 'Extra Thin' },
+                { value: '2', label: 'Thin' },
+                { value: '3', label: 'Normal' },
+                { value: '4', label: 'Thick' },
+                { value: '5', label: 'Extra Thick' },
+              ]}
+            />
+          </div>
         </div>
 
         {/* Start Marker — pulsing yellow */}
@@ -1420,7 +1449,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
             <div className="relative flex items-center justify-center">
               <div className="w-5 h-5 bg-red-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center z-10">
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M5 2V8M3 6L5 8L7 6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M5 2V8M3 6L5 8L7 6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
               <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-semibold bg-red-500 text-white px-1.5 py-0.5 rounded shadow whitespace-nowrap z-10">
@@ -1501,11 +1530,10 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
             {hoverInfo.battery != null && (
               <div className="flex justify-between gap-4">
                 <span className="text-gray-400">Battery</span>
-                <span className={`font-medium ${
-                  hoverInfo.battery > 50 ? 'text-green-400' :
+                <span className={`font-medium ${hoverInfo.battery > 50 ? 'text-green-400' :
                   hoverInfo.battery > 30 ? 'text-yellow-400' :
-                  hoverInfo.battery > 15 ? 'text-orange-400' : 'text-red-400'
-                }`}>{Math.round(hoverInfo.battery)}%</span>
+                    hoverInfo.battery > 15 ? 'text-orange-400' : 'text-red-400'
+                  }`}>{Math.round(hoverInfo.battery)}%</span>
               </div>
             )}
             <div className="border-t border-gray-700/60 mt-1 pt-1 flex justify-between gap-4">
@@ -1550,10 +1578,9 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
               <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1">
                 <div className="flex justify-between gap-3">
                   <span className="text-gray-400">Battery</span>
-                  <span className={`font-medium tabular-nums ${
-                    replayTelemetry.battery! < 20 ? 'text-red-400' :
+                  <span className={`font-medium tabular-nums ${replayTelemetry.battery! < 20 ? 'text-red-400' :
                     replayTelemetry.battery! < 40 ? 'text-amber-400' : 'text-emerald-400'
-                  }`}>{Math.round(replayTelemetry.battery!)}%</span>
+                    }`}>{Math.round(replayTelemetry.battery!)}%</span>
                 </div>
                 {replayTelemetry.batteryVoltage !== null && (
                   <ReplayStatRow label="Voltage" value={`${replayTelemetry.batteryVoltage!.toFixed(1)} V`} />
@@ -1606,11 +1633,10 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       {/* Message popup — centered at top during playback */}
       {activeMessage && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none max-w-[400px]">
-          <div className={`flex items-start gap-2.5 rounded-lg px-3.5 py-2.5 shadow-lg backdrop-blur ${
-            activeMessage.messageType === 'warn'
-              ? 'bg-amber-900/90 border border-amber-600/60'
-              : 'bg-blue-900/90 border border-blue-600/60'
-          }`}>
+          <div className={`flex items-start gap-2.5 rounded-lg px-3.5 py-2.5 shadow-lg backdrop-blur ${activeMessage.messageType === 'warn'
+            ? 'bg-amber-900/90 border border-amber-600/60'
+            : 'bg-blue-900/90 border border-blue-600/60'
+            }`}>
             {activeMessage.messageType === 'warn' ? (
               <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -1620,9 +1646,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             )}
-            <span className={`text-sm font-medium ${
-              activeMessage.messageType === 'warn' ? 'text-amber-100' : 'text-blue-100'
-            }`}>
+            <span className={`text-sm font-medium ${activeMessage.messageType === 'warn' ? 'text-amber-100' : 'text-blue-100'
+              }`}>
               {activeMessage.message}
             </span>
           </div>
@@ -1636,20 +1661,20 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           {/* RC Stick Overlay — above the playbar */}
           {replayActive && showTooltip && replayTelemetry && (replayTelemetry.rcAileron !== null || replayTelemetry.rcThrottle !== null) && (
             <div className="rc-stick-overlay flex items-center justify-between rounded-xl px-5 py-3 pointer-events-none">
-                {/* Left Stick — Throttle + Rudder */}
-                <StickArrows
-                  up={Math.max(0, replayTelemetry.rcThrottle ?? 0)}
-                  down={Math.max(0, -(replayTelemetry.rcThrottle ?? 0))}
-                  left={Math.max(0, -(replayTelemetry.rcRudder ?? 0))}
-                  right={Math.max(0, replayTelemetry.rcRudder ?? 0)}
-                />
-                {/* Right Stick — Elevator + Aileron */}
-                <StickArrows
-                  up={Math.max(0, replayTelemetry.rcElevator ?? 0)}
-                  down={Math.max(0, -(replayTelemetry.rcElevator ?? 0))}
-                  left={Math.max(0, -(replayTelemetry.rcAileron ?? 0))}
-                  right={Math.max(0, replayTelemetry.rcAileron ?? 0)}
-                />
+              {/* Left Stick — Throttle + Rudder */}
+              <StickArrows
+                up={Math.max(0, replayTelemetry.rcThrottle ?? 0)}
+                down={Math.max(0, -(replayTelemetry.rcThrottle ?? 0))}
+                left={Math.max(0, -(replayTelemetry.rcRudder ?? 0))}
+                right={Math.max(0, replayTelemetry.rcRudder ?? 0)}
+              />
+              {/* Right Stick — Elevator + Aileron */}
+              <StickArrows
+                up={Math.max(0, replayTelemetry.rcElevator ?? 0)}
+                down={Math.max(0, -(replayTelemetry.rcElevator ?? 0))}
+                left={Math.max(0, -(replayTelemetry.rcAileron ?? 0))}
+                right={Math.max(0, replayTelemetry.rcAileron ?? 0)}
+              />
             </div>
           )}
 
@@ -1657,62 +1682,62 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
           <div
             className="bg-drone-dark/90 backdrop-blur-sm border border-gray-700 rounded-xl px-3 py-2 shadow-xl flex items-center gap-3 pointer-events-auto"
           >
-          {/* Play / Pause */}
-          <button
-            type="button"
-            onClick={handlePlayPause}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-drone-accent/20 text-drone-accent hover:bg-drone-accent/30 transition-colors"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <rect x="2" y="1" width="4" height="12" rx="1" />
-                <rect x="8" y="1" width="4" height="12" rx="1" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M3 1.5V12.5L12 7L3 1.5Z" />
-              </svg>
-            )}
-          </button>
+            {/* Play / Pause */}
+            <button
+              type="button"
+              onClick={handlePlayPause}
+              className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-drone-accent/20 text-drone-accent hover:bg-drone-accent/30 transition-colors"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <rect x="2" y="1" width="4" height="12" rx="1" />
+                  <rect x="8" y="1" width="4" height="12" rx="1" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <path d="M3 1.5V12.5L12 7L3 1.5Z" />
+                </svg>
+              )}
+            </button>
 
-          {/* Time */}
-          <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-[36px] text-right">
-            {formatReplayTime(replayProgress)}
-          </span>
+            {/* Time */}
+            <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-[36px] text-right">
+              {formatReplayTime(replayProgress)}
+            </span>
 
-          {/* Seek Slider */}
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.001"
-            value={replayProgress}
-            onChange={(e) => handleReplaySeek(Number(e.target.value))}
-            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer replay-slider"
-            style={{
-              background: `linear-gradient(to right, rgb(var(--drone-accent)) ${replayProgress * 100}%, #4a4e69 ${replayProgress * 100}%)`,
-            }}
-          />
+            {/* Seek Slider */}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.001"
+              value={replayProgress}
+              onChange={(e) => handleReplaySeek(Number(e.target.value))}
+              className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer replay-slider"
+              style={{
+                background: `linear-gradient(to right, rgb(var(--drone-accent)) ${replayProgress * 100}%, #4a4e69 ${replayProgress * 100}%)`,
+              }}
+            />
 
-          {/* End Time */}
-          <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-[36px]">
-            {formatReplayTime(1)}
-          </span>
+            {/* End Time */}
+            <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-[36px]">
+              {formatReplayTime(1)}
+            </span>
 
-          {/* Speed – click to cycle */}
-          <button
-            type="button"
-            onClick={() => {
-              const speeds = [0.5, 1, 2, 4, 8, 16];
-              const idx = speeds.indexOf(replaySpeed);
-              setReplaySpeed(speeds[(idx + 1) % speeds.length]);
-            }}
-            className="flex-shrink-0 text-[9px] text-gray-300 border border-gray-600 rounded px-1.5 py-px cursor-pointer text-center min-w-[32px] hover:border-gray-400 transition-colors themed-select-trigger"
-            title="Click to cycle speed"
-          >
-            {replaySpeed === 0.5 ? '½×' : `${replaySpeed}×`}
-          </button>
+            {/* Speed – click to cycle */}
+            <button
+              type="button"
+              onClick={() => {
+                const speeds = [0.5, 1, 2, 4, 8, 16];
+                const idx = speeds.indexOf(replaySpeed);
+                setReplaySpeed(speeds[(idx + 1) % speeds.length]);
+              }}
+              className="flex-shrink-0 text-[9px] text-gray-300 border border-gray-600 rounded px-1.5 py-px cursor-pointer text-center min-w-[32px] hover:border-gray-400 transition-colors themed-select-trigger"
+              title="Click to cycle speed"
+            >
+              {replaySpeed === 0.5 ? '½×' : `${replaySpeed}×`}
+            </button>
           </div>
         </div>
       ) : null}
@@ -1747,16 +1772,14 @@ function ToggleRow({
     >
       <span>{label}</span>
       <span
-        className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
-          checked
-            ? 'bg-drone-primary/90 border-drone-primary'
-            : 'bg-drone-surface border-gray-600 toggle-track-off'
-        }`}
+        className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${checked
+          ? 'bg-drone-primary/90 border-drone-primary'
+          : 'bg-drone-surface border-gray-600 toggle-track-off'
+          }`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-            checked ? 'translate-x-4' : 'translate-x-1'
-          }`}
+          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-1'
+            }`}
         />
       </span>
     </button>

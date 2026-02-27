@@ -386,6 +386,8 @@ async fn create_manual_flight(
         home_lat: Some(payload.home_lat),
         home_lon: Some(payload.home_lon),
         point_count: 0,
+        photo_count: 0,
+        video_count: 0,
     };
 
     // Insert flight
@@ -922,6 +924,8 @@ async fn regenerate_flight_smart_tags(
         home_lat: flight.home_lat,
         home_lon: flight.home_lon,
         point_count: flight.point_count.unwrap_or(0),
+        photo_count: flight.photo_count.unwrap_or(0),
+        video_count: flight.video_count.unwrap_or(0),
     };
 
     match state.db.get_flight_telemetry(flight_id, Some(50000), None) {
@@ -989,6 +993,8 @@ async fn regenerate_smart_tags(
                     home_lat: flight.home_lat,
                     home_lon: flight.home_lon,
                     point_count: flight.point_count.unwrap_or(0),
+                    photo_count: flight.photo_count.unwrap_or(0),
+                    video_count: flight.video_count.unwrap_or(0),
                 };
 
                 match state.db.get_flight_telemetry(*flight_id, Some(50000), None) {

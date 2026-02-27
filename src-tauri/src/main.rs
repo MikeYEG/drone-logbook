@@ -398,6 +398,8 @@ mod tauri_app {
             home_lat: Some(home_lat),
             home_lon: Some(home_lon),
             point_count: 0, // No telemetry points for manual entries
+            photo_count: 0,
+            video_count: 0,
         };
 
         // Insert flight
@@ -948,6 +950,8 @@ mod tauri_app {
             home_lat: flight.home_lat,
             home_lon: flight.home_lon,
             point_count: flight.point_count.unwrap_or(0),
+            photo_count: flight.photo_count.unwrap_or(0),
+            video_count: flight.video_count.unwrap_or(0),
         };
 
         match state.db.get_flight_telemetry(flight_id, Some(50000), None) {
@@ -1014,6 +1018,8 @@ mod tauri_app {
                         home_lat: flight.home_lat,
                         home_lon: flight.home_lon,
                         point_count: flight.point_count.unwrap_or(0),
+                        photo_count: flight.photo_count.unwrap_or(0),
+                        video_count: flight.video_count.unwrap_or(0),
                     };
 
                     // Get raw telemetry to compute stats

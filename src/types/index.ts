@@ -27,6 +27,8 @@ export interface Flight {
   homeLat?: number | null;
   homeLon?: number | null;
   pointCount: number | null;
+  photoCount: number | null;
+  videoCount: number | null;
   tags?: FlightTag[];
   notes?: string | null;
 }
@@ -131,6 +133,8 @@ export interface OverviewStats {
   totalDistanceM: number;
   totalDurationSecs: number;
   totalPoints: number;
+  totalPhotos: number;
+  totalVideos: number;
   maxAltitudeM: number;
   maxDistanceFromHomeM: number;
   batteriesUsed: BatteryUsage[];
