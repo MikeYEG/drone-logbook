@@ -1171,6 +1171,16 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   const resetView = useCallback(() => {
     if (track.length === 0) return;
     
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    
+    // Check if map is ready to avoid MapLibre tile errors during style transitions
+    if (!map.isStyleLoaded()) {
+      // Defer reset until style is loaded
+      map.once('styledata', () => resetView());
+      return;
+    }
+    
     const [lng, lat] = getTrackCenter(track);
     const bounds = calculateBounds(track);
 
@@ -1182,14 +1192,27 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       zoom = Math.max(10, Math.min(18, 16 - Math.log2(maxDiff * 111)));
     }
 
-    setViewState((prev) => ({
-      ...prev,
-      longitude: lng,
-      latitude: lat,
-      zoom,
-      pitch: is3D ? 60 : 0,
-      bearing: 0,
-    }));
+    // Use easeTo for smoother transition that avoids tile fade conflicts
+    try {
+      map.easeTo({
+        center: [lng, lat],
+        zoom,
+        pitch: is3D ? 60 : 0,
+        bearing: 0,
+        duration: 300,
+      });
+    } catch (e) {
+      // Fallback to direct state update if easeTo fails
+      console.warn('[FlightMap] easeTo failed, using fallback:', e);
+      setViewState((prev) => ({
+        ...prev,
+        longitude: lng,
+        latitude: lat,
+        zoom,
+        pitch: is3D ? 60 : 0,
+        bearing: 0,
+      }));
+    }
   }, [track, is3D]);
 
   const enableTerrain = useCallback(() => {
@@ -1209,7 +1232,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   const disableTerrain = useCallback(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
-    map.setTerrain(null);
+    try {
+      map.setTerrain(null);
+    } catch (e) {
+      console.warn('[FlightMap] Failed to disable terrain:', e);
+    }
   }, []);
 
   useEffect(() => {
