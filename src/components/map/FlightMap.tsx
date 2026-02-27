@@ -328,6 +328,10 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     const stored = window.sessionStorage.getItem('map:lineThickness');
     return stored ? Number(stored) : 3;
   });
+  const [mapSettingsCollapsed, setMapSettingsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('map:settingsCollapsed') === 'true';
+  });
   const [hoverInfo, setHoverInfo] = useState<{
     x: number; y: number;
     height: number; speed: number; distance: number; progress: number;
@@ -1369,64 +1373,91 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         <NavigationControl position="top-right" />
 
         {/* Map Controls */}
-        <div className="map-overlay absolute top-2 left-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-xl px-3 py-2 space-y-2 shadow-lg">
-          <ToggleRow
-            label="3D Terrain"
-            checked={is3D}
-            onChange={setIs3D}
-          />
-          <ToggleRow
-            label="Satellite"
-            checked={isSatellite}
-            onChange={setIsSatellite}
-          />
-          <ToggleRow
-            label="Telemetry"
-            checked={showTooltip}
-            onChange={setShowTooltip}
-          />
-          <ToggleRow
-            label="Aircraft"
-            checked={showAircraft}
-            onChange={setShowAircraft}
-          />
-          <ToggleRow
-            label="Media"
-            checked={showMedia}
-            onChange={setShowMedia}
-          />
-          <ToggleRow
-            label="Messages"
-            checked={showMessages}
-            onChange={setShowMessages}
-          />
+        <div className="map-overlay absolute top-2 left-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-xl shadow-lg">
+          {/* Collapsible header */}
+          <button
+            type="button"
+            onClick={() => setMapSettingsCollapsed((v) => {
+              const next = !v;
+              window.sessionStorage.setItem('map:settingsCollapsed', String(next));
+              return next;
+            })}
+            className="w-full flex items-center justify-between gap-3 px-3 py-2 text-xs text-gray-300 hover:text-white transition-colors"
+          >
+            <span className="font-semibold">Map Settings</span>
+            <span
+              className={`w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center transition-transform duration-200 ${mapSettingsCollapsed ? 'rotate-180' : ''
+                }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+            </span>
+          </button>
 
-          {/* Color-by dropdown */}
-          <div className="pt-1 border-t border-gray-600/50">
-            <label className="block text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Color by</label>
-            <Select
-              value={colorBy}
-              onChange={(v) => setColorBy(v as ColorByMode)}
-              className="text-xs"
-              options={COLOR_BY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-            />
-          </div>
+          {/* Collapsible body */}
+          <div
+            className={`transition-all duration-200 ease-in-out ${mapSettingsCollapsed ? 'max-h-0 overflow-hidden opacity-0' : 'max-h-[500px] overflow-visible opacity-100'
+              }`}
+          >
+            <div className="px-3 pb-2 space-y-2">
+              <ToggleRow
+                label="3D Terrain"
+                checked={is3D}
+                onChange={setIs3D}
+              />
+              <ToggleRow
+                label="Satellite"
+                checked={isSatellite}
+                onChange={setIsSatellite}
+              />
+              <ToggleRow
+                label="Telemetry"
+                checked={showTooltip}
+                onChange={setShowTooltip}
+              />
+              <ToggleRow
+                label="Aircraft"
+                checked={showAircraft}
+                onChange={setShowAircraft}
+              />
+              <ToggleRow
+                label="Media"
+                checked={showMedia}
+                onChange={setShowMedia}
+              />
+              <ToggleRow
+                label="Messages"
+                checked={showMessages}
+                onChange={setShowMessages}
+              />
 
-          {/* Line thickness dropdown */}
-          <div className="pt-1 border-t border-gray-600/50">
-            <label className="block text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Line Thickness</label>
-            <Select
-              value={String(lineThickness)}
-              onChange={(v) => setLineThickness(Number(v))}
-              className="text-xs"
-              options={[
-                { value: '1', label: 'Extra Thin' },
-                { value: '2', label: 'Thin' },
-                { value: '3', label: 'Normal' },
-                { value: '4', label: 'Thick' },
-                { value: '5', label: 'Extra Thick' },
-              ]}
-            />
+              {/* Color-by dropdown */}
+              <div className="pt-1 border-t border-gray-600/50">
+                <label className="block text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Color by</label>
+                <Select
+                  value={colorBy}
+                  onChange={(v) => setColorBy(v as ColorByMode)}
+                  className="text-xs"
+                  options={COLOR_BY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                />
+              </div>
+
+              {/* Line thickness dropdown */}
+              <div className="pt-1 border-t border-gray-600/50">
+                <label className="block text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Line Thickness</label>
+                <Select
+                  value={String(lineThickness)}
+                  onChange={(v) => setLineThickness(Number(v))}
+                  className="text-xs"
+                  options={[
+                    { value: '1', label: 'Extra Thin' },
+                    { value: '2', label: 'Thin' },
+                    { value: '3', label: 'Normal' },
+                    { value: '4', label: 'Thick' },
+                    { value: '5', label: 'Extra Thick' },
+                  ]}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
