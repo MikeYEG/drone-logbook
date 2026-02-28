@@ -124,6 +124,21 @@ function getFieldUnit(fieldId: string, unitSystem: UnitSystem): string {
   return unitSystem === 'imperial' && field.unitImperial ? field.unitImperial : field.unit;
 }
 
+/** Get a descriptive category label for a unit when multiple series share it */
+function getUnitCategoryLabel(unit: string): string {
+  const unitCategories: Record<string, string> = {
+    'm': 'Distance (m)',
+    'ft': 'Distance (ft)',
+    'km/h': 'Speed (km/h)',
+    'mph': 'Speed (mph)',
+    '°': 'Degrees (°)',
+    '%': 'Percent (%)',
+    'V': 'Voltage (V)',
+    '°C': 'Temperature (°C)',
+  };
+  return unitCategories[unit] || unit;
+}
+
 /** Create a dynamic chart based on selected fields */
 function createDynamicChart(
   selectedFieldIds: string[],
@@ -193,62 +208,84 @@ function createDynamicChart(
   // Create legend data
   const legendData = allSeriesData.map(s => s.label);
 
-  // Create series
-  const series: LineSeriesOption[] = allSeriesData.map((s, index) => ({
-    name: s.label,
-    type: 'line',
-    data: s.data,
-    yAxisIndex: index > 0 && allSeriesData.length > 1 ? Math.min(index, 1) : 0,
-    smooth: true,
-    symbol: 'none',
-    itemStyle: { color: s.color },
-    lineStyle: { color: s.color, width: index === 0 ? 2 : 1.5 },
-    ...(index === 0 ? {
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: `${s.color}4d` },
-            { offset: 1, color: `${s.color}0d` },
-          ],
-        },
-      },
-    } : {}),
-  }));
+  // Group series by unit to share y-axis scales
+  const unitGroups = new Map<string, { indices: number[]; data: (number | null)[] }>();
+  allSeriesData.forEach((s, index) => {
+    const unitKey = s.unit || '__no_unit__';
+    if (!unitGroups.has(unitKey)) {
+      unitGroups.set(unitKey, { indices: [], data: [] });
+    }
+    const group = unitGroups.get(unitKey)!;
+    group.indices.push(index);
+    group.data.push(...s.data);
+  });
 
-  // Create Y-axes based on number of series (max 2)
+  // Assign y-axis indices based on unique units (max 2 axes)
+  const uniqueUnits = Array.from(unitGroups.keys());
+  const unitToAxisIndex = new Map<string, number>();
+  uniqueUnits.forEach((unit, idx) => {
+    unitToAxisIndex.set(unit, Math.min(idx, 1)); // Clamp to max 2 axes (index 0 and 1)
+  });
+
+  // Compute combined ranges for each unit group
+  const unitRanges = new Map<string, { min?: number; max?: number }>();
+  for (const [unit, group] of unitGroups) {
+    unitRanges.set(unit, computeRange(group.data));
+  }
+
+  // Create series with y-axis index based on unit
+  const series: LineSeriesOption[] = allSeriesData.map((s, index) => {
+    const unitKey = s.unit || '__no_unit__';
+    const yAxisIndex = allSeriesData.length > 1 ? unitToAxisIndex.get(unitKey) ?? 0 : 0;
+    return {
+      name: s.label,
+      type: 'line',
+      data: s.data,
+      yAxisIndex,
+      smooth: true,
+      symbol: 'none',
+      itemStyle: { color: s.color },
+      lineStyle: { color: s.color, width: index === 0 ? 2 : 1.5 },
+      ...(index === 0 ? {
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: `${s.color}4d` },
+              { offset: 1, color: `${s.color}0d` },
+            ],
+          },
+        },
+      } : {}),
+    };
+  });
+
+  // Create Y-axes based on unique units (max 2)
   const yAxis: any[] = [];
-  if (allSeriesData.length >= 1) {
-    const s = allSeriesData[0];
-    const sRange = computeRange(s.data);
+  const axisUnits = uniqueUnits.slice(0, 2); // Max 2 axes
+  axisUnits.forEach((unit, axisIndex) => {
+    const group = unitGroups.get(unit)!;
+    const range = unitRanges.get(unit)!;
+    // Use the first series with this unit for display properties
+    const firstSeriesIndex = group.indices[0];
+    const s = allSeriesData[firstSeriesIndex];
+    // Build axis name: if multiple series share this unit, show descriptive category; otherwise show label with unit
+    const seriesWithUnit = group.indices.map(i => allSeriesData[i]);
+    const axisName = seriesWithUnit.length > 1 && s.unit
+      ? getUnitCategoryLabel(s.unit)
+      : (s.unit ? `${s.label} (${s.unit})` : s.label);
     yAxis.push({
       type: 'value',
-      name: s.unit ? `${s.label} (${s.unit})` : s.label,
-      min: sRange.min,
-      max: sRange.max,
+      name: axisName,
+      min: range.min,
+      max: range.max,
       nameTextStyle: { color: s.color },
       axisLine: { lineStyle: { color: s.color } },
       axisLabel: { color: '#9ca3af' },
-      splitLine: { lineStyle: { color: splitLineColor } },
+      splitLine: { lineStyle: { color: splitLineColor }, show: axisIndex === 0 },
     });
-  }
-  if (allSeriesData.length >= 2) {
-    // Second Y-axis for remaining series (use cell voltages if they exist, otherwise second regular field)
-    const restData = allSeriesData.slice(1).flatMap(s => s.data);
-    const restRange = computeRange(restData);
-    const s = allSeriesData[1];
-    yAxis.push({
-      type: 'value',
-      name: s.unit ? `${s.label} (${s.unit})` : s.label,
-      min: restRange.min,
-      max: restRange.max,
-      nameTextStyle: { color: s.color },
-      axisLine: { lineStyle: { color: s.color } },
-      axisLabel: { color: '#9ca3af' },
-      splitLine: { show: false },
-    });
-  }
+  });
 
   return {
     ...baseChartConfig,
