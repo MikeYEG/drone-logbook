@@ -49,22 +49,16 @@
     <img src="screenshots/telemetry_2.png" alt="Telemetry charts 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/overall_stats_dark.png" alt="Overall stats (dark)" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/overall_stats.png" alt="Overall stats" width="900" />
-</p>
-<p align="center">
     <img src="screenshots/map_dark.png" alt="Flight map replay (dark)" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/map_light.png" alt="Flight map replay (light)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map.png" alt="Flight map" width="900" />
+    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
+    <img src="screenshots/flight_report.png" alt="Flight report" width="900" />
 </p>
 
 ## Contents
