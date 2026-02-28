@@ -211,7 +211,7 @@ export function HtmlReportModal({ isOpen, onClose, onGenerate, flightCount }: Ht
                 </div>
 
                 {/* Scrollable field groups section */}
-                <div className="flex-1 overflow-y-auto px-6 pb-3 min-h-0">
+                <div className="flex-1 overflow-y-scroll px-6 pb-3 min-h-0">
                     <div className="space-y-2.5">
                         {FIELD_GROUPS.map((group) => (
                             <div
