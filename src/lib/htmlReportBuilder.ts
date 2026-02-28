@@ -428,19 +428,42 @@ function buildFlightItems(
   }
   if (fc.takeoffBattery) {
     const b = fd.data.telemetry.battery;
-    const first = b?.find((v) => v !== null);
-    perfItems.push({ label: 'Takeoff Bat.', value: first != null && first !== 0 ? `${first}%` : '—' });
+    const v = fd.data.telemetry.batteryVoltage;
+    const firstBat = b?.find((val) => val !== null);
+    // Find first voltage at same index as first valid battery
+    let firstVolt: number | null = null;
+    if (fc.batteryVoltage && b && v) {
+      const firstBatIdx = b.findIndex((val) => val !== null);
+      if (firstBatIdx >= 0 && firstBatIdx < v.length) {
+        firstVolt = v[firstBatIdx];
+      }
+    }
+    let takeoffValue = '—';
+    if (firstBat != null && firstBat !== 0) {
+      takeoffValue = firstVolt != null && firstVolt > 0
+        ? `${firstBat}% (${firstVolt.toFixed(2)} V)`
+        : `${firstBat}%`;
+    }
+    perfItems.push({ label: 'Takeoff Bat.', value: takeoffValue });
   }
   if (fc.landingBattery) {
     const b = fd.data.telemetry.battery;
-    let last: number | null = null;
-    if (b) for (let i = b.length - 1; i >= 0; i--) { if (b[i] !== null) { last = b[i]; break; } }
-    perfItems.push({ label: 'Landing Bat.', value: last != null && last !== 0 ? `${last}%` : '—' });
-  }
-  if (fc.batteryVoltage) {
     const v = fd.data.telemetry.batteryVoltage;
-    const first = v?.find((val) => val !== null);
-    perfItems.push({ label: 'Voltage', value: first != null && first !== 0 ? `${(first / 1000).toFixed(2)} V` : '—' });
+    let lastBat: number | null = null;
+    let lastBatIdx = -1;
+    if (b) for (let i = b.length - 1; i >= 0; i--) { if (b[i] !== null) { lastBat = b[i]; lastBatIdx = i; break; } }
+    // Find voltage at same index as last valid battery
+    let lastVolt: number | null = null;
+    if (fc.batteryVoltage && lastBatIdx >= 0 && v && lastBatIdx < v.length) {
+      lastVolt = v[lastBatIdx];
+    }
+    let landingValue = '—';
+    if (lastBat != null && lastBat !== 0) {
+      landingValue = lastVolt != null && lastVolt > 0
+        ? `${lastBat}% (${lastVolt.toFixed(2)} V)`
+        : `${lastBat}%`;
+    }
+    perfItems.push({ label: 'Landing Bat.', value: landingValue });
   }
   if (fc.batteryTemp) {
     const t = fd.data.telemetry.batteryTemp;
