@@ -184,7 +184,7 @@ export function FlightList({
   const [distanceFilterMax, setDistanceFilterMax] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<
-    'name' | 'date' | 'duration' | 'distance'
+    'name' | 'date' | 'duration' | 'distance' | 'altitude' | 'speed'
   >('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isSortOpen, setIsSortOpen] = useState(false);
@@ -668,6 +668,20 @@ export function FlightList({
           ? aDistance - bDistance
           : bDistance - aDistance;
       }
+      if (sortOption === 'altitude') {
+        const aAltitude = a.maxAltitude ?? 0;
+        const bAltitude = b.maxAltitude ?? 0;
+        return sortDirection === 'asc'
+          ? aAltitude - bAltitude
+          : bAltitude - aAltitude;
+      }
+      if (sortOption === 'speed') {
+        const aSpeed = a.maxSpeed ?? 0;
+        const bSpeed = b.maxSpeed ?? 0;
+        return sortDirection === 'asc'
+          ? aSpeed - bSpeed
+          : bSpeed - aSpeed;
+      }
       const aDate = a.startTime ? new Date(a.startTime).getTime() : 0;
       const bDate = b.startTime ? new Date(b.startTime).getTime() : 0;
       return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
@@ -760,6 +774,8 @@ export function FlightList({
       { value: 'date', label: 'Date' },
       { value: 'duration', label: 'Duration' },
       { value: 'distance', label: 'Distance' },
+      { value: 'altitude', label: 'Altitude' },
+      { value: 'speed', label: 'Speed' },
     ],
     []
   );
