@@ -34,6 +34,16 @@ pub struct Database {
     pub data_dir: PathBuf,
 }
 
+impl Drop for Database {
+    fn drop(&mut self) {
+        log::info!("Dropping Database instance. DuckDB will now gracefully close and flush remaining WAL data to disk...");
+        let drop_start = std::time::Instant::now();
+        // The actual DuckDB connection drop happens automatically right after this, 
+        // which triggers any implicit final checkpoints.
+        log::info!("Database drop initiated (drop handler took {:.3}s)", drop_start.elapsed().as_secs_f64());
+    }
+}
+
 impl Database {
     /// Initialize the database in the app data directory.
     ///
@@ -74,6 +84,17 @@ impl Database {
         // Run one-time startup deduplication for existing data
         db.run_startup_deduplication();
 
+        // Perform a checkpoint right after startup, as migrations (especially those touching thousands of rows)
+        // create large WAL files. This ensures the 100+ MB WAL isn't held in memory until the user
+        // closes the app window, which prevents process locking issues.
+        log::info!("Starting post-startup WAL checkpoint to clear large migration logs...");
+        let checkpoint_start = std::time::Instant::now();
+        if let Err(e) = db.conn.lock().unwrap().execute_batch("CHECKPOINT;") {
+            log::warn!("Post-startup WAL checkpoint failed (non-fatal): {} (took {:.1}s)", e, checkpoint_start.elapsed().as_secs_f64());
+        } else {
+            log::info!("Post-startup WAL checkpoint completed successfully in {:.1}s", checkpoint_start.elapsed().as_secs_f64());
+        }
+
         Ok(db)
     }
 
@@ -107,6 +128,7 @@ impl Database {
         }
     }
 
+    /// Backup the database before WAL recovery or rebuilds
     fn backup_db(db_path: &PathBuf) -> Result<PathBuf, DatabaseError> {
         if !db_path.exists() {
             return Ok(db_path.clone());
@@ -125,6 +147,13 @@ impl Database {
         Ok(backup_path)
     }
 
+    /// Explicitly forces a WAL checkpoint. Useful for flushing the WAL before shutdown.
+    pub fn checkpoint(&self) -> Result<(), DatabaseError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch("CHECKPOINT;")?;
+        Ok(())
+    }
+
     /// Configure DuckDB connection for optimal analytical performance
     fn configure_connection(conn: &Connection) -> DuckResult<()> {
         // Memory settings for better performance with large datasets
@@ -133,6 +162,7 @@ impl Database {
             SET memory_limit = '2GB';
             SET threads = 4;
             SET enable_progress_bar = false;
+            PRAGMA wal_autocheckpoint='50MB';
             "#,
         )?;
         Ok(())

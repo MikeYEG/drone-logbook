@@ -1099,6 +1099,40 @@ mod tauri_app {
                 log::info!("Drone Logbook initialized successfully");
                 Ok(())
             })
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    log::info!("Window close requested. Intercepting to cleanly teardown database...");
+                    
+                    // Prevent immediate close
+                    api.prevent_close();
+                    
+                    // Hide window to give immediate feedback to user
+                    let _ = window.hide();
+                    
+                    let app_handle = window.app_handle().clone();
+                    
+                    // Spawn task to handle the actual teardown
+                    tauri::async_runtime::spawn(async move {
+                        // Extract state and drop the DB explicitly
+                        if let Some(state) = app_handle.try_state::<AppState>() {
+                            log::info!("Forcing explicit drop of AppState DB connection...");
+                            
+                            // To actually drop the inner value from the Arc, we'd need strong count=1.
+                            // But since the process is shutting down anyway, we can just execute CHECKPOINT directly.
+                            if let Err(e) = state.db.checkpoint() {
+                                log::warn!("Final shutdown WAL checkpoint failed: {}", e);
+                            } else {
+                                log::info!("Final shutdown WAL checkpoint completed successfully.");
+                            }
+                        }
+                        
+                        // We give DuckDB a tiny grace period to flush file handlers
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        log::info!("Safe to exit process now.");
+                        app_handle.exit(0);
+                    });
+                }
+            })
             .invoke_handler(tauri::generate_handler![
                 import_log,
                 create_manual_flight,
