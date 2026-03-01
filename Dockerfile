@@ -32,7 +32,9 @@ RUN mkdir -p src-tauri/src && \
     echo '' > src-tauri/src/database.rs && \
     echo '' > src-tauri/src/models.rs && \
     echo '' > src-tauri/src/parser.rs && \
-    echo '' > src-tauri/src/server.rs
+    echo '' > src-tauri/src/server.rs && \
+    echo '' > src-tauri/src/dronelogbook_parser.rs && \
+    echo '' > src-tauri/src/litchi_parser.rs
 
 # Build dependencies only (cached layer)
 WORKDIR /build/src-tauri
@@ -73,7 +75,7 @@ RUN npx vite build
 FROM nginx:stable-bookworm AS runtime
 
 # Copy backend binary
-COPY --from=backend-builder /build/src-tauri/target/release/drone-logbook /app/drone-logbook
+COPY --from=backend-builder /build/src-tauri/target/release/open-dronelog /app/open-dronelog
 
 # Copy frontend build
 COPY --from=frontend-builder /build/dist /usr/share/nginx/html
