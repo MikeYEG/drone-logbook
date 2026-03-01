@@ -3,6 +3,42 @@ import { useFlightStore } from '@/stores/flightStore';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { isWebMode } from '@/lib/api';
 
+/** Loading overlay shown during database initialization/migration */
+function InitializationOverlay() {
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-drone-dark">
+      <div className="flex flex-col items-center gap-6">
+        {/* App icon/logo placeholder */}
+        <div className="w-16 h-16 rounded-2xl bg-drone-primary/20 flex items-center justify-center">
+          <svg
+            className="w-10 h-10 text-drone-primary"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+            />
+          </svg>
+        </div>
+        
+        <div className="text-center">
+          <h2 className="text-lg font-medium text-white mb-2">Initializing Open DroneLog</h2>
+          <p className="text-sm text-gray-400">Initialization in progress - Please wait...</p>
+        </div>
+        
+        {/* Animated progress bar */}
+        <div className="w-64 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-full w-1/2 bg-drone-primary rounded-full init-progress-bar" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error?: Error }
@@ -41,7 +77,7 @@ class AppErrorBoundary extends React.Component<
 }
 
 function App() {
-  const { loadFlights, error, clearError, donationAcknowledged, themeMode } = useFlightStore();
+  const { loadFlights, error, clearError, donationAcknowledged, themeMode, isFlightsInitialized } = useFlightStore();
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (typeof sessionStorage === 'undefined') return false;
     return sessionStorage.getItem('donationBannerDismissed') === 'true';
@@ -114,6 +150,9 @@ function App() {
 
   return (
     <div className="w-full h-full flex flex-col bg-drone-dark overflow-hidden">
+      {/* Initialization overlay - shown during DB migration */}
+      {!isFlightsInitialized && <InitializationOverlay />}
+      
       {showDonationBanner && (
         <div
           className={`w-full border-b border-drone-primary/40 text-gray-100 ${

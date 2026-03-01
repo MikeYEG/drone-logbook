@@ -1030,3 +1030,22 @@ body.theme-light .milestone-timeline {
 .milestone-node.active {
   animation: milestonePulse 2s ease-in-out infinite;
 }
+
+/* =====================================================
+   Initialization Loading Overlay
+   ===================================================== */
+@keyframes initProgress {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.init-progress-bar {
+  animation: initProgress 1.5s ease-in-out infinite;
+}
