@@ -413,7 +413,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <Select
                   value={appLanguage}
                   onChange={(v) => setAppLanguage(v)}
-                  listMaxHeight="max-h-72"
+                  listMaxHeight="max-h-[230px]"
                   options={[
                     { value: 'en', label: 'English' },
                     { value: 'de', label: 'Deutsch' },

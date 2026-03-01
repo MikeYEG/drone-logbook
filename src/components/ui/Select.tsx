@@ -160,7 +160,7 @@ export function Select({ value, onChange, options, className = '', listMaxHeight
             />
           </div>
           {/* Options list */}
-          <div ref={listRef} className={`${listMaxHeight} overflow-auto`}>
+          <div ref={listRef} className={`${listMaxHeight} overflow-y-scroll`}>
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-2 text-xs text-gray-500 italic">No matches</div>
             ) : (
