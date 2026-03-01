@@ -4,7 +4,8 @@
  */
 
 import type { FlightDataResponse } from '@/types';
-import { isWebMode, downloadFile } from '@/lib/api';
+import { useTranslation } from 'react-i18next';
+import { isWebMode, downloadFile, getFlightData } from '@/lib/api';
 import { buildCsv, buildJson, buildGpx, buildKml } from '@/lib/exportUtils';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { WeatherModal } from './WeatherModal';
@@ -23,8 +24,9 @@ interface FlightStatsProps {
 }
 
 export function FlightStats({ data }: FlightStatsProps) {
+  const { t } = useTranslation();
   const { flight, telemetry } = data;
-  const { unitSystem, getBatteryDisplayName, addTag, removeTag, allTags, getDisplaySerial } = useFlightStore();
+  const { unitSystem, locale, dateLocale, getBatteryDisplayName, addTag, removeTag, allTags, getDisplaySerial } = useFlightStore();
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isWeatherOpen, setIsWeatherOpen] = useState(false);
@@ -96,10 +98,10 @@ export function FlightStats({ data }: FlightStatsProps) {
 
   const exportOptions = useMemo(
     () => [
-      { id: 'csv', label: 'CSV', extension: 'csv' },
-      { id: 'json', label: 'JSON', extension: 'json' },
-      { id: 'gpx', label: 'GPX', extension: 'gpx' },
-      { id: 'kml', label: 'KML', extension: 'kml' },
+      { id: 'csv', label: 'flightList.csv', extension: 'csv' },
+      { id: 'json', label: 'flightList.json', extension: 'json' },
+      { id: 'gpx', label: 'flightList.gpx', extension: 'gpx' },
+      { id: 'kml', label: 'flightList.kml', extension: 'kml' },
     ],
     []
   );
@@ -114,19 +116,22 @@ export function FlightStats({ data }: FlightStatsProps) {
         .replace(/^_+|_+$/g, '')
         .slice(0, 80);
 
+      // Fetch full-resolution data for export (display data is downsampled to ~5000 points)
+      const fullData = await getFlightData(flight.id);
+
       let content = '';
       switch (format) {
         case 'csv':
-          content = buildCsv(data);
+          content = buildCsv(fullData);
           break;
         case 'json':
-          content = buildJson(data);
+          content = buildJson(fullData);
           break;
         case 'gpx':
-          content = buildGpx(data);
+          content = buildGpx(fullData);
           break;
         case 'kml':
-          content = buildKml(data);
+          content = buildKml(fullData);
           break;
         default:
           return;
@@ -175,20 +180,20 @@ export function FlightStats({ data }: FlightStatsProps) {
             </p>
           )}
           <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2 mt-2">
-            {formatDateTime(flight.startTime)}
+            {formatDateTime(flight.startTime, dateLocale)}
             {flight.aircraftName && (
               <span className="px-2 py-0.5 rounded-full text-xs border border-drone-primary/40 text-drone-primary bg-drone-primary/10">
-                Device: {flight.aircraftName}
+                {t('flightStats.device')} {flight.aircraftName}
               </span>
             )}
             {flight.droneSerial && (
               <span className="px-2 py-0.5 rounded-full text-xs border border-gray-600/60 text-gray-400 bg-drone-surface/60">
-                SN: {getDisplaySerial(flight.droneSerial)}
+                {t('flightStats.sn')} {getDisplaySerial(flight.droneSerial)}
               </span>
             )}
             {flight.batterySerial && (
               <span className="px-2 py-0.5 rounded-full text-xs border border-drone-accent/40 text-drone-accent bg-drone-accent/10">
-                Battery: {getBatteryDisplayName(flight.batterySerial)}
+                {t('flightStats.battery')} {getBatteryDisplayName(flight.batterySerial)}
               </span>
             )}
             {/* Flight Tags */}
@@ -199,11 +204,10 @@ export function FlightStats({ data }: FlightStatsProps) {
               return (
                 <span
                   key={tagName}
-                  className={`group relative px-2 py-0.5 rounded-full text-xs border cursor-default ${
-                    isAuto
-                      ? 'border-teal-500/40 text-teal-300 bg-teal-500/10'
-                      : 'border-violet-500/40 text-violet-300 bg-violet-500/10'
-                  }`}
+                  className={`group relative px-2 py-0.5 rounded-full text-xs border cursor-default ${isAuto
+                    ? 'border-teal-500/40 text-teal-300 bg-teal-500/10'
+                    : 'border-violet-500/40 text-violet-300 bg-violet-500/10'
+                    }`}
                 >
                   {tagName}
                   <button
@@ -213,7 +217,7 @@ export function FlightStats({ data }: FlightStatsProps) {
                       removeTag(flight.id, tagName);
                     }}
                     className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-400"
-                    title={`Remove tag: ${tagName}`}
+                    title={t('flightStats.removeTag', { name: tagName })}
                   >
                     <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                   </button>
@@ -237,7 +241,7 @@ export function FlightStats({ data }: FlightStatsProps) {
                         setNewTagValue('');
                       }
                     }}
-                    placeholder="Tag name"
+                    placeholder={t('flightStats.tagName')}
                     className="h-6 w-28 text-xs px-2 rounded-full bg-drone-surface border border-gray-600 text-gray-200 focus:outline-none focus:border-violet-500"
                   />
                   {tagSuggestions.length > 0 && (
@@ -260,7 +264,7 @@ export function FlightStats({ data }: FlightStatsProps) {
                   type="button"
                   onClick={() => setIsAddingTag(true)}
                   className="w-5 h-5 rounded-full border border-dashed border-gray-500 text-gray-400 flex items-center justify-center hover:border-violet-400 hover:text-violet-400 transition-colors"
-                  title="Add tag"
+                  title={t('flightStats.addTag')}
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
@@ -271,45 +275,55 @@ export function FlightStats({ data }: FlightStatsProps) {
 
         <div className="text-right">
           <p className="text-xs text-gray-500">
-            {flight.pointCount?.toLocaleString() || 0} data points
+            {flight.pointCount?.toLocaleString(locale) || 0} {t('flightStats.dataPoints')}
           </p>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_auto_auto] gap-2">
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_0.8fr_0.8fr_auto_auto] gap-2">
         <StatCard
-          label="Duration"
+          label={t('flightStats.duration')}
           value={formatDuration(flight.durationSecs)}
           icon={<ClockIcon />}
         />
         <StatCard
-          label="Distance"
-          value={formatDistance(flight.totalDistance, unitSystem)}
+          label={t('flightStats.distance')}
+          value={formatDistance(flight.totalDistance, unitSystem, locale)}
           icon={<DistanceIcon />}
         />
         <StatCard
-          label="Max Height"
-          value={formatAltitude(flight.maxAltitude, unitSystem)}
+          label={t('flightStats.maxHeight')}
+          value={formatAltitude(flight.maxAltitude, unitSystem, locale)}
           icon={<AltitudeIcon />}
         />
         <StatCard
-          label="Max Speed"
-          value={formatSpeed(flight.maxSpeed, unitSystem)}
+          label={t('flightStats.maxSpeed')}
+          value={formatSpeed(flight.maxSpeed, unitSystem, locale)}
           icon={<SpeedIcon />}
         />
         <StatCard
-          label="Min Battery"
+          label={t('flightStats.minBattery')}
           value={minBattery !== null ? `${minBattery}%` : '--'}
           icon={<BatteryIcon percent={minBattery} />}
           alert={minBattery !== null && minBattery < 20}
+        />
+        <StatCard
+          label={t('flightStats.photos')}
+          value={(flight.photoCount ?? 0).toLocaleString(locale)}
+          icon={<CameraIcon />}
+        />
+        <StatCard
+          label={t('flightStats.videos')}
+          value={(flight.videoCount ?? 0).toLocaleString(locale)}
+          icon={<VideoIcon />}
         />
         {/* Weather button */}
         <button
           type="button"
           onClick={() => setIsWeatherOpen(true)}
           disabled={!flight.homeLat || !flight.homeLon || !flight.startTime}
-          title="Flight weather"
+          title={t('flightStats.flightWeather')}
           className="h-full min-h-[52px] w-[62px] flex items-center justify-center rounded-lg border-2 border-sky-500/70 text-sky-400 transition-all duration-200 hover:bg-sky-500 hover:text-white hover:shadow-md disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-sky-400"
         >
           <WeatherBtnIcon />
@@ -321,7 +335,7 @@ export function FlightStats({ data }: FlightStatsProps) {
             className="w-[126px] h-full min-h-[52px] flex items-center justify-center gap-2 rounded-lg border-2 border-drone-accent/70 text-drone-accent text-sm font-semibold px-2 transition-all duration-200 hover:bg-drone-accent hover:text-white hover:shadow-md"
           >
             <ExportIcon />
-            {isExporting ? 'Exporting...' : 'Export'}
+            {isExporting ? t('flightStats.exporting') : t('flightStats.export')}
             <ChevronIcon />
           </button>
           {isExportOpen && (
@@ -341,7 +355,7 @@ export function FlightStats({ data }: FlightStatsProps) {
                     }}
                     className="themed-select-option w-full text-left px-3 py-2 text-xs rounded-lg transition-colors"
                   >
-                    {option.label}
+                    {t(option.label)}
                   </button>
                 ))}
               </div>
@@ -381,9 +395,8 @@ function StatCard({ label, value, icon, alert }: StatCardProps) {
             {icon}
           </div>
           <p
-            className={`text-lg font-semibold ${
-              alert ? 'text-red-400' : 'text-white'
-            }`}
+            className={`text-lg font-semibold ${alert ? 'text-red-400' : 'text-white'
+              }`}
           >
             {value}
           </p>
@@ -523,5 +536,32 @@ function ChevronIcon() {
 
 function WeatherBtnIcon() {
   return <img src={weatherIcon} alt="Weather" className="w-[25px] h-[25px]" />;
+}
+
+function CameraIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+      />
+      <circle cx="12" cy="13" r="3" strokeWidth={2} />
+    </svg>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+      />
+    </svg>
+  );
 }
 

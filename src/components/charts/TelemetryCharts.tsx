@@ -10,6 +10,586 @@ import type { EChartsOption, ECharts, LineSeriesOption } from 'echarts';
 import type { TelemetryData } from '@/types';
 import type { UnitSystem } from '@/lib/utils';
 import { useFlightStore } from '@/stores/flightStore';
+import { useTranslation } from 'react-i18next';
+
+/** Translation function type for passing to chart builders */
+type TFn = (key: string, options?: any) => string;
+
+// ============================================================================
+// TELEMETRY FIELD DEFINITIONS
+// ============================================================================
+
+/** Definition of a telemetry field that can be plotted */
+interface TelemetryFieldDef {
+  id: string;
+  label: string;
+  color: string;
+  /** The key in TelemetryData to get raw values */
+  dataKey: keyof TelemetryData | 'distanceToHome';
+  /** Unit string (may be overridden by unitSystem) */
+  unit: string;
+  /** Unit string for imperial system */
+  unitImperial?: string;
+  /** Conversion factor for metric (applied to raw m/s values) */
+  metricFactor?: number;
+  /** Conversion factor for imperial (applied to raw m/s values) */
+  imperialFactor?: number;
+  /** Group this field belongs to for organization */
+  group: 'altitude' | 'speed' | 'battery' | 'attitude' | 'rc' | 'gps' | 'velocity';
+}
+
+/** All available telemetry fields that can be plotted */
+const TELEMETRY_FIELDS: TelemetryFieldDef[] = [
+  // Altitude group
+  { id: 'height', label: 'telemetry.height', color: '#00A0DC', dataKey: 'height', unit: 'm', unitImperial: 'ft', metricFactor: 1, imperialFactor: 3.28084, group: 'altitude' },
+  { id: 'vpsHeight', label: 'telemetry.vpsHeight', color: '#f97316', dataKey: 'vpsHeight', unit: 'm', unitImperial: 'ft', metricFactor: 1, imperialFactor: 3.28084, group: 'altitude' },
+  { id: 'altitude', label: 'telemetry.altitudeGps', color: '#22d3ee', dataKey: 'altitude', unit: 'm', unitImperial: 'ft', metricFactor: 1, imperialFactor: 3.28084, group: 'altitude' },
+  
+  // Speed group
+  { id: 'speed', label: 'telemetry.speed', color: '#00D4AA', dataKey: 'speed', unit: 'km/h', unitImperial: 'mph', metricFactor: 3.6, imperialFactor: 2.236936, group: 'speed' },
+  { id: 'velocityX', label: 'telemetry.xSpeed', color: '#ef4444', dataKey: 'velocityX', unit: 'km/h', unitImperial: 'mph', metricFactor: 3.6, imperialFactor: 2.236936, group: 'velocity' },
+  { id: 'velocityY', label: 'telemetry.ySpeed', color: '#a855f7', dataKey: 'velocityY', unit: 'km/h', unitImperial: 'mph', metricFactor: 3.6, imperialFactor: 2.236936, group: 'velocity' },
+  { id: 'velocityZ', label: 'telemetry.zSpeed', color: '#7c3aed', dataKey: 'velocityZ', unit: 'km/h', unitImperial: 'mph', metricFactor: 3.6, imperialFactor: 2.236936, group: 'velocity' },
+  
+  // Battery group
+  { id: 'battery', label: 'telemetry.batteryPercent', color: '#f59e0b', dataKey: 'battery', unit: '%', group: 'battery' },
+  { id: 'batteryVoltage', label: 'telemetry.voltage', color: '#3b82f6', dataKey: 'batteryVoltage', unit: 'V', group: 'battery' },
+  { id: 'batteryTemp', label: 'telemetry.temperature', color: '#e11d48', dataKey: 'batteryTemp', unit: '°C', group: 'battery' },
+  
+  // Attitude group
+  { id: 'pitch', label: 'telemetry.pitch', color: '#8b5cf6', dataKey: 'pitch', unit: '°', group: 'attitude' },
+  { id: 'roll', label: 'telemetry.roll', color: '#ec4899', dataKey: 'roll', unit: '°', group: 'attitude' },
+  { id: 'yaw', label: 'telemetry.yaw', color: '#14b8a6', dataKey: 'yaw', unit: '°', group: 'attitude' },
+  
+  // RC group
+  { id: 'rcSignal', label: 'telemetry.rcSignal', color: '#22c55e', dataKey: 'rcSignal', unit: '%', group: 'rc' },
+  { id: 'rcUplink', label: 'telemetry.rcUplink', color: '#84cc16', dataKey: 'rcUplink', unit: '%', group: 'rc' },
+  { id: 'rcDownlink', label: 'telemetry.rcDownlink', color: '#0369a1', dataKey: 'rcDownlink', unit: '%', group: 'rc' },
+  
+  // GPS group
+  { id: 'satellites', label: 'telemetry.gpsSatellites', color: '#0ea5e9', dataKey: 'satellites', unit: '', group: 'gps' },
+  { id: 'distanceToHome', label: 'telemetry.distToHome', color: '#10b981', dataKey: 'distanceToHome', unit: 'm', unitImperial: 'ft', metricFactor: 1, imperialFactor: 3.28084, group: 'gps' },
+  
+  // Cell Voltages (virtual field that expands to all available cells)
+  { id: 'allCellVoltages', label: 'telemetry.cellVoltages', color: '#fbbf24', dataKey: 'cellVoltages', unit: 'V', group: 'battery' },
+];
+
+/** Get field definition by id */
+function getFieldDef(id: string): TelemetryFieldDef | undefined {
+  return TELEMETRY_FIELDS.find(f => f.id === id);
+}
+
+/** Get data series for a field with unit conversion applied */
+function getFieldData(
+  fieldId: string,
+  data: TelemetryData,
+  unitSystem: UnitSystem
+): (number | null)[] {
+  const field = getFieldDef(fieldId);
+  if (!field) return [];
+
+  // allCellVoltages is handled specially in createDynamicChart, not here
+  if (fieldId === 'allCellVoltages') {
+    return [];
+  }
+
+  // Special handling for distanceToHome (computed field)
+  if (field.dataKey === 'distanceToHome') {
+    const distances = computeDistanceToHomeSeries(data);
+    const factor = unitSystem === 'imperial' ? (field.imperialFactor ?? 1) : (field.metricFactor ?? 1);
+    return distances.map(v => v === null ? null : v * factor);
+  }
+
+  // Special handling for height - use altitude as fallback
+  if (fieldId === 'height') {
+    const hasHeight = data.height.some((val) => val !== null);
+    const heightSource = hasHeight ? data.height : (data.altitude ?? []);
+    const factor = unitSystem === 'imperial' ? (field.imperialFactor ?? 1) : (field.metricFactor ?? 1);
+    return heightSource.map(v => v === null ? null : v * factor);
+  }
+
+  const rawData = data[field.dataKey as keyof TelemetryData];
+  if (!rawData || !Array.isArray(rawData)) return [];
+
+  // Apply unit conversion
+  const factor = unitSystem === 'imperial' 
+    ? (field.imperialFactor ?? 1) 
+    : (field.metricFactor ?? 1);
+
+  return (rawData as (number | null)[]).map(v => 
+    v === null || v === undefined ? null : v * factor
+  );
+}
+
+/** Get the unit string for a field based on unit system */
+function getFieldUnit(fieldId: string, unitSystem: UnitSystem): string {
+  const field = getFieldDef(fieldId);
+  if (!field) return '';
+  return unitSystem === 'imperial' && field.unitImperial ? field.unitImperial : field.unit;
+}
+
+/** Get a descriptive category label for a unit when multiple series share it */
+function getUnitCategoryLabel(unit: string, t: TFn): string {
+  const unitCategories: Record<string, string> = {
+    'm': t('telemetry.distanceM'),
+    'ft': t('telemetry.distanceFt'),
+    'km/h': t('telemetry.speedKmh'),
+    'mph': t('telemetry.speedMph'),
+    '°': 'Degrees (°)',
+    '%': 'Percent (%)',
+    'V': t('telemetry.cellVoltageV'),
+    '°C': t('telemetry.tempC'),
+  };
+  return unitCategories[unit] || unit;
+}
+
+/** Create a dynamic chart based on selected fields */
+function createDynamicChart(
+  selectedFieldIds: string[],
+  data: TelemetryData,
+  unitSystem: UnitSystem,
+  splitLineColor: string,
+  tooltipFormatter: TooltipFormatter,
+  tooltipColors: TooltipColors,
+  t: TFn
+): EChartsOption | null {
+  if (selectedFieldIds.length === 0) return null;
+
+  // Check if allCellVoltages is selected
+  const hasAllCellVoltages = selectedFieldIds.includes('allCellVoltages');
+  const otherFieldIds = selectedFieldIds.filter(id => id !== 'allCellVoltages');
+
+  // Get other fields
+  const otherFields = otherFieldIds
+    .map(id => getFieldDef(id))
+    .filter((f): f is TelemetryFieldDef => f !== undefined);
+
+  // Build cell voltage series if selected
+  const cellVoltageColors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#a855f7'];
+  let cellVoltageSeries: { label: string; data: (number | null)[]; color: string; unit: string }[] = [];
+  
+  if (hasAllCellVoltages) {
+    const cellVoltages = data.cellVoltages;
+    if (cellVoltages && cellVoltages.length > 0) {
+      const firstValidEntry = cellVoltages.find((v) => v !== null && v !== undefined);
+      if (firstValidEntry) {
+        const numCells = firstValidEntry.length;
+        for (let i = 0; i < numCells; i++) {
+          const cellData = cellVoltages.map(voltages => {
+            if (voltages && voltages[i] !== undefined && voltages[i] !== null && voltages[i] !== 0) {
+              return voltages[i];
+            }
+            return null;
+          });
+          cellVoltageSeries.push({
+            label: t('telemetry.cell', { n: i + 1 }),
+            data: cellData,
+            color: cellVoltageColors[i % cellVoltageColors.length],
+            unit: 'V',
+          });
+        }
+      }
+    }
+  }
+
+  // Get data series for other fields
+  const regularSeriesData = otherFields.map(field => ({
+    field,
+    data: getFieldData(field.id, data, unitSystem),
+    unit: getFieldUnit(field.id, unitSystem),
+  }));
+
+  // If only allCellVoltages and no cell data, return null
+  if (otherFields.length === 0 && cellVoltageSeries.length === 0) return null;
+
+  // Combine all series
+  const allSeriesData: { label: string; data: (number | null)[]; color: string; unit: string }[] = [
+    ...regularSeriesData.map(s => ({ label: t(s.field.label), data: s.data, color: s.field.color, unit: s.unit })),
+    ...cellVoltageSeries,
+  ];
+
+  if (allSeriesData.length === 0) return null;
+
+  // Create legend data
+  const legendData = allSeriesData.map(s => s.label);
+
+  // Group series by unit to share y-axis scales
+  const unitGroups = new Map<string, { indices: number[]; data: (number | null)[] }>();
+  allSeriesData.forEach((s, index) => {
+    const unitKey = s.unit || '__no_unit__';
+    if (!unitGroups.has(unitKey)) {
+      unitGroups.set(unitKey, { indices: [], data: [] });
+    }
+    const group = unitGroups.get(unitKey)!;
+    group.indices.push(index);
+    group.data.push(...s.data);
+  });
+
+  // Assign y-axis indices based on unique units (max 2 axes)
+  const uniqueUnits = Array.from(unitGroups.keys());
+  const unitToAxisIndex = new Map<string, number>();
+  uniqueUnits.forEach((unit, idx) => {
+    unitToAxisIndex.set(unit, Math.min(idx, 1)); // Clamp to max 2 axes (index 0 and 1)
+  });
+
+  // Compute combined ranges for each unit group
+  const unitRanges = new Map<string, { min?: number; max?: number }>();
+  for (const [unit, group] of unitGroups) {
+    unitRanges.set(unit, computeRange(group.data));
+  }
+
+  // Create series with y-axis index based on unit
+  const series: LineSeriesOption[] = allSeriesData.map((s, index) => {
+    const unitKey = s.unit || '__no_unit__';
+    const yAxisIndex = allSeriesData.length > 1 ? unitToAxisIndex.get(unitKey) ?? 0 : 0;
+    return {
+      name: s.label,
+      type: 'line',
+      data: s.data,
+      yAxisIndex,
+      smooth: true,
+      symbol: 'none',
+      itemStyle: { color: s.color },
+      lineStyle: { color: s.color, width: index === 0 ? 2 : 1.5 },
+      ...(index === 0 ? {
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: `${s.color}4d` },
+              { offset: 1, color: `${s.color}0d` },
+            ],
+          },
+        },
+      } : {}),
+    };
+  });
+
+  // Create Y-axes based on unique units (max 2)
+  const yAxis: any[] = [];
+  const axisUnits = uniqueUnits.slice(0, 2); // Max 2 axes
+  axisUnits.forEach((unit, axisIndex) => {
+    const group = unitGroups.get(unit)!;
+    const range = unitRanges.get(unit)!;
+    // Use the first series with this unit for display properties
+    const firstSeriesIndex = group.indices[0];
+    const s = allSeriesData[firstSeriesIndex];
+    // Build axis name: if multiple series share this unit, show descriptive category; otherwise show label with unit
+    const seriesWithUnit = group.indices.map(i => allSeriesData[i]);
+    const axisName = seriesWithUnit.length > 1 && s.unit
+      ? getUnitCategoryLabel(s.unit, t)
+      : (s.unit ? `${s.label} (${s.unit})` : s.label);
+    yAxis.push({
+      type: 'value',
+      name: axisName,
+      min: range.min,
+      max: range.max,
+      nameTextStyle: { color: s.color },
+      axisLine: { lineStyle: { color: s.color } },
+      axisLabel: { color: '#9ca3af' },
+      splitLine: { lineStyle: { color: splitLineColor }, show: axisIndex === 0 },
+    });
+  });
+
+  return {
+    ...baseChartConfig,
+    tooltip: {
+      ...baseChartConfig.tooltip,
+      backgroundColor: tooltipColors.background,
+      borderColor: tooltipColors.border,
+      textStyle: { color: tooltipColors.text },
+      formatter: tooltipFormatter,
+    },
+    legend: {
+      ...baseChartConfig.legend,
+      data: legendData,
+    },
+    xAxis: {
+      ...createTimeAxis(data.time),
+    },
+    yAxis,
+    series,
+  };
+}
+
+// ============================================================================
+// CHART CONFIGURATION TYPES & PERSISTENCE
+// ============================================================================
+
+/** Configuration for a single chart panel */
+interface ChartPanelConfig {
+  /** Custom title (null = use default) */
+  title: string | null;
+  /** Selected field IDs to plot (max 3) */
+  selectedFields: string[];
+}
+
+/** All chart configurations keyed by chart ID */
+interface TelemetryChartsConfig {
+  altitudeSpeed: ChartPanelConfig;
+  battery: ChartPanelConfig;
+  cellVoltage: ChartPanelConfig;
+  attitude: ChartPanelConfig;
+  rcSignal: ChartPanelConfig;
+  distanceToHome: ChartPanelConfig;
+  velocity: ChartPanelConfig;
+  gps: ChartPanelConfig;
+}
+
+/** Default configuration for all charts */
+const DEFAULT_CHART_CONFIGS: TelemetryChartsConfig = {
+  altitudeSpeed: { title: null, selectedFields: ['height', 'vpsHeight', 'speed'] },
+  battery: { title: null, selectedFields: ['battery', 'batteryVoltage', 'batteryTemp'] },
+  cellVoltage: { title: null, selectedFields: ['allCellVoltages'] },
+  attitude: { title: null, selectedFields: ['pitch', 'roll', 'yaw'] },
+  rcSignal: { title: null, selectedFields: ['rcSignal'] }, // Will be overridden if uplink/downlink available
+  distanceToHome: { title: null, selectedFields: ['distanceToHome'] },
+  velocity: { title: null, selectedFields: ['velocityX', 'velocityY', 'velocityZ'] },
+  gps: { title: null, selectedFields: ['satellites'] },
+};
+
+const CHART_CONFIG_STORAGE_KEY = 'telemetryChartConfigs';
+
+/** Load chart configurations from localStorage */
+function loadChartConfigs(): TelemetryChartsConfig {
+  try {
+    const stored = localStorage.getItem(CHART_CONFIG_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Deep merge with defaults to ensure all keys exist and no empty arrays
+      const result = { ...DEFAULT_CHART_CONFIGS };
+      for (const key of Object.keys(DEFAULT_CHART_CONFIGS) as (keyof TelemetryChartsConfig)[]) {
+        if (parsed[key]) {
+          result[key] = {
+            ...DEFAULT_CHART_CONFIGS[key],
+            ...parsed[key],
+            // Ensure selectedFields is never empty - use default if stored is empty
+            selectedFields: parsed[key].selectedFields?.length > 0 
+              ? parsed[key].selectedFields 
+              : DEFAULT_CHART_CONFIGS[key].selectedFields,
+          };
+        }
+      }
+      return result;
+    }
+  } catch (e) {
+    console.warn('Failed to load telemetry chart configs:', e);
+  }
+  return { ...DEFAULT_CHART_CONFIGS };
+}
+
+/** Save chart configurations to localStorage */
+function saveChartConfigs(configs: TelemetryChartsConfig): void {
+  try {
+    localStorage.setItem(CHART_CONFIG_STORAGE_KEY, JSON.stringify(configs));
+  } catch (e) {
+    console.warn('Failed to save telemetry chart configs:', e);
+  }
+}
+
+// ============================================================================
+// CHART HEADER COMPONENT (Title + Multi-Select)
+// ============================================================================
+
+interface ChartHeaderProps {
+  config: ChartPanelConfig;
+  availableFields: TelemetryFieldDef[];
+  onFieldsChange: (fields: string[]) => void;
+  unitSystem: UnitSystem;
+  theme: 'dark' | 'light';
+}
+
+function ChartHeader({
+  config,
+  availableFields,
+  onFieldsChange,
+  unitSystem,
+  theme,
+}: ChartHeaderProps) {
+  const { t } = useTranslation();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Filter available fields by search
+  const filteredFields = useMemo(() => {
+    if (!searchQuery.trim()) return availableFields;
+    const q = searchQuery.toLowerCase();
+    return availableFields.filter(f => t(f.label).toLowerCase().includes(q));
+  }, [availableFields, searchQuery, t]);
+
+  // Sort: selected first, then alphabetically
+  const sortedFields = useMemo(() => {
+    return [...filteredFields].sort((a, b) => {
+      const aSelected = config.selectedFields.includes(a.id);
+      const bSelected = config.selectedFields.includes(b.id);
+      if (aSelected && !bSelected) return -1;
+      if (!aSelected && bSelected) return 1;
+      return t(a.label).localeCompare(t(b.label));
+    });
+  }, [filteredFields, config.selectedFields, t]);
+
+  const handleFieldToggle = useCallback((fieldId: string) => {
+    const isSelected = config.selectedFields.includes(fieldId);
+    if (isSelected) {
+      // Don't allow deselecting the last item - must have at least 1 selection
+      if (config.selectedFields.length <= 1) return;
+      onFieldsChange(config.selectedFields.filter(f => f !== fieldId));
+    } else if (config.selectedFields.length < 4) {
+      onFieldsChange([...config.selectedFields, fieldId]);
+    }
+  }, [config.selectedFields, onFieldsChange]);
+
+  const getFieldUnit = useCallback((field: TelemetryFieldDef) => {
+    if (unitSystem === 'imperial' && field.unitImperial) {
+      return field.unitImperial;
+    }
+    return field.unit;
+  }, [unitSystem]);
+
+  const isLight = theme === 'light';
+
+  // Don't render if no fields available
+  if (availableFields.length === 0) return null;
+
+  return (
+    <div className="flex items-center justify-start mb-1 px-1">
+      {/* Multi-Select Dropdown - Left side, bigger with highlighted border */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsDropdownOpen(v => !v)}
+          className={`text-[11px] h-6 px-2.5 py-1 flex items-center gap-1.5 rounded-md border-2 transition-colors ${
+            isLight
+              ? 'bg-gray-100 border-sky-400 text-gray-700 hover:bg-gray-200 hover:border-sky-500'
+              : 'bg-drone-surface border-sky-500/60 text-gray-300 hover:bg-gray-700 hover:border-sky-400'
+          }`}
+          title={t('telemetry.selectData')}
+        >
+          <span className="font-medium">{config.selectedFields.length}/4</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {isDropdownOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => { setIsDropdownOpen(false); setSearchQuery(''); }}
+            />
+            <div
+              ref={dropdownRef}
+              className={`absolute left-0 top-full mt-1 z-50 w-52 max-h-64 rounded-lg border-2 shadow-xl flex flex-col overflow-hidden ${
+                isLight
+                  ? 'bg-white border-sky-400'
+                  : 'bg-drone-surface border-sky-500/60'
+              }`}
+            >
+              {/* Search input */}
+              <div className={`px-2 pt-2 pb-1 border-b flex-shrink-0 ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setHighlightedIndex(0); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHighlightedIndex(prev => prev < sortedFields.length - 1 ? prev + 1 : 0);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHighlightedIndex(prev => prev > 0 ? prev - 1 : sortedFields.length - 1);
+                    } else if (e.key === 'Enter' && sortedFields.length > 0) {
+                      e.preventDefault();
+                      const field = sortedFields[highlightedIndex];
+                      if (field) handleFieldToggle(field.id);
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setIsDropdownOpen(false);
+                      setSearchQuery('');
+                    }
+                  }}
+                  placeholder={t('telemetry.searchFields')}
+                  autoFocus
+                  className={`w-full text-[11px] rounded px-2 py-1 border focus:outline-none ${
+                    isLight
+                      ? 'bg-gray-50 text-gray-800 border-gray-300 focus:border-sky-500 placeholder-gray-400'
+                      : 'bg-drone-dark text-gray-200 border-gray-600 focus:border-drone-primary placeholder-gray-500'
+                  }`}
+                />
+              </div>
+
+              {/* Field list */}
+              <div className="overflow-auto flex-1">
+                {sortedFields.length === 0 ? (
+                  <p className={`text-[11px] px-3 py-2 ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+                    {t('telemetry.noMatchingFields')}
+                  </p>
+                ) : (
+                  sortedFields.map((field, index) => {
+                    const isSelected = config.selectedFields.includes(field.id);
+                    // Disable if: max selections reached (for unselected), or it's the only selection (can't deselect last)
+                    const isLastSelected = isSelected && config.selectedFields.length === 1;
+                    const isDisabled = isLastSelected || (!isSelected && config.selectedFields.length >= 4);
+                    return (
+                      <button
+                        key={field.id}
+                        type="button"
+                        onClick={() => !isDisabled && handleFieldToggle(field.id)}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        disabled={isDisabled}
+                        className={`w-full text-left px-2.5 py-1.5 text-[11px] flex items-center gap-2 transition-colors ${
+                          isDisabled && isLastSelected
+                            ? isLight ? 'bg-sky-100/50 text-sky-600 cursor-not-allowed' : 'bg-sky-500/10 text-sky-300 cursor-not-allowed'
+                            : isDisabled
+                              ? isLight ? 'text-gray-400 cursor-not-allowed' : 'text-gray-600 cursor-not-allowed'
+                              : isSelected
+                                ? isLight ? 'bg-sky-100 text-sky-800' : 'bg-sky-500/20 text-sky-200'
+                                : index === highlightedIndex
+                                  ? isLight ? 'bg-gray-100' : 'bg-gray-700/50'
+                                  : isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-gray-700/50'
+                        }`}
+                        title={isLastSelected ? t('telemetry.cannotDeselect') : undefined}
+                      >
+                        <span
+                          className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                            isSelected
+                              ? 'border-sky-500 bg-sky-500'
+                              : isLight ? 'border-gray-400' : 'border-gray-600'
+                          }`}
+                        >
+                          {isSelected && (
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </span>
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: field.color }}
+                        />
+                        <span className="truncate flex-1">{t(field.label)}</span>
+                        <span className={`flex-shrink-0 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {getFieldUnit(field)}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN COMPONENT TYPES
+// ============================================================================
 
 interface TelemetryChartsProps {
   data: TelemetryData;
@@ -18,17 +598,19 @@ interface TelemetryChartsProps {
 }
 
 export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryChartsProps) {
+  const { t } = useTranslation();
   const chartsRef = useRef<ECharts[]>([]);
   const isSyncingRef = useRef(false);
   const themeMode = useFlightStore((state) => state.themeMode);
+  const locale = useFlightStore((state) => state.locale);
   const mapSyncEnabled = useFlightStore((state) => state.mapSyncEnabled);
   const setMapSyncEnabled = useFlightStore((state) => state.setMapSyncEnabled);
   const mapReplayProgress = useFlightStore((state) => state.mapReplayProgress);
   const resolvedTheme = useMemo(() => resolveThemeMode(themeMode), [themeMode]);
   const splitLineColor = resolvedTheme === 'light' ? '#e2e8f0' : '#2a2a4e';
   const tooltipFormatter = useMemo(
-    () => createTooltipFormatter(startTime ?? null, resolvedTheme),
-    [resolvedTheme, startTime]
+    () => createTooltipFormatter(startTime ?? null, resolvedTheme, locale),
+    [resolvedTheme, startTime, locale]
   );
   const tooltipColors = useMemo(
     () =>
@@ -45,6 +627,24 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
           },
     [resolvedTheme]
   );
+
+  // Chart configuration state (persisted to localStorage)
+  const [chartConfigs, setChartConfigs] = useState<TelemetryChartsConfig>(() => loadChartConfigs());
+
+  // Persist configuration changes
+  const updateChartConfig = useCallback((
+    chartId: keyof TelemetryChartsConfig,
+    updates: Partial<ChartPanelConfig>
+  ) => {
+    setChartConfigs(prev => {
+      const newConfigs = {
+        ...prev,
+        [chartId]: { ...prev[chartId], ...updates },
+      };
+      saveChartConfigs(newConfigs);
+      return newConfigs;
+    });
+  }, []);
 
   // Update module-level base config when theme changes
   useMemo(() => {
@@ -76,6 +676,11 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
         end: 100,
       });
     });
+  }, []);
+
+  const resetSelections = useCallback(() => {
+    setChartConfigs({ ...DEFAULT_CHART_CONFIGS });
+    saveChartConfigs({ ...DEFAULT_CHART_CONFIGS });
   }, []);
 
   const syncZoom = useCallback((sourceChart: ECharts) => {
@@ -154,44 +759,167 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
   }, [mapSyncEnabled, mapReplayProgress, data.time]);
 
   // Memoize chart options to prevent unnecessary re-renders
+  // Use dynamic chart creation when custom fields are selected
   const altitudeSpeedOption = useMemo(
-    () =>
-      createAltitudeSpeedChart(
+    () => {
+      const config = chartConfigs.altitudeSpeed;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      // Fallback to original chart when no fields selected
+      return createAltitudeSpeedChart(
         data,
         unitSystem,
         splitLineColor,
         tooltipFormatter,
-        tooltipColors
-      ),
-    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem]
+        tooltipColors,
+        t
+      );
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.altitudeSpeed, t]
   );
+  
   const batteryOption = useMemo(
-    () => createBatteryChart(data, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter]
+    () => {
+      const config = chartConfigs.battery;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createBatteryChart(data, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.battery, t]
   );
+  
   const cellVoltageOption = useMemo(
-    () => createCellVoltageChart(data, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter]
+    () => {
+      const config = chartConfigs.cellVoltage;
+      // If user selected custom fields, use dynamic chart
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      // Default: use the special cell voltage chart (shows individual cells)
+      return createCellVoltageChart(data, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.cellVoltage, t]
   );
+  
   const attitudeOption = useMemo(
-    () => createAttitudeChart(data, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter]
+    () => {
+      const config = chartConfigs.attitude;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createAttitudeChart(data, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.attitude, t]
   );
+  
   const rcSignalOption = useMemo(
-    () => createRcSignalChart(data, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter]
+    () => {
+      const config = chartConfigs.rcSignal;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createRcSignalChart(data, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.rcSignal, t]
   );
+  
   const distanceToHomeOption = useMemo(
-    () => createDistanceToHomeChart(data, unitSystem, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem]
+    () => {
+      const config = chartConfigs.distanceToHome;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createDistanceToHomeChart(data, unitSystem, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.distanceToHome, t]
   );
+  
   const velocityOption = useMemo(
-    () => createVelocityChart(data, unitSystem, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem]
+    () => {
+      const config = chartConfigs.velocity;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createVelocityChart(data, unitSystem, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.velocity, t]
   );
+  
   const gpsOption = useMemo(
-    () => createGpsChart(data, splitLineColor, tooltipFormatter, tooltipColors),
-    [data, splitLineColor, tooltipColors, tooltipFormatter]
+    () => {
+      const config = chartConfigs.gps;
+      if (config.selectedFields.length > 0) {
+        return createDynamicChart(
+          config.selectedFields,
+          data,
+          unitSystem,
+          splitLineColor,
+          tooltipFormatter,
+          tooltipColors,
+          t
+        );
+      }
+      return createGpsChart(data, splitLineColor, tooltipFormatter, tooltipColors, t);
+    },
+    [data, splitLineColor, tooltipColors, tooltipFormatter, unitSystem, chartConfigs.gps, t]
   );
 
   return (
@@ -209,7 +937,7 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
           <svg className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
-          Map sync
+          {t('telemetry.mapSync')}
         </button>
         <button
           onClick={toggleDragZoom}
@@ -223,104 +951,184 @@ export function TelemetryCharts({ data, unitSystem, startTime }: TelemetryCharts
           <svg className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" viewBox="0 0 1024 1024" fill="currentColor">
             <path d="M1005.3 967.5L755.8 718.1c63.2-74.5 101.5-171 101.5-276.4C857.3 198 665.3 6 429.6 6S2 198 2 441.7s192 435.7 427.7 435.7c105.4 0 201.9-38.3 276.4-101.5l249.4 249.4c10.4 10.4 27.3 10.4 37.8 0l12-12c10.4-10.5 10.4-27.3 0-37.8zM429.6 810.4c-203.4 0-368.7-165.3-368.7-368.7s165.3-368.7 368.7-368.7 368.7 165.3 368.7 368.7-165.3 368.7-368.7 368.7z" />
           </svg>
-          Drag zoom
+          {t('telemetry.dragZoom')}
         </button>
         <button
           onClick={resetZoom}
           className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
           title="Reset zoom on all charts"
         >
-          Reset zoom
+          {t('telemetry.resetZoom')}
+        </button>
+        <button
+          onClick={resetSelections}
+          className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1"
+          title="Reset all chart selections to default"
+        >
+          {t('telemetry.resetSelection')}
         </button>
       </div>
+
       {/* Altitude & Speed Chart */}
-      <div className="h-60">
-        <ReactECharts
-          option={altitudeSpeedOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.altitudeSpeed}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('altitudeSpeed', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
-      </div>
-
-      {/* Battery Chart */}
-      <div className="h-56">
-        <ReactECharts
-          option={batteryOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
-        />
-      </div>
-
-      {/* Cell Voltage Chart - only shown if cell voltage data exists */}
-      {cellVoltageOption && (
-        <div className="h-48">
+        <div className="h-64">
           <ReactECharts
-            option={cellVoltageOption}
+            option={altitudeSpeedOption}
             style={{ height: '100%', width: '100%' }}
             opts={{ renderer: 'canvas' }}
             notMerge={true}
             onChartReady={registerChart}
           />
         </div>
+      </div>
+
+      {/* Battery Chart */}
+      <div>
+        <ChartHeader
+          config={chartConfigs.battery}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('battery', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
+        />
+        <div className="h-60">
+          <ReactECharts
+            option={batteryOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
+      </div>
+
+      {/* Cell Voltage Chart - only shown if cell voltage data exists */}
+      {cellVoltageOption && (
+        <div>
+          <ChartHeader
+            config={chartConfigs.cellVoltage}
+            availableFields={TELEMETRY_FIELDS}
+            onFieldsChange={(fields) => updateChartConfig('cellVoltage', { selectedFields: fields })}
+            unitSystem={unitSystem}
+            theme={resolvedTheme}
+          />
+          <div className="h-52">
+            <ReactECharts
+              option={cellVoltageOption}
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'canvas' }}
+              notMerge={true}
+              onChartReady={registerChart}
+            />
+          </div>
+        </div>
       )}
 
       {/* Attitude Chart */}
-      <div className="h-60">
-        <ReactECharts
-          option={attitudeOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.attitude}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('attitude', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
+        <div className="h-64">
+          <ReactECharts
+            option={attitudeOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
       </div>
 
       {/* RC Signal Chart */}
-      <div className="h-40">
-        <ReactECharts
-          option={rcSignalOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.rcSignal}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('rcSignal', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
+        <div className="h-40">
+          <ReactECharts
+            option={rcSignalOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
       </div>
 
       {/* Distance to Home Chart */}
-      <div className="h-48">
-        <ReactECharts
-          option={distanceToHomeOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.distanceToHome}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('distanceToHome', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
+        <div className="h-52">
+          <ReactECharts
+            option={distanceToHomeOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
       </div>
 
       {/* Velocity Chart */}
-      <div className="h-48">
-        <ReactECharts
-          option={velocityOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.velocity}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('velocity', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
+        <div className="h-52">
+          <ReactECharts
+            option={velocityOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
       </div>
 
       {/* GPS Satellites Chart */}
-      <div className="h-[200px]">
-        <ReactECharts
-          option={gpsOption}
-          style={{ height: '100%', width: '100%' }}
-          opts={{ renderer: 'canvas' }}
-          notMerge={true}
-          onChartReady={registerChart}
+      <div>
+        <ChartHeader
+          config={chartConfigs.gps}
+          availableFields={TELEMETRY_FIELDS}
+          onFieldsChange={(fields) => updateChartConfig('gps', { selectedFields: fields })}
+          unitSystem={unitSystem}
+          theme={resolvedTheme}
         />
+        <div className="h-[207px]">
+          <ReactECharts
+            option={gpsOption}
+            style={{ height: '100%', width: '100%' }}
+            opts={{ renderer: 'canvas' }}
+            notMerge={true}
+            onChartReady={registerChart}
+          />
+        </div>
       </div>
     </div>
   );
@@ -353,8 +1161,8 @@ function createBaseChartConfig(theme: 'dark' | 'light'): Partial<EChartsOption> 
       itemSize: 0,
     },
     grid: {
-      left: 50,
-      right: 46,
+      left: 40,
+      right: 40,
       top: 30,
       bottom: 50,
       containLabel: true,
@@ -450,7 +1258,8 @@ function createAltitudeSpeedChart(
   unitSystem: UnitSystem,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const hasHeight = data.height.some((val) => val !== null);
   const fallbackHeight = data.altitude ?? [];
@@ -467,8 +1276,6 @@ function createAltitudeSpeedChart(
     unitSystem === 'imperial'
       ? data.speed.map((val) => (val === null ? null : val * 2.236936))
       : data.speed.map((val) => (val === null ? null : val * 3.6));
-  const heightUnit = unitSystem === 'imperial' ? 'ft' : 'm';
-  const speedUnit = unitSystem === 'imperial' ? 'mph' : 'km/h';
   const heightRange = computeRange([
     ...heightSeries,
     ...vpsHeightSeries,
@@ -486,7 +1293,7 @@ function createAltitudeSpeedChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['Height', 'VPS Height', 'Speed'],
+      data: [t('telemetry.height'), t('telemetry.vpsHeight'), t('telemetry.speed')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
@@ -494,7 +1301,7 @@ function createAltitudeSpeedChart(
     yAxis: [
       {
         type: 'value',
-        name: `Height (${heightUnit})`,
+        name: unitSystem === 'imperial' ? t('telemetry.heightFt') : t('telemetry.heightM'),
         min: heightRange.min,
         max: heightRange.max,
         nameTextStyle: {
@@ -516,7 +1323,7 @@ function createAltitudeSpeedChart(
       },
       {
         type: 'value',
-        name: `Speed (${speedUnit})`,
+        name: unitSystem === 'imperial' ? t('telemetry.speedMph') : t('telemetry.speedKmh'),
         min: speedRange.min,
         max: speedRange.max,
         nameTextStyle: {
@@ -537,7 +1344,7 @@ function createAltitudeSpeedChart(
     ],
     series: [
       {
-        name: 'Height',
+        name: t('telemetry.height'),
         type: 'line',
         data: heightSeries,
         yAxisIndex: 0,
@@ -565,7 +1372,7 @@ function createAltitudeSpeedChart(
         },
       },
       {
-        name: 'VPS Height',
+        name: t('telemetry.vpsHeight'),
         type: 'line',
         data: vpsHeightSeries,
         yAxisIndex: 0,
@@ -580,7 +1387,7 @@ function createAltitudeSpeedChart(
         },
       },
       {
-        name: 'Speed',
+        name: t('telemetry.speed'),
         type: 'line',
         data: speedSeries,
         yAxisIndex: 1,
@@ -602,7 +1409,8 @@ function createBatteryChart(
   data: TelemetryData,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const batteryRange = computeRange(data.battery, { clampMin: 0, clampMax: 100 });
   const voltageRange = computeRange(data.batteryVoltage);
@@ -618,7 +1426,7 @@ function createBatteryChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['Battery %', 'Voltage', 'Temperature'],
+      data: [t('telemetry.batteryPercent'), t('telemetry.voltage'), t('telemetry.temperature')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
@@ -626,7 +1434,7 @@ function createBatteryChart(
     yAxis: [
       {
         type: 'value',
-        name: 'Battery %',
+        name: t('telemetry.batteryPercentAxis'),
         min: batteryRange.min,
         max: batteryRange.max,
         axisLine: {
@@ -645,7 +1453,7 @@ function createBatteryChart(
       },
       {
         type: 'value',
-        name: 'Temp (°C)',
+        name: t('telemetry.tempC'),
         position: 'right',
         min: tempRange.min,
         max: tempRange.max,
@@ -683,7 +1491,7 @@ function createBatteryChart(
     ],
     series: [
       {
-        name: 'Battery %',
+        name: t('telemetry.batteryPercent'),
         type: 'line',
         data: data.battery,
         smooth: true,
@@ -717,7 +1525,7 @@ function createBatteryChart(
         },
       },
       {
-        name: 'Voltage',
+        name: t('telemetry.voltage'),
         type: 'line',
         data: data.batteryVoltage,
         yAxisIndex: 2,
@@ -732,7 +1540,7 @@ function createBatteryChart(
         },
       },
       {
-        name: 'Temperature',
+        name: t('telemetry.temperature'),
         type: 'line',
         data: data.batteryTemp,
         yAxisIndex: 1,
@@ -770,7 +1578,8 @@ function createCellVoltageChart(
   data: TelemetryData,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption | null {
   // Determine the number of cells from the first non-null entry
   const cellVoltages = data.cellVoltages;
@@ -790,10 +1599,11 @@ function createCellVoltageChart(
   }
 
   // Extract individual cell series
+  // Treat 0 values as missing (0.0 indicates unparsed/unavailable data)
   const cellSeries: (number | null)[][] = Array.from({ length: numCells }, () => []);
   for (const voltages of cellVoltages) {
     for (let i = 0; i < numCells; i++) {
-      if (voltages && voltages[i] !== undefined) {
+      if (voltages && voltages[i] !== undefined && voltages[i] !== null && voltages[i] !== 0) {
         cellSeries[i].push(voltages[i]);
       } else {
         cellSeries[i].push(null);
@@ -801,14 +1611,14 @@ function createCellVoltageChart(
     }
   }
 
-  // Compute range across all cells
+  // Compute range across all cells (excluding nulls which already excludes zeros)
   const allVoltages = cellSeries.flat().filter((v): v is number => v !== null);
   const voltageRange = computeRange(allVoltages, { paddingRatio: 0.05 });
 
-  const legendData = Array.from({ length: numCells }, (_, i) => `Cell ${i + 1}`);
+  const legendData = Array.from({ length: numCells }, (_, i) => t('telemetry.cell', { n: i + 1 }));
 
   const series: LineSeriesOption[] = cellSeries.map((values, i) => ({
-    name: `Cell ${i + 1}`,
+    name: t('telemetry.cell', { n: i + 1 }),
     type: 'line',
     data: values,
     smooth: true,
@@ -840,7 +1650,7 @@ function createCellVoltageChart(
     },
     yAxis: {
       type: 'value',
-      name: 'Cell Voltage (V)',
+      name: t('telemetry.cellVoltageV'),
       min: voltageRange.min,
       max: voltageRange.max,
       axisLine: {
@@ -866,7 +1676,8 @@ function createAttitudeChart(
   data: TelemetryData,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const attitudeRange = computeRange([
     ...data.pitch,
@@ -884,14 +1695,14 @@ function createAttitudeChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['Pitch', 'Roll', 'Yaw'],
+      data: [t('telemetry.pitch'), t('telemetry.roll'), t('telemetry.yaw')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: 'Rotations',
+      name: t('telemetry.rotations'),
       nameTextStyle: {
         color: '#8b5cf6',
       },
@@ -913,7 +1724,7 @@ function createAttitudeChart(
     },
     series: [
       {
-        name: 'Pitch',
+        name: t('telemetry.pitch'),
         type: 'line',
         data: data.pitch,
         smooth: true,
@@ -927,7 +1738,7 @@ function createAttitudeChart(
         },
       },
       {
-        name: 'Roll',
+        name: t('telemetry.roll'),
         type: 'line',
         data: data.roll,
         smooth: true,
@@ -941,7 +1752,7 @@ function createAttitudeChart(
         },
       },
       {
-        name: 'Yaw',
+        name: t('telemetry.yaw'),
         type: 'line',
         data: data.yaw,
         smooth: true,
@@ -962,7 +1773,8 @@ function createRcSignalChart(
   data: TelemetryData,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const rcUplink = data.rcUplink ?? [];
   const rcDownlink = data.rcDownlink ?? [];
@@ -973,7 +1785,7 @@ function createRcSignalChart(
     ...(showCombined
       ? [
           {
-            name: 'RC Signal',
+            name: t('telemetry.rcSignal'),
             type: 'line' as const,
             data: data.rcSignal,
             smooth: true,
@@ -989,7 +1801,7 @@ function createRcSignalChart(
         ]
       : [
           {
-            name: 'RC Uplink',
+            name: t('telemetry.rcUplink'),
             type: 'line' as const,
             data: rcUplink,
             smooth: true,
@@ -1003,7 +1815,7 @@ function createRcSignalChart(
             },
           },
           {
-            name: 'RC Downlink',
+            name: t('telemetry.rcDownlink'),
             type: 'line' as const,
             data: rcDownlink,
             smooth: true,
@@ -1029,14 +1841,14 @@ function createRcSignalChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: showCombined ? ['RC Signal'] : ['RC Uplink', 'RC Downlink'],
+      data: showCombined ? [t('telemetry.rcSignal')] : [t('telemetry.rcUplink'), t('telemetry.rcDownlink')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: 'RC Signal',
+      name: t('telemetry.rcSignalAxis'),
       min: 0,
       max: 100,
       interval: 50,
@@ -1064,14 +1876,14 @@ function createDistanceToHomeChart(
   unitSystem: UnitSystem,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const distances = computeDistanceToHomeSeries(data);
   const distanceSeries =
     unitSystem === 'imperial'
       ? distances.map((val) => (val === null ? null : val * 3.28084))
       : distances;
-  const distanceUnit = unitSystem === 'imperial' ? 'ft' : 'm';
   const distanceRange = computeRange(distanceSeries, { clampMin: 0 });
 
   return {
@@ -1085,14 +1897,14 @@ function createDistanceToHomeChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['Distance to Home'],
+      data: [t('telemetry.distToHome')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: `Distance (${distanceUnit})`,
+      name: unitSystem === 'imperial' ? t('telemetry.distanceFt') : t('telemetry.distanceM'),
       min: distanceRange.min,
       max: distanceRange.max,
       axisLine: {
@@ -1111,7 +1923,7 @@ function createDistanceToHomeChart(
     },
     series: [
       {
-        name: 'Distance to Home',
+        name: t('telemetry.distToHome'),
         type: 'line',
         data: distanceSeries,
         smooth: true,
@@ -1133,7 +1945,8 @@ function createVelocityChart(
   unitSystem: UnitSystem,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const velocityX = data.velocityX ?? [];
   const velocityY = data.velocityY ?? [];
@@ -1142,7 +1955,6 @@ function createVelocityChart(
   const xSeries = velocityX.map((val) => (val === null || val === undefined ? null : val * speedSeriesFactor));
   const ySeries = velocityY.map((val) => (val === null || val === undefined ? null : val * speedSeriesFactor));
   const zSeries = velocityZ.map((val) => (val === null || val === undefined ? null : val * speedSeriesFactor));
-  const speedUnit = unitSystem === 'imperial' ? 'mph' : 'km/h';
   const speedRange = computeRange([...xSeries, ...ySeries, ...zSeries]);
 
   return {
@@ -1156,14 +1968,14 @@ function createVelocityChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['X Speed', 'Y Speed', 'Z Speed'],
+      data: [t('telemetry.xSpeed'), t('telemetry.ySpeed'), t('telemetry.zSpeed')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: `Speed (${speedUnit})`,
+      name: unitSystem === 'imperial' ? t('telemetry.speedMph') : t('telemetry.speedKmh'),
       min: speedRange.min,
       max: speedRange.max,
       axisLine: {
@@ -1182,7 +1994,7 @@ function createVelocityChart(
     },
     series: [
       {
-        name: 'X Speed',
+        name: t('telemetry.xSpeed'),
         type: 'line',
         data: xSeries,
         smooth: true,
@@ -1196,7 +2008,7 @@ function createVelocityChart(
         },
       },
       {
-        name: 'Y Speed',
+        name: t('telemetry.ySpeed'),
         type: 'line',
         data: ySeries,
         smooth: true,
@@ -1210,7 +2022,7 @@ function createVelocityChart(
         },
       },
       {
-        name: 'Z Speed',
+        name: t('telemetry.zSpeed'),
         type: 'line',
         data: zSeries,
         smooth: true,
@@ -1270,7 +2082,8 @@ function createGpsChart(
   data: TelemetryData,
   splitLineColor: string,
   tooltipFormatter: TooltipFormatter,
-  tooltipColors: TooltipColors
+  tooltipColors: TooltipColors,
+  t: TFn
 ): EChartsOption {
   const gpsRange = computeRange(data.satellites, { clampMin: 0 });
   return {
@@ -1284,14 +2097,14 @@ function createGpsChart(
     },
     legend: {
       ...baseChartConfig.legend,
-      data: ['GPS Satellites'],
+      data: [t('telemetry.gpsSatellites')],
     },
     xAxis: {
       ...createTimeAxis(data.time),
     },
     yAxis: {
       type: 'value',
-      name: 'Satellites',
+      name: t('telemetry.satellitesAxis'),
       min: gpsRange.min,
       max: gpsRange.max,
       axisLine: {
@@ -1310,7 +2123,7 @@ function createGpsChart(
     },
     series: [
       {
-        name: 'GPS Satellites',
+        name: t('telemetry.gpsSatellites'),
         type: 'line',
         data: data.satellites,
         smooth: true,
@@ -1391,7 +2204,8 @@ type TooltipColors = {
 
 function createTooltipFormatter(
   startTime: string | null,
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  locale?: string
 ): TooltipFormatter {
   return (params) => {
     const items = Array.isArray(params) ? params : [params];
@@ -1400,7 +2214,7 @@ function createTooltipFormatter(
       typeof axisValue === 'number'
         ? axisValue
         : Number.parseFloat(String(axisValue));
-    const header = formatTooltipHeader(startTime, seconds, theme);
+    const header = formatTooltipHeader(startTime, seconds, theme, locale);
 
     const lines = items.map((item) => {
       const marker = typeof item.marker === 'string' ? item.marker : '';
@@ -1423,7 +2237,8 @@ function createTooltipFormatter(
 function formatTooltipHeader(
   startTime: string | null,
   seconds: number,
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  locale?: string
 ): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
   const durationLabel = formatDurationLabel(safeSeconds);
@@ -1432,7 +2247,7 @@ function formatTooltipHeader(
   }
   const startDate = new Date(startTime);
   const timestamp = new Date(startDate.getTime() + safeSeconds * 1000);
-  const timeLabel = new Intl.DateTimeFormat(undefined, {
+  const timeLabel = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,

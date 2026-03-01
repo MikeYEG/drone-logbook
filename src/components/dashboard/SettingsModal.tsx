@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { sha256 as jsSha256 } from 'js-sha256';
 import * as api from '@/lib/api';
 import { isWebMode, getKeepUploadSettings, setKeepUploadSettings, KeepUploadSettings } from '@/lib/api';
@@ -17,6 +18,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const { t } = useTranslation();
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [apiKeyType, setApiKeyType] = useState<'none' | 'default' | 'personal'>('none');
@@ -41,6 +43,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const {
     unitSystem,
     setUnitSystem,
+    locale,
+    setLocale,
+    dateLocale,
+    setDateLocale,
+    appLanguage,
+    setAppLanguage,
     themeMode,
     setThemeMode,
     loadFlights,
@@ -75,7 +83,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setBadgeMessage(null);
     const trimmed = badgeCode.trim();
     if (!trimmed) {
-      setBadgeMessage({ type: 'error', text: 'Please enter a supporter code.' });
+      setBadgeMessage({ type: 'error', text: t('settings.enterCodeValidation') });
       return;
     }
     try {
@@ -198,7 +206,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleSave = async () => {
     if (!apiKey.trim()) {
-      setMessage({ type: 'error', text: 'Please enter an API key' });
+      setMessage({ type: 'error', text: t('settings.enterApiKey') });
       return;
     }
 
@@ -317,7 +325,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       />
 
       {/* Modal - use grid to handle overflow properly */}
-      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-3xl max-h-full grid grid-rows-[auto_1fr]">
+      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-[845px] max-h-full grid grid-rows-[auto_1fr]">
         {/* Blocking overlay while a long-running operation is in progress */}
         {isBusy && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/90 dark:bg-black/60 backdrop-blur-[2px] rounded-xl">
@@ -326,17 +334,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
             </svg>
             <p className="mt-3 text-sm font-semibold text-gray-800 dark:font-normal dark:text-gray-300">
-              {isBackingUp && 'Exporting backup…'}
-              {isRestoring && 'Restoring backup…'}
-              {isDeleting && 'Deleting all logs…'}
-              {isDeduplicating && 'Removing duplicate flights…'}
-              {isRemovingAutoTags && 'Removing auto-generated tags…'}
+              {isBackingUp && t('settings.exportingBackup')}
+              {isRestoring && t('settings.restoringBackup')}
+              {isDeleting && t('settings.deletingAllLogs')}
+              {isDeduplicating && t('settings.removingDuplicates')}
+              {isRemovingAutoTags && t('settings.removingAutoTags')}
               {isRegenerating && (
                 <>
-                  Regenerating smart tags…
+                  {t('settings.regeneratingSmartTags')}
                   {regenerationProgress && (
                     <span className="block text-xs font-normal text-gray-600 dark:text-gray-400 mt-1">
-                      Processed {regenerationProgress.processed} of {regenerationProgress.total} flights
+                      {t('settings.processedFlights', { x: regenerationProgress.processed, y: regenerationProgress.total })}
                     </span>
                   )}
                 </>
@@ -347,7 +355,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Settings</h2>
+          <h2 className="text-lg font-semibold text-white">{t('settings.title')}</h2>
           <button
             onClick={onClose}
             disabled={isBusy}
@@ -364,37 +372,97 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div className="flex gap-0">
           {/* Left Column: Preferences & API Key */}
           <div className="flex-1 space-y-4 pr-5">
-            {/* Units */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-300 whitespace-nowrap w-[15%] shrink-0">
-                Units
-              </label>
-              <Select
-                value={unitSystem}
-                onChange={(v) => setUnitSystem(v as 'metric' | 'imperial')}
-                className="w-[85%]"
-                options={[
-                  { value: 'metric', label: 'Metric (m, km/h)' },
-                  { value: 'imperial', label: 'Imperial (ft, mph)' },
-                ]}
-              />
+            {/* Units + Theme side by side */}
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs font-medium text-gray-400">
+                  {t('settings.units')}
+                </label>
+                <Select
+                  value={unitSystem}
+                  onChange={(v) => setUnitSystem(v as 'metric' | 'imperial')}
+                  options={[
+                    { value: 'metric', label: t('settings.metric') },
+                    { value: 'imperial', label: t('settings.imperial') },
+                  ]}
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs font-medium text-gray-400">
+                  {t('settings.theme')}
+                </label>
+                <Select
+                  value={themeMode}
+                  onChange={(v) => setThemeMode(v as 'system' | 'dark' | 'light')}
+                  options={[
+                    { value: 'system', label: t('settings.system') },
+                    { value: 'dark', label: t('settings.dark') },
+                    { value: 'light', label: t('settings.light') },
+                  ]}
+                />
+              </div>
             </div>
 
-            {/* Theme */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-300 whitespace-nowrap w-[15%] shrink-0">
-                Theme
-              </label>
-              <Select
-                value={themeMode}
-                onChange={(v) => setThemeMode(v as 'system' | 'dark' | 'light')}
-                className="w-[85%]"
-                options={[
-                  { value: 'system', label: 'System' },
-                  { value: 'dark', label: 'Dark' },
-                  { value: 'light', label: 'Light' },
-                ]}
-              />
+            {/* Language + Number & Date Format side by side */}
+            <div className="flex gap-3">
+              {/* App Language */}
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs font-medium text-gray-400">
+                  {t('settings.language')}
+                </label>
+                <Select
+                  value={appLanguage}
+                  onChange={(v) => setAppLanguage(v)}
+                  listMaxHeight="max-h-[230px]"
+                  options={[
+                    { value: 'en', label: 'English' },
+                    { value: 'de', label: 'Deutsch' },
+                    { value: 'fr', label: 'Français' },
+                    { value: 'es', label: 'Español' },
+                    { value: 'it', label: 'Italiano' },
+                    { value: 'nl', label: 'Nederlands' },
+                    { value: 'pl', label: 'Polski' },
+                    { value: 'pt', label: 'Português BR' },
+                    { value: 'ja', label: '日本語' },
+                    { value: 'zh', label: '中文' },
+                    { value: 'ko', label: '한국어' },
+                  ]}
+                />
+              </div>
+              {/* Number Format */}
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs font-medium text-gray-400">
+                  {t('settings.numbers')}
+                </label>
+                <Select
+                  value={locale}
+                  onChange={(v) => setLocale(v)}
+                  options={[
+                    { value: 'en-GB', label: '1,234.56' },
+                    { value: 'de-DE', label: '1.234,56' },
+                    { value: 'fr-FR', label: '1 234,56' },
+                  ]}
+                />
+              </div>
+              {/* Date Format */}
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs font-medium text-gray-400">
+                  {t('settings.dates')}
+                </label>
+                <Select
+                  value={dateLocale}
+                  onChange={(v) => setDateLocale(v)}
+                  options={[
+                    { value: 'en-GB', label: 'DD/MM/YYYY' },
+                    { value: 'en-US', label: 'MM/DD/YYYY' },
+                    { value: 'de-DE', label: 'DD.MM.YYYY' },
+                    { value: 'nl-NL', label: 'DD-MM-YYYY' },
+                    { value: 'ja-JP', label: 'YYYY/MM/DD' },
+                    { value: 'zh-CN', label: 'YYYY/M/D' },
+                    { value: 'ko-KR', label: 'YYYY. M. D.' },
+                  ]}
+                />
+              </div>
             </div>
 
             {/* Hide Serial Numbers */}
@@ -405,7 +473,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 className="flex items-center justify-between gap-3 w-full text-[0.85rem] text-gray-300"
                 aria-pressed={hideSerialNumbers}
               >
-                <span>Hide serial numbers</span>
+                <span>{t('settings.hideSerials')}</span>
                 <span
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     hideSerialNumbers
@@ -421,42 +489,42 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </span>
               </button>
               <p className="text-xs text-gray-500 mt-1">
-                Mask aircraft and battery serial numbers for privacy.
+                {t('settings.hideSerialDesc')}
               </p>
             </div>
 
             {/* Smart Tags */}
-            <div>
-              <p className="text-sm font-medium text-gray-300 mb-2">Smart Tags</p>
-              <button
-                type="button"
-                onClick={() => setSmartTagsEnabled(!smartTagsEnabled)}
-                className="flex items-center justify-between gap-3 w-full text-[0.85rem] text-gray-300"
-                aria-pressed={smartTagsEnabled}
-              >
-                <span>Intelligent flight tags</span>
-                <span
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
-                    smartTagsEnabled
-                      ? 'bg-drone-primary/90 border-drone-primary'
-                      : 'bg-drone-surface border-gray-600 toggle-track-off'
-                  }`}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-300">{t('settings.smartTags')}</p>
+                  <p className="text-xs text-gray-500">{t('settings.smartTagsDesc')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSmartTagsEnabled(!smartTagsEnabled)}
+                  className="flex-shrink-0"
+                  aria-pressed={smartTagsEnabled}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      smartTagsEnabled ? 'translate-x-4' : 'translate-x-1'
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
+                      smartTagsEnabled
+                        ? 'bg-drone-primary/90 border-drone-primary'
+                        : 'bg-drone-surface border-gray-600 toggle-track-off'
                     }`}
-                  />
-                </span>
-              </button>
-              <p className="text-xs text-gray-500 mt-1">
-                Automatically generate descriptive tags when importing flights.
-              </p>
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        smartTagsEnabled ? 'translate-x-4' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                </button>
+              </div>
 
               {/* Smart Tag Types Selector */}
               {smartTagsEnabled && (
-                <div className="mt-3">
-                  <p className="text-xs text-gray-400 mb-1.5">Tag types to apply:</p>
+                <div>
                   <div className="relative">
                     <button
                       type="button"
@@ -465,10 +533,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     >
                       <span className={`truncate ${enabledTagTypes.length < SMART_TAG_TYPES.length ? 'text-gray-100' : 'text-gray-400'}`}>
                         {enabledTagTypes.length === SMART_TAG_TYPES.length 
-                          ? 'All tag types' 
+                          ? t('settings.allTagTypes') 
                           : enabledTagTypes.length === 0 
-                            ? 'None selected'
-                            : `${enabledTagTypes.length} of ${SMART_TAG_TYPES.length} selected`}
+                            ? t('settings.noneSelected')
+                            : t('settings.tagTypesSelected', { count: enabledTagTypes.length, total: SMART_TAG_TYPES.length })}
                       </span>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
@@ -495,7 +563,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                   setTagTypeSearch('');
                                 }
                               }}
-                              placeholder="Search tag types…"
+                              placeholder={t('settings.searchTagTypes')}
                               autoFocus
                               className="w-full bg-drone-dark text-xs text-gray-200 rounded px-2 py-1 border border-gray-600 focus:border-drone-primary focus:outline-none placeholder-gray-500"
                             />
@@ -507,7 +575,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 t.description.toLowerCase().includes(tagTypeSearch.toLowerCase())
                               );
                               if (filtered.length === 0) {
-                                return <p className="text-xs text-gray-500 px-3 py-2">No matching tag types</p>;
+                                return <p className="text-xs text-gray-500 px-3 py-2">{t('settings.noMatchingTagTypes')}</p>;
                               }
                               // Sort: selected first, then unselected
                               const sorted = [...filtered].sort((a, b) => {
@@ -556,6 +624,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
               )}
 
+              <div className="flex items-stretch gap-2">
               <button
                 type="button"
                 onClick={async () => {
@@ -563,21 +632,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   setMessage({ type: 'success', text: msg });
                 }}
                 disabled={isBusy}
-                className="mt-3 w-full py-2 px-3 rounded-lg border border-teal-600 text-teal-400 hover:bg-teal-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                className="flex-1 py-[7px] px-3 rounded-lg border border-teal-600 text-teal-400 hover:bg-teal-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs"
               >
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="flex items-center justify-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Regenerate smart tags
+                  {t('settings.regenerateBtn')}
                 </span>
               </button>
 
               {/* Remove Auto Tags */}
               {confirmRemoveAutoTags ? (
-                <div className="mt-3 rounded-lg border border-orange-600/60 bg-orange-500/10 p-3">
+                <div className="flex-1 rounded-lg border border-orange-600/60 bg-orange-500/10 p-2.5">
                   <p className="text-xs text-orange-200">
-                    Remove all auto-generated tags from all flights? Manual tags will be preserved.
+                    {t('settings.removeAutoTagsConfirm')}
                   </p>
                   <div className="mt-2 flex items-center gap-3">
                     <button
@@ -592,13 +661,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       }}
                       className="text-xs text-orange-300 hover:text-orange-200"
                     >
-                      Yes
+                      {t('flightList.yes')}
                     </button>
                     <button
                       onClick={() => setConfirmRemoveAutoTags(false)}
                       className="text-xs text-gray-400 hover:text-gray-200"
                     >
-                      Cancel
+                      {t('flightList.cancel')}
                     </button>
                   </div>
                 </div>
@@ -607,50 +676,51 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   type="button"
                   onClick={() => setConfirmRemoveAutoTags(true)}
                   disabled={isBusy}
-                  className="mt-3 w-full py-2 px-3 rounded-lg border border-orange-600 text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="flex-1 py-[7px] px-3 rounded-lg border border-orange-600 text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                 >
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="flex items-center justify-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Remove auto tags
+                    {t('settings.removeBtn')}
                   </span>
                 </button>
               )}
+              </div>
             </div>
 
             {/* API Key Section */}
             <div className="pt-4 border-t border-gray-700">
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                DJI API Key
+                {t('settings.djiApiKey')}
               </label>
               <p className="text-xs text-gray-500 mb-3">
-                For decrypting V13+ flight logs. Get your own key following{' '}
+                {t('settings.djiApiKeyDesc')}{' '}
                 <a
                   href="https://github.com/arpanghosh8453/open-dronelog#how-to-obtain-your-own-dji-developer-api-key"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-drone-primary hover:underline"
                 >
-                  this guide
+                  {t('settings.thisGuide')}
                 </a>
               </p>
 
               {/* Status indicator */}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <span className="text-sm text-gray-400">
-                  {hasKey ? 'API key configured' : 'No API key configured'}
+                  {hasKey ? t('settings.apiKeyConfigured') : t('settings.noApiKey')}
                 </span>
                 {apiKeyType === 'none' && (
                   <span className="api-key-badge api-key-badge-none inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full">
                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.5 3v5h1V4h-1zm0 6v1h1v-1h-1z"/></svg>
-                    Invalid
+                    {t('settings.invalid')}
                   </span>
                 )}
                 {apiKeyType === 'default' && (
                   <span className="api-key-badge api-key-badge-default inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full">
                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7"/></svg>
-                    Default
+                    {t('settings.default')}
                   </span>
                 )}
                 {apiKeyType === 'personal' && (
@@ -670,7 +740,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   >
                     <svg className="w-3 h-3 group-hover:hidden" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm3.354 4.646a.5.5 0 010 .708l-4 4a.5.5 0 01-.708 0l-2-2a.5.5 0 11.708-.708L7 9.293l3.646-3.647a.5.5 0 01.708 0z"/></svg>
                     <svg className="w-3 h-3 hidden group-hover:block" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm2.854 4.146a.5.5 0 010 .708L8.707 8l2.147 2.146a.5.5 0 01-.708.708L8 8.707l-2.146 2.147a.5.5 0 01-.708-.708L7.293 8 5.146 5.854a.5.5 0 11.708-.708L8 7.293l2.146-2.147a.5.5 0 01.708 0z"/></svg>
-                    <span className="group-hover:hidden">Personal</span>
+                    <span className="group-hover:hidden">{t('settings.personal')}</span>
                     <span className="hidden group-hover:inline">Remove</span>
                   </button>
                 )}
@@ -689,7 +759,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 disabled={isSaving || !apiKey.trim()}
                 className="btn-primary w-full mt-3"
               >
-                {isSaving ? 'Saving...' : hasKey ? 'Update API Key' : 'Save API Key'}
+                {isSaving ? t('settings.savingApiKey') : hasKey ? t('settings.updateApiKey') : t('settings.saveApiKey')}
               </button>
 
               {/* Message (auto-dismisses after 5s) */}
@@ -713,7 +783,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Donation Status */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                Donation status
+                {t('settings.donationStatus')}
               </p>
               <button
                 type="button"
@@ -726,7 +796,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 aria-pressed={donationAcknowledged}
                 disabled={supporterBadgeActive}
               >
-                <span>Already donated. Remove banner permanently</span>
+                <span>{t('settings.removeBanner')}</span>
                 <span
                   className={`relative inline-flex h-5 w-9 items-center rounded-full border transition-all ${
                     donationAcknowledged
@@ -742,7 +812,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </span>
               </button>
               {supporterBadgeActive && (
-                <p className="text-xs text-amber-400/80 mt-1">Locked - supporter badge is active.</p>
+                <p className="text-xs text-amber-400/80 mt-1">{t('settings.badgeLocked')}</p>
               )}
 
               {/* Supporter Badge Button */}
@@ -762,7 +832,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                   </svg>
-                  {supporterBadgeActive ? 'Manage Supporter Badge' : 'Get Supporter Badge'}
+                  {supporterBadgeActive ? t('settings.manageSupporterBadge') : t('settings.getSupporterBadge')}
                 </span>
               </button>
             </div>
@@ -770,18 +840,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Info Section */}
             <div className="pt-4 border-t border-gray-700">
               <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
-                <strong className="text-gray-400">App Version:</strong>{' '}
+                <strong className="text-gray-400">{t('settings.appVersion')}</strong>{' '}
                 <span className="text-gray-400">{appVersion || '...'}</span>
                 {updateStatus === 'checking' && (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 border border-gray-600/50">
                     <svg className="w-3 h-3 animate-spin" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round"/></svg>
-                    Checking…
+                    {t('settings.checking')}
                   </span>
                 )}
                 {updateStatus === 'latest' && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm3.354 4.646a.5.5 0 010 .708l-4 4a.5.5 0 01-.708 0l-2-2a.5.5 0 11.708-.708L7 9.293l3.646-3.647a.5.5 0 01.708 0z"/></svg>
-                    Latest
+                    {t('settings.latest')}
                   </span>
                 )}
                 {updateStatus === 'outdated' && latestVersion && (
@@ -793,21 +863,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     title="Click to open release page"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zM7.5 4v5h1V4h-1zm0 6v1h1v-1h-1z"/></svg>
-                    Update to v{latestVersion}
+                    {t('settings.updateToVersion', { version: latestVersion })}
                   </a>
                 )}
                 {updateStatus === 'failed' && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.5 3v5h1V4h-1zm0 6v1h1v-1h-1z"/></svg>
-                    Check failed
+                    {t('settings.checkFailed')}
                   </span>
                 )}
               </p>
               <p className="text-xs text-gray-500 mt-2">
-                <strong className="text-gray-400">Log Location:</strong>
+                <strong className="text-gray-400">{t('settings.logLocation')}</strong>
                 <br />
                 <code className="text-xs text-gray-400 bg-drone-dark px-1 py-0.5 rounded break-all">
-                  {appLogDir || 'Loading...'}
+                  {appLogDir || t('settings.loading')}
                 </code>
               </p>
 
@@ -838,7 +908,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           }`}
                         />
                       </span>
-                      <span>Keep uploaded files</span>
+                      <span>{t('settings.keepUploadedFiles')}</span>
                     </button>
                     <button
                       type="button"
@@ -873,11 +943,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </button>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Save imported flight log files to a local folder for backup.
+                    {t('settings.keepUploadedDesc')}
                   </p>
                   {keepUploadSettings.enabled && (
                     <p className="text-xs text-gray-500 mt-1">
-                      <strong className="text-gray-400">Folder:</strong>
+                      <strong className="text-gray-400">{t('settings.folder')}</strong>
                       <br />
                       <code className="text-xs text-gray-400 bg-drone-dark px-1 py-0.5 rounded break-all">
                         {keepUploadSettings.folder_path}
@@ -902,14 +972,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
                         <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
                       </svg>
-                      Exporting…
+                      {t('settings.exporting')}
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
                       </svg>
-                      Backup Database
+                      {t('settings.backupDatabase')}
                     </span>
                   )}
                 </button>
@@ -924,14 +994,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
                         <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
                       </svg>
-                      Restoring…
+                      {t('settings.restoring')}
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 6l-4-4m0 0L8 6m4-4v13" />
                       </svg>
-                      Import Backup
+                      {t('settings.importBackup')}
                     </span>
                   )}
                 </button>
@@ -940,20 +1010,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               {confirmDeleteAll ? (
                 <div className="mt-4 rounded-lg border border-red-600/60 bg-red-500/10 p-3">
                   <p className="text-xs text-red-200">
-                    This action cannot be undone and will remove all flight logs.
+                    {t('settings.deleteAllWarning')}
                   </p>
                   <div className="mt-2 flex items-center gap-3">
                     <button
                       onClick={handleDeleteAll}
                       className="text-xs text-red-300 hover:text-red-200"
                     >
-                      Yes
+                      {t('flightList.yes')}
                     </button>
                     <button
                       onClick={() => setConfirmDeleteAll(false)}
                       className="text-xs text-gray-400 hover:text-gray-200"
                     >
-                      Cancel
+                      {t('flightList.cancel')}
                     </button>
                   </div>
                 </div>
@@ -963,7 +1033,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   disabled={isBusy}
                   className="mt-4 w-full py-2 px-3 rounded-lg border border-red-600 text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Delete all logs
+                  {t('settings.deleteAllLogs')}
                 </button>
               )}
 
@@ -979,14 +1049,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
                       <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
                     </svg>
-                    Scanning for duplicates…
+                    {t('settings.scanningDuplicates')}
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Remove duplicate flights
+                    {t('settings.removeDuplicates')}
                   </span>
                 )}
               </button>
@@ -997,7 +1067,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {confirmClearBlacklist ? (
                     <div className="mt-3 rounded-lg border border-amber-600/60 bg-amber-500/10 p-3">
                       <p className="text-xs text-amber-200">
-                        Clear the sync blacklist? This will allow previously deleted files to be re-imported during sync.
+                        {t('settings.clearBlacklistConfirm')}
                       </p>
                       <div className="mt-2 flex items-center gap-3">
                         <button
@@ -1009,13 +1079,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           }}
                           className="text-xs text-amber-300 hover:text-amber-200"
                         >
-                          Yes
+                          {t('flightList.yes')}
                         </button>
                         <button
                           onClick={() => setConfirmClearBlacklist(false)}
                           className="text-xs text-gray-400 hover:text-gray-200"
                         >
-                          Cancel
+                          {t('flightList.cancel')}
                         </button>
                       </div>
                     </div>
@@ -1025,7 +1095,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       disabled={isBusy}
                       className="mt-3 w-full py-2 px-3 rounded-lg border border-amber-600 text-amber-500 hover:bg-amber-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
-                      Clear sync blacklist ({blacklistCount} {blacklistCount === 1 ? 'file' : 'files'})
+                      {blacklistCount === 1 ? t('settings.clearBlacklist', { count: blacklistCount }) : t('settings.clearBlacklistPlural', { count: blacklistCount })}
                     </button>
                   )}
                 </>
@@ -1052,7 +1122,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
-                Supporter Badge
+                {t('settings.supporterBadge')}
               </h3>
               <button
                 onClick={() => setShowBadgeModal(false)}
@@ -1078,7 +1148,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     onClick={handleRemoveBadge}
                     className="w-full py-2 px-3 rounded-lg border border-red-600 text-red-500 hover:bg-red-500/10 transition-colors text-sm"
                   >
-                    Remove Supporter Badge
+                    {t('settings.removeBadge')}
                   </button>
                 </>
               ) : (
@@ -1110,7 +1180,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       value={badgeCode}
                       onChange={(e) => setBadgeCode(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleActivateBadge(); }}
-                      placeholder="Enter your supporter code"
+                      placeholder={t('settings.enterSupporterCode')}
                       className="input w-full"
                     />
                     <button
@@ -1119,7 +1189,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       disabled={!badgeCode.trim()}
                       className="btn-primary w-full mt-3"
                     >
-                      Activate Supporter Badge
+                      {t('settings.activateBadge')}
                     </button>
                   </div>
                 </>

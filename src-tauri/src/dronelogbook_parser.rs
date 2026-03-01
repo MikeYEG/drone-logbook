@@ -589,6 +589,9 @@ impl<'a> DroneLogbookParser<'a> {
         // Use metadata start_time if available, otherwise try to extract from file name
         let start_time = meta_start_time.or_else(|| extract_datetime_from_filename(&file_name));
 
+        // Count photo and video capture events from telemetry transitions
+        let (photo_count, video_count) = crate::models::count_media_events(&points);
+
         let metadata = FlightMetadata {
             id: self.db.generate_flight_id(),
             file_name,
@@ -613,6 +616,8 @@ impl<'a> DroneLogbookParser<'a> {
             home_lat,
             home_lon,
             point_count: points.len() as i32,
+            photo_count,
+            video_count,
         };
 
         log::info!(

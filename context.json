@@ -102,6 +102,7 @@
       "Charts: height/VPS/speed (metric in km/h), battery, attitude, RC signal, GPS satellites.",
       "Charts: RC uplink/downlink, distance-to-home, velocity XYZ panels, and cell voltages (dynamic legend per cell).",
       "Charts: synchronized zoom, drag-to-zoom toggle, reset zoom, auto-scaled Y axes, aligned X-axis ticks, custom tooltip header with pills.",
+      "Charts: Dynamic configuration via per-chart multi-select dropdown (max 4 fields, searchable, checkboxes, selected-first sorting) — select which telemetry fields to display per chart panel, reset to defaults button, settings persisted to localStorage.",
       "Map: 3D terrain view via MapLibre, global theme styling.",
       "Map: satellite style toggle, gradient flight path with start/end markers.",
       "Map: deck.gl 3D path overlay; map toggles persist in session.",
@@ -138,7 +139,11 @@
       "Supporter Badge: SHA-256 verified activation code system. Badge displayed in sidebar header between app title and settings icon. Activation modal in settings with Ko-fi donation instructions. Badge persisted to localStorage. Donation toggle locked when badge active. CSS animations (fadeIn, starPulse) with light mode overrides.",
       "Settings modal: Two-column layout (max-w-3xl). Left column: Units, Theme, Smart Tags, API Key. Right column: Donation status, Supporter Badge, App info, Backup/Restore, Delete all logs.",
       "App version: Displayed in settings. Reads from Tauri API (desktop) or Vite-injected __APP_VERSION__ (web). vite.config.ts reads version from src-tauri/tauri.conf.json with existsSync fallback to package.json for Docker builds.",
-      "Filter inversion: Uses AND logic for inverted filters (NOT A AND NOT B) — each filter condition individually inverted rather than inverting the combined result."
+      "Filter inversion: Uses AND logic for inverted filters (NOT A AND NOT B) — each filter condition individually inverted rather than inverting the combined result.",
+      "Photo/Video counts: Tracked per flight (photo_count, video_count columns in flights table) with automatic backfill from telemetry is_photo/is_video transitions. Displayed in overview stats and flight stats panel.",
+      "Map: Collapsible settings panel with color-by, aircraft toggle, media events toggle, tooltip toggle, and line thickness control (1-5, default 3). Settings persist in session.",
+      "HTML Report: Configurable print-ready flight regulation report. Modal lets user select document title, pilot name, and toggle field groups (General Info, Equipment, Flight Stats, Battery, Weather, Media). Report is A4-width, grouped by day with subtotals, and can be printed as PDF via Ctrl+P. Supports weather data, theme-responsive layout, and Open Dronelog branding. Field preferences and pilot name persist across sessions.",
+      "Filter refresh: Slider ranges (duration, altitude, distance) and dropdown selections (drones, batteries, tags, date range) auto-refresh after flight deletion to prevent stale/stuck filter values."
     ],
     "out_of_scope": [
       "Cloud sync",
@@ -158,6 +163,7 @@
         "src/components/dashboard/Overview.tsx",
         "src/components/dashboard/FlyCardGenerator.tsx",
         "src/components/dashboard/ManualEntryModal.tsx",
+        "src/components/dashboard/HtmlReportModal.tsx",
         "src/components/ui/Select.tsx",
         "src/components/charts/TelemetryCharts.tsx",
         "src/components/map/FlightMap.tsx"
@@ -168,6 +174,7 @@
       ],
       "state_store": "src/stores/flightStore.ts (includes batteryNameMap and droneNameMap synced to database via API, sidebarFilteredFlightIds for Overview filter sync, allTags, smartTagsEnabled, isRegenerating, addTag/removeTag/regenerateSmartTags actions, supporterBadgeActive persisted to localStorage, setSupporterBadge action, loadEquipmentNames action)",
       "api_adapter": "src/lib/api.ts",
+      "html_report": "src/lib/htmlReportBuilder.ts",
       "types": "src/types/index.ts",
       "env_types": "src/vite-env.d.ts"
     },
@@ -533,7 +540,7 @@
       "Telemetry table column order is enforced; if mismatched it rebuilds automatically.",
       "Bulk inserts use DuckDB Appender matching the exact column order above.",
       "Downsampling occurs when telemetry points exceed ~5000 (1s buckets).",
-      "Map track altitude uses COALESCE(altitude, height, vps_height) for absolute 3D paths.",
+      "Map track altitude uses COALESCE(height, vps_height, altitude) for relative 3D paths. KML export uses COALESCE(altitude, height, vps_height) for absolute mode.",
       "App data dir structure: flights.db + keychains/ + uploaded/ (when keep uploaded files enabled).",
       "Failed telemetry inserts trigger automatic flight metadata cleanup.",
       "flight_tags table stores per-flight tags with tag_type (auto/manual). Included in backup/restore. Migration adds tag_type column if missing.",
@@ -611,7 +618,11 @@
   "ci_cd": {
     "build_yml": {
       "trigger": "on release published",
-      "platforms": ["ubuntu-latest", "windows-latest", "macos-latest"],
+      "platforms": [
+        "ubuntu-latest",
+        "windows-latest",
+        "macos-latest"
+      ],
       "action": "tauri-apps/tauri-action@v0",
       "artifacts": "Desktop binaries uploaded to GitHub Release"
     },
@@ -627,7 +638,7 @@
     "filters": "Flight list uses date range popover (react-day-picker), drone and battery selects (searchable via type-to-filter), dual-thumb duration slider, and multi-select tag filter. Filter inversion button (circular arrows) individually negates each active filter (AND logic: NOT A AND NOT B). Collapsible filter/import panels persisted to localStorage. Overview shares sidebar filters via store. Selection auto-clears when selected flight is no longer in filtered results.",
     "keyboard_navigation": "FlightList: Up/Down arrows browse flights (preview highlight), Enter selects and loads. All modals close on Escape. Select/sort/export/tag dropdowns support arrow key navigation with highlighted index.",
     "flight_list": "Simple compact list with always-visible rename (pencil icon, sky-400) and delete (trash icon, red-400) icons. Subtitle shows date . duration . distance.",
-    "charts": "ECharts with synced zoom; global drag-to-zoom toggle + reset zoom buttons; tooltip header uses pill capsules. Theme-aware base config. Hidden per-chart toolbox enables selection highlight for drag-to-zoom.",
+    "charts": "ECharts with synced zoom; global drag-to-zoom toggle + reset zoom buttons; tooltip header uses pill capsules. Theme-aware base config. Hidden per-chart toolbox enables selection highlight for drag-to-zoom. Per-chart multi-select dropdown (max 4 fields, searchable with checkboxes) lets users choose which telemetry fields to display; settings persisted to localStorage.",
     "map": "MapLibre terrain with deck.gl overlay. Spline-smoothed color-by gradient path, shadow layer, start/end/home markers, hover tooltip. Replay telemetry overlay with live-interpolated data during playback. RC stick input overlay with progressive-fill bars and theme-aware styling (cyan on dark, dark slate on light).",
     "loading": "Spinner uses border-sky-400 for both-mode visibility."
   },

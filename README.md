@@ -22,7 +22,7 @@
 <p align="center">A high-performance application for analyzing drone flight logs (DJI and Litchi CSV formats). Available as a Tauri v2 desktop app or a Docker-deployable web app. Built with DuckDB and React.</p>
 
 > [!IMPORTANT]
-> *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., or their affiliates.*
+> *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. Airdata or Airdata UAV is a trademark of Airdata UAV, Inc. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., Airdata UAV, Inc., or their affiliates.*
 
 <p align="center">
     <img src="screenshots/Comparison.png" alt="Comparison chart" width="900" />
@@ -49,22 +49,16 @@
     <img src="screenshots/telemetry_2.png" alt="Telemetry charts 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/overall_stats_dark.png" alt="Overall stats (dark)" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/overall_stats.png" alt="Overall stats" width="900" />
-</p>
-<p align="center">
     <img src="screenshots/map_dark.png" alt="Flight map replay (dark)" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/map_light.png" alt="Flight map replay (light)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map.png" alt="Flight map" width="900" />
+    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
+    <img src="screenshots/flight_report.png" alt="Flight report" width="900" />
 </p>
 
 ## Contents
@@ -84,6 +78,7 @@
 - [Project Structure](#project-structure)
 - [How to obtain your own DJI Developer API key](#how-to-obtain-your-own-dji-developer-api-key)
 - [Contribution Guidelines](#contribution-guidelines)
+- [Socials and Support](#socials-and-support)
 - [Love this project?](#love-this-project)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -101,7 +96,8 @@
 - **Overview Dashboard**: Aggregate stats, activity heatmap, pie charts by drone/battery/duration, cluster map, and top-flight highlights.
 - **Battery Health**: Per-battery health bars, serial renaming, and per-minute usage history with zoom.
 - **Maintenance Tracking**: Configurable thresholds with color-coded progress bars and date-based maintenance recording.
-- **Exports**: CSV, JSON, GPX, and KML export. FlyCard generator for shareable 1080x1080 social media images.
+- **Exports**: CSV, JSON, GPX, KML, and Summary CSV export. FlyCard generator for shareable 1080x1080 social media images.
+- **HTML Report**: Generate a configurable, print-ready flight regulation report (A4 layout) with selectable field groups, weather data, and day-by-day grouping. Can be printed as PDF via Ctrl+P. Pilot name and field preferences can be customized and will persist across sessions.
 - **Manual Flight Entry**: Record flights without log files with optional coordinates and metadata.
 - **Backup & Restore**: Export/import full database across desktop and Docker instances.
 
@@ -115,8 +111,19 @@ You can find more details resources from this simple [google search](https://www
 
 ### Litchi CSV Exports
 
-Litchi flight logs can be exported as CSV files from the Litchi app. The parser automatically detects whether the export uses metric or imperial units based on the column headers (e.g., `altitude(feet)` vs `altitude(m)`) and converts everything to metric internally. Litchi-imported flights are automatically tagged with "Litchi" for easy filtering.
+Litchi flight logs can be exported as CSV files from the Litchi app.  Litchi-imported flights are automatically tagged with "Litchi" for easy filtering.
 
+### Airdata Exports
+
+If you use Airdata to sync your flight logs, you can export the original DJI log files directly from the Airdata website:
+
+1. Go to your [Airdata flight logs](https://app.airdata.com/) and click on `my account`
+2. In the left sidebar, under `My Data` secction, pick `Download my data`
+3. Click **Request Export** and wait for their email with zip containing the `.txt` files
+
+![Airdata Export Guide](screenshots/Airdata_Export_Guide.png)
+
+These exported log files can then be imported directly into Open DroneLog.
 ## Setup and installation (Windows/MacOS)
 
 There is no installation step if you want to use the standalone binary builds, just visit the latest [release page](https://github.com/arpanghosh8453/open-dronelog/releases), and download the appropriate binary for Windows or MacOS and run them.
@@ -398,6 +405,18 @@ For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 Looking to extend functionality without waiting for official features? Check out the **[Discussions](https://github.com/arpanghosh8453/open-dronelog/discussions)** channel with the `User-Script` tag, where community members share custom scripts, collaborate with developers, and find useful enhancements for custom workflow.
 
 
+## Socials and Support
+
+<p align="center">
+    <a href="https://discord.gg/YKgKTmSm7B">
+        <img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=for-the-badge&logo=discord" alt="Discord" height="48"/>
+    </a>
+    &nbsp;&nbsp;
+    <a href="https://www.reddit.com/r/opendronelog/">
+        <img src="https://img.shields.io/badge/Reddit-r%2Fopendronelog-FF4500?style=for-the-badge&logo=reddit" alt="Reddit" height="48"/>
+    </a>
+</p>
+
 ## Love this project?
 
 I'm thrilled that you're using this dashboard. Your interest and engagement mean a lot to me! You can view and analyze more detailed DJI flight statistics with this setup than paying for any commertial solution.
@@ -410,7 +429,7 @@ If you find this project helpful, please consider:
 
 ☕ Buying me a coffee if you'd like to contribute to its maintenance and future development.
 
-<img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi">
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/arpandesign)
 
 ## License
 
@@ -418,7 +437,7 @@ AGPL-3.0 - see [LICENSE](LICENSE) for details.
 
 ## Declaration
 
-While some parts of this codebase were written with AI assistance (Claude Opus) for convinience, the entirety of OpenDroneLog is thoughtfully architected, manually tested before every release, and managed by the me in my free time. Long-term maintenance remain my priority with this project as it grows. The `context.json` file provides a machine parsable high quality summary of the project overview, which is updated alongside the project for future references.  
+While some parts of this codebase were written with AI assistance (Claude Opus) for convinience, the entirety of OpenDroneLog is thoughtfully architected, manually tested before every release, and managed by me in my free time. Long-term maintenance remain my priority with this project as it grows. The `context.json` file provides a machine parsable high quality summary of the project overview, which is updated alongside the project for future references.  
 
 ## Acknowledgments
 

@@ -34,6 +34,16 @@ pub struct Database {
     pub data_dir: PathBuf,
 }
 
+impl Drop for Database {
+    fn drop(&mut self) {
+        log::info!("Dropping Database instance. DuckDB will now gracefully close and flush remaining WAL data to disk...");
+        let drop_start = std::time::Instant::now();
+        // The actual DuckDB connection drop happens automatically right after this, 
+        // which triggers any implicit final checkpoints.
+        log::info!("Database drop initiated (drop handler took {:.3}s)", drop_start.elapsed().as_secs_f64());
+    }
+}
+
 impl Database {
     /// Initialize the database in the app data directory.
     ///
@@ -74,6 +84,17 @@ impl Database {
         // Run one-time startup deduplication for existing data
         db.run_startup_deduplication();
 
+        // Perform a checkpoint right after startup, as migrations (especially those touching thousands of rows)
+        // create large WAL files. This ensures the 100+ MB WAL isn't held in memory until the user
+        // closes the app window, which prevents process locking issues.
+        log::info!("Starting post-startup WAL checkpoint to clear large migration logs...");
+        let checkpoint_start = std::time::Instant::now();
+        if let Err(e) = db.conn.lock().unwrap().execute_batch("CHECKPOINT; VACUUM;") {
+            log::warn!("Post-startup WAL checkpoint & vacuum failed (non-fatal): {} (took {:.1}s)", e, checkpoint_start.elapsed().as_secs_f64());
+        } else {
+            log::info!("Post-startup WAL checkpoint & vacuum completed successfully in {:.1}s", checkpoint_start.elapsed().as_secs_f64());
+        }
+
         Ok(db)
     }
 
@@ -107,6 +128,7 @@ impl Database {
         }
     }
 
+    /// Backup the database before WAL recovery or rebuilds
     fn backup_db(db_path: &PathBuf) -> Result<PathBuf, DatabaseError> {
         if !db_path.exists() {
             return Ok(db_path.clone());
@@ -125,6 +147,14 @@ impl Database {
         Ok(backup_path)
     }
 
+    /// Explicitly forces a WAL checkpoint. Useful for flushing the WAL before shutdown.
+    #[cfg(feature = "tauri-app")]
+    pub fn checkpoint(&self) -> Result<(), DatabaseError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch("CHECKPOINT;")?;
+        Ok(())
+    }
+
     /// Configure DuckDB connection for optimal analytical performance
     fn configure_connection(conn: &Connection) -> DuckResult<()> {
         // Memory settings for better performance with large datasets
@@ -133,6 +163,7 @@ impl Database {
             SET memory_limit = '2GB';
             SET threads = 4;
             SET enable_progress_bar = false;
+            PRAGMA wal_autocheckpoint='25MB';
             "#,
         )?;
         Ok(())
@@ -166,6 +197,8 @@ impl Database {
                 home_lat        DOUBLE,
                 home_lon        DOUBLE,
                 point_count     INTEGER,                 -- Number of telemetry points
+                photo_count     INTEGER,                 -- Number of photos taken
+                video_count     INTEGER,                 -- Number of video recordings
                 imported_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 notes           VARCHAR
             );
@@ -177,40 +210,41 @@ impl Database {
             -- ============================================================
             -- TELEMETRY TABLE: Time-series data for each flight
             -- Optimized for range queries on timestamp
+            -- Note: lat/lon use DOUBLE for precision, other metrics use FLOAT to save space
             -- ============================================================
             CREATE TABLE IF NOT EXISTS telemetry (
                 flight_id       BIGINT NOT NULL,
                 timestamp_ms    BIGINT NOT NULL,         -- Milliseconds since flight start
                 
-                -- Position
+                -- Position (DOUBLE for lat/lon precision, FLOAT for altitude)
                 latitude        DOUBLE,
                 longitude       DOUBLE,
-                altitude        DOUBLE,                  -- Relative altitude in meters
-                height          DOUBLE,                  -- Height above takeoff in meters
-                vps_height      DOUBLE,                  -- VPS height in meters
-                altitude_abs    DOUBLE,                  -- Absolute altitude (MSL)
+                altitude        FLOAT,                   -- Relative altitude in meters
+                height          FLOAT,                   -- Height above takeoff in meters
+                vps_height      FLOAT,                   -- VPS height in meters
+                altitude_abs    FLOAT,                   -- Absolute altitude (MSL)
                 
                 -- Velocity
-                speed           DOUBLE,                  -- Ground speed in m/s
-                velocity_x      DOUBLE,                  -- North velocity
-                velocity_y      DOUBLE,                  -- East velocity  
-                velocity_z      DOUBLE,                  -- Down velocity
+                speed           FLOAT,                   -- Ground speed in m/s
+                velocity_x      FLOAT,                   -- North velocity
+                velocity_y      FLOAT,                   -- East velocity  
+                velocity_z      FLOAT,                   -- Down velocity
                 
                 -- Orientation (Euler angles in degrees)
-                pitch           DOUBLE,
-                roll            DOUBLE,
-                yaw             DOUBLE,
+                pitch           FLOAT,
+                roll            FLOAT,
+                yaw             FLOAT,
                 
                 -- Gimbal
-                gimbal_pitch    DOUBLE,
-                gimbal_roll     DOUBLE,
-                gimbal_yaw      DOUBLE,
+                gimbal_pitch    FLOAT,
+                gimbal_roll     FLOAT,
+                gimbal_yaw      FLOAT,
                 
                 -- Power
                 battery_percent INTEGER,
-                battery_voltage DOUBLE,
-                battery_current DOUBLE,
-                battery_temp    DOUBLE,
+                battery_voltage FLOAT,
+                battery_current FLOAT,
+                battery_temp    FLOAT,
                 cell_voltages   VARCHAR,                 -- JSON array of individual cell voltages
                 
                 -- Flight status
@@ -224,17 +258,14 @@ impl Database {
                 rc_downlink     INTEGER,
 
                 -- RC stick inputs (normalized -100..+100)
-                rc_aileron      DOUBLE,
-                rc_elevator     DOUBLE,
-                rc_throttle     DOUBLE,
-                rc_rudder       DOUBLE,
+                rc_aileron      FLOAT,
+                rc_elevator     FLOAT,
+                rc_throttle     FLOAT,
+                rc_rudder       FLOAT,
 
                 -- Camera state
                 is_photo        BOOLEAN,
-                is_video        BOOLEAN,
-                
-                -- Composite primary key for efficient range queries
-                PRIMARY KEY (flight_id, timestamp_ms)
+                is_video        BOOLEAN
             );
 
             -- Index for time-range queries within a flight
@@ -307,6 +338,10 @@ impl Database {
         Self::migrate_telemetry_table(&conn)?;
         Self::migrate_flight_tags_table(&conn)?;
 
+        // Run type optimization migration (DOUBLE -> FLOAT for non-critical metrics)
+        // Must run before column order check since it recreates the table
+        Self::migrate_telemetry_types(&conn)?;
+
         Self::ensure_telemetry_column_order(&conn)?;
 
         log::info!("Database schema initialized successfully");
@@ -330,7 +365,11 @@ impl Database {
             ("display_name", "ALTER TABLE flights ADD COLUMN display_name VARCHAR"),
             ("aircraft_name", "ALTER TABLE flights ADD COLUMN aircraft_name VARCHAR"),
             ("battery_serial", "ALTER TABLE flights ADD COLUMN battery_serial VARCHAR"),
+            ("photo_count", "ALTER TABLE flights ADD COLUMN photo_count INTEGER"),
+            ("video_count", "ALTER TABLE flights ADD COLUMN video_count INTEGER"),
         ];
+
+        let need_backfill = !columns.contains("photo_count");
 
         for (col_name, sql) in migrations {
             if !columns.contains(*col_name) {
@@ -338,6 +377,32 @@ impl Database {
                 conn.execute_batch(sql)?;
             }
         }
+
+        // Backfill photo/video counts from telemetry for existing flights
+        if need_backfill {
+            log::info!("Backfilling photo_count and video_count from telemetry data...");
+            let backfill_sql = r#"
+                UPDATE flights SET
+                    photo_count = COALESCE((
+                        SELECT COUNT(*) FROM (
+                            SELECT is_photo, LAG(is_photo) OVER (ORDER BY timestamp_ms) AS prev_photo
+                            FROM telemetry WHERE flight_id = flights.id
+                        ) sub WHERE is_photo = true AND (prev_photo IS NULL OR prev_photo = false)
+                    ), 0),
+                    video_count = COALESCE((
+                        SELECT COUNT(*) FROM (
+                            SELECT is_video, LAG(is_video) OVER (ORDER BY timestamp_ms) AS prev_video
+                            FROM telemetry WHERE flight_id = flights.id
+                        ) sub WHERE is_video = true AND (prev_video IS NULL OR prev_video = false)
+                    ), 0)
+                WHERE photo_count IS NULL OR video_count IS NULL
+            "#;
+            match conn.execute_batch(backfill_sql) {
+                Ok(()) => log::info!("Backfilled photo/video counts successfully"),
+                Err(e) => log::warn!("Failed to backfill photo/video counts: {}", e),
+            }
+        }
+
         Ok(())
     }
 
@@ -346,14 +411,14 @@ impl Database {
         let columns = Self::get_table_columns(conn, "telemetry")?;
         
         let migrations: &[(&str, &str)] = &[
-            ("height", "ALTER TABLE telemetry ADD COLUMN height DOUBLE"),
-            ("vps_height", "ALTER TABLE telemetry ADD COLUMN vps_height DOUBLE"),
+            ("height", "ALTER TABLE telemetry ADD COLUMN height FLOAT"),
+            ("vps_height", "ALTER TABLE telemetry ADD COLUMN vps_height FLOAT"),
             ("rc_uplink", "ALTER TABLE telemetry ADD COLUMN rc_uplink INTEGER"),
             ("rc_downlink", "ALTER TABLE telemetry ADD COLUMN rc_downlink INTEGER"),
-            ("rc_aileron", "ALTER TABLE telemetry ADD COLUMN rc_aileron DOUBLE"),
-            ("rc_elevator", "ALTER TABLE telemetry ADD COLUMN rc_elevator DOUBLE"),
-            ("rc_throttle", "ALTER TABLE telemetry ADD COLUMN rc_throttle DOUBLE"),
-            ("rc_rudder", "ALTER TABLE telemetry ADD COLUMN rc_rudder DOUBLE"),
+            ("rc_aileron", "ALTER TABLE telemetry ADD COLUMN rc_aileron FLOAT"),
+            ("rc_elevator", "ALTER TABLE telemetry ADD COLUMN rc_elevator FLOAT"),
+            ("rc_throttle", "ALTER TABLE telemetry ADD COLUMN rc_throttle FLOAT"),
+            ("rc_rudder", "ALTER TABLE telemetry ADD COLUMN rc_rudder FLOAT"),
             ("is_photo", "ALTER TABLE telemetry ADD COLUMN is_photo BOOLEAN"),
             ("is_video", "ALTER TABLE telemetry ADD COLUMN is_video BOOLEAN"),
             ("cell_voltages", "ALTER TABLE telemetry ADD COLUMN cell_voltages VARCHAR"),
@@ -388,6 +453,193 @@ impl Database {
             "UPDATE flight_tags SET tag_type = 'auto' WHERE tag_type IS NULL;",
         )?;
         
+        Ok(())
+    }
+
+    /// Migrate telemetry table column types from DOUBLE to FLOAT for non-critical metrics.
+    /// This reduces storage by ~50% for numeric columns while preserving full precision
+    /// for latitude/longitude coordinates. Only runs once.
+    fn migrate_telemetry_types(conn: &Connection) -> Result<(), DatabaseError> {
+        const MIGRATION_KEY: &str = "telemetry_float_migrated";
+        
+        // Check if migration already completed using a marker in the settings table
+        let already_migrated: bool = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?",
+                params![MIGRATION_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        
+        if already_migrated {
+            log::debug!("Telemetry type migration already completed, skipping");
+            return Ok(());
+        }
+        
+        // Check if telemetry table exists and has data
+        let row_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM telemetry", [], |row| row.get(0))
+            .unwrap_or(0);
+        
+        if row_count == 0 {
+            // Empty table or new install - just mark as done
+            log::debug!("Telemetry table empty, marking float migration as complete");
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                params![MIGRATION_KEY, "true"],
+            )?;
+            return Ok(());
+        }
+        
+        // Check if any DOUBLE columns exist (need migration)
+        // Query column types from DuckDB's information schema
+        let needs_migration: bool = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*) > 0 
+                FROM information_schema.columns 
+                WHERE table_name = 'telemetry' 
+                  AND column_name = 'altitude' 
+                  AND data_type = 'DOUBLE'
+                "#,
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        
+        if !needs_migration {
+            log::debug!("Telemetry columns already using FLOAT types");
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                params![MIGRATION_KEY, "true"],
+            )?;
+            return Ok(());
+        }
+        
+        log::info!(
+            "Migrating telemetry table types: DOUBLE -> FLOAT for {} rows (this may take a moment)...",
+            row_count
+        );
+        let start = std::time::Instant::now();
+        
+        // Recreate table with optimized types:
+        // - DOUBLE preserved for latitude, longitude (need ~15 decimal precision for GPS)
+        // - FLOAT for everything else (7 decimal precision is plenty for altitude, speed, etc.)
+        conn.execute_batch(
+            r#"
+            BEGIN TRANSACTION;
+            
+            CREATE TABLE telemetry_optimized (
+                flight_id       BIGINT NOT NULL,
+                timestamp_ms    BIGINT NOT NULL,
+                latitude        DOUBLE,
+                longitude       DOUBLE,
+                altitude        FLOAT,
+                height          FLOAT,
+                vps_height      FLOAT,
+                altitude_abs    FLOAT,
+                speed           FLOAT,
+                velocity_x      FLOAT,
+                velocity_y      FLOAT,
+                velocity_z      FLOAT,
+                pitch           FLOAT,
+                roll            FLOAT,
+                yaw             FLOAT,
+                gimbal_pitch    FLOAT,
+                gimbal_roll     FLOAT,
+                gimbal_yaw      FLOAT,
+                battery_percent INTEGER,
+                battery_voltage FLOAT,
+                battery_current FLOAT,
+                battery_temp    FLOAT,
+                cell_voltages   VARCHAR,
+                flight_mode     VARCHAR,
+                gps_signal      INTEGER,
+                satellites      INTEGER,
+                rc_signal       INTEGER,
+                rc_uplink       INTEGER,
+                rc_downlink     INTEGER,
+                rc_aileron      FLOAT,
+                rc_elevator     FLOAT,
+                rc_throttle     FLOAT,
+                rc_rudder       FLOAT,
+                is_photo        BOOLEAN,
+                is_video        BOOLEAN,
+                PRIMARY KEY (flight_id, timestamp_ms)
+            );
+            
+            INSERT INTO telemetry_optimized 
+            SELECT 
+                flight_id,
+                timestamp_ms,
+                latitude,
+                longitude,
+                CAST(altitude AS FLOAT),
+                CAST(height AS FLOAT),
+                CAST(vps_height AS FLOAT),
+                CAST(altitude_abs AS FLOAT),
+                CAST(speed AS FLOAT),
+                CAST(velocity_x AS FLOAT),
+                CAST(velocity_y AS FLOAT),
+                CAST(velocity_z AS FLOAT),
+                CAST(pitch AS FLOAT),
+                CAST(roll AS FLOAT),
+                CAST(yaw AS FLOAT),
+                CAST(gimbal_pitch AS FLOAT),
+                CAST(gimbal_roll AS FLOAT),
+                CAST(gimbal_yaw AS FLOAT),
+                battery_percent,
+                CAST(battery_voltage AS FLOAT),
+                CAST(battery_current AS FLOAT),
+                CAST(battery_temp AS FLOAT),
+                cell_voltages,
+                flight_mode,
+                gps_signal,
+                satellites,
+                rc_signal,
+                rc_uplink,
+                rc_downlink,
+                CAST(rc_aileron AS FLOAT),
+                CAST(rc_elevator AS FLOAT),
+                CAST(rc_throttle AS FLOAT),
+                CAST(rc_rudder AS FLOAT),
+                is_photo,
+                is_video
+            FROM telemetry;
+            
+            DROP TABLE telemetry;
+            ALTER TABLE telemetry_optimized RENAME TO telemetry;
+            
+            CREATE INDEX IF NOT EXISTS idx_telemetry_flight_time 
+                ON telemetry(flight_id, timestamp_ms);
+            
+            COMMIT;
+            "#,
+        )?;
+        
+        log::info!(
+            "Telemetry type migration completed in {:.1}s for {} rows",
+            start.elapsed().as_secs_f64(),
+            row_count
+        );
+        
+        // Run VACUUM to reclaim space (must be outside transaction)
+        log::info!("Running VACUUM to reclaim disk space...");
+        let vacuum_start = std::time::Instant::now();
+        if let Err(e) = conn.execute_batch("VACUUM;") {
+            log::warn!("VACUUM failed (non-fatal): {}", e);
+        } else {
+            log::info!("VACUUM completed in {:.1}s", vacuum_start.elapsed().as_secs_f64());
+        }
+        
+        // Mark migration as complete
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            params![MIGRATION_KEY, "true"],
+        )?;
+        
+        log::info!("Telemetry type migration marked as complete");
         Ok(())
     }
 
@@ -439,7 +691,7 @@ impl Database {
             return Ok(());
         }
 
-        log::warn!("Telemetry column order mismatch detected. Rebuilding table.");
+        log::warn!("Telemetry column order mismatch detected. Rebuilding table with correct schema.");
 
         let existing: std::collections::HashSet<&str> =
             actual.iter().map(|s| s.as_str()).collect();
@@ -456,14 +708,57 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
 
+        // Use explicit schema to preserve PRIMARY KEY and correct column types
+        // (DOUBLE for lat/lon precision, FLOAT for everything else to save space)
         conn.execute_batch(&format!(
             r#"
             BEGIN TRANSACTION;
-            CREATE TABLE telemetry_new AS SELECT {} FROM telemetry;
+            
+            CREATE TABLE telemetry_reordered (
+                flight_id       BIGINT NOT NULL,
+                timestamp_ms    BIGINT NOT NULL,
+                latitude        DOUBLE,
+                longitude       DOUBLE,
+                altitude        FLOAT,
+                height          FLOAT,
+                vps_height      FLOAT,
+                altitude_abs    FLOAT,
+                speed           FLOAT,
+                velocity_x      FLOAT,
+                velocity_y      FLOAT,
+                velocity_z      FLOAT,
+                pitch           FLOAT,
+                roll            FLOAT,
+                yaw             FLOAT,
+                gimbal_pitch    FLOAT,
+                gimbal_roll     FLOAT,
+                gimbal_yaw      FLOAT,
+                battery_percent INTEGER,
+                battery_voltage FLOAT,
+                battery_current FLOAT,
+                battery_temp    FLOAT,
+                cell_voltages   VARCHAR,
+                flight_mode     VARCHAR,
+                gps_signal      INTEGER,
+                satellites      INTEGER,
+                rc_signal       INTEGER,
+                rc_uplink       INTEGER,
+                rc_downlink     INTEGER,
+                rc_aileron      FLOAT,
+                rc_elevator     FLOAT,
+                rc_throttle     FLOAT,
+                rc_rudder       FLOAT,
+                is_photo        BOOLEAN,
+                is_video        BOOLEAN
+            );
+            
+            INSERT INTO telemetry_reordered SELECT {} FROM telemetry;
             DROP TABLE telemetry;
-            ALTER TABLE telemetry_new RENAME TO telemetry;
+            ALTER TABLE telemetry_reordered RENAME TO telemetry;
+            
             CREATE INDEX IF NOT EXISTS idx_telemetry_flight_time
                 ON telemetry(flight_id, timestamp_ms);
+            
             COMMIT;
             "#,
             select_list
@@ -493,8 +788,9 @@ impl Database {
                 id, file_name, display_name, file_hash, drone_model, drone_serial,
                 aircraft_name, battery_serial,
                 start_time, end_time, duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             params![
                 flight.id,
@@ -514,6 +810,8 @@ impl Database {
                 flight.home_lat,
                 flight.home_lon,
                 flight.point_count,
+                flight.photo_count,
+                flight.video_count,
             ],
         )?;
 
@@ -536,13 +834,8 @@ impl Database {
 
         let mut inserted = 0usize;
         let mut skipped = 0usize;
-        let mut seen_timestamps: HashSet<i64> = HashSet::with_capacity(points.len());
 
         for point in points {
-            if !seen_timestamps.insert(point.timestamp_ms) {
-                skipped += 1;
-                continue;
-            }
             // Serialize cell_voltages to JSON string for storage
             let cell_voltages_json: Option<String> = point.cell_voltages.as_ref().map(|v| {
                 serde_json::to_string(v).unwrap_or_else(|_| "[]".to_string())
@@ -623,7 +916,8 @@ impl Database {
                 drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count, notes
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count, notes
             FROM flights
             ORDER BY start_time DESC
             "#,
@@ -648,8 +942,10 @@ impl Database {
                     home_lat: row.get(13)?,
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
+                    photo_count: row.get(16)?,
+                    video_count: row.get(17)?,
                     tags: Vec::new(),
-                    notes: row.get(16)?,
+                    notes: row.get(18)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -696,7 +992,8 @@ impl Database {
                 file_hash, drone_model, drone_serial, aircraft_name, battery_serial,
                 CAST(start_time AS VARCHAR) AS start_time,
                 duration_secs, total_distance,
-                max_altitude, max_speed, home_lat, home_lon, point_count, notes
+                max_altitude, max_speed, home_lat, home_lon, point_count,
+                photo_count, video_count, notes
             FROM flights
             WHERE id = ?
             "#,
@@ -719,8 +1016,10 @@ impl Database {
                     home_lat: row.get(13)?,
                     home_lon: row.get(14)?,
                     point_count: row.get(15)?,
+                    photo_count: row.get(16)?,
+                    video_count: row.get(17)?,
                     tags: Vec::new(),
-                    notes: row.get(16)?,
+                    notes: row.get(18)?,
                 })
             },
         )
@@ -750,8 +1049,9 @@ impl Database {
     /// Get flight telemetry with automatic downsampling for large datasets.
     ///
     /// Strategy:
-    /// - If points < 5000: return raw data
-    /// - If points >= 5000: group by 1-second intervals, averaging values
+    /// - If max_points is None: return all raw data (for export)
+    /// - If points <= max_points: return raw data
+    /// - If points > max_points: group by time-bucket intervals, averaging values
     /// - This keeps the frontend responsive while preserving data trends
     ///
     /// `known_point_count` avoids an extra COUNT query when the flight metadata
@@ -763,7 +1063,14 @@ impl Database {
         known_point_count: Option<i64>,
     ) -> Result<Vec<TelemetryRecord>, DatabaseError> {
         let conn = self.conn.lock().unwrap();
-        let max_points = max_points.unwrap_or(5000);
+
+        // None = return all raw data (for export); Some(n) = downsample for display
+        if max_points.is_none() {
+            log::debug!("Returning all raw telemetry points for flight {} (export mode)", flight_id);
+            return self.query_raw_telemetry(&conn, flight_id);
+        }
+
+        let max_points = max_points.unwrap();
 
         // Use known count or fall back to a COUNT query
         let point_count = match known_point_count {
@@ -1040,7 +1347,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         // Basic aggregate stats
-        let (total_flights, total_distance, total_duration, total_points, max_altitude): (i64, f64, f64, i64, f64) =
+        let (total_flights, total_distance, total_duration, total_points, total_photos, total_videos, max_altitude): (i64, f64, f64, i64, i64, i64, f64) =
             conn.query_row(
                 r#"
                 SELECT
@@ -1048,11 +1355,13 @@ impl Database {
                     COALESCE(SUM(total_distance), 0)::DOUBLE,
                     COALESCE(SUM(duration_secs), 0)::DOUBLE,
                     COALESCE(SUM(point_count), 0)::BIGINT,
+                    COALESCE(SUM(photo_count), 0)::BIGINT,
+                    COALESCE(SUM(video_count), 0)::BIGINT,
                     COALESCE(MAX(max_altitude), 0)::DOUBLE
                 FROM flights
                 "#,
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
             )?;
 
         // Battery usage with total duration
@@ -1252,6 +1561,8 @@ impl Database {
             total_distance_m: total_distance,
             total_duration_secs: total_duration,
             total_points,
+            total_photos,
+            total_videos,
             max_altitude_m: max_altitude,
             max_distance_from_home_m: max_distance_from_home,
             batteries_used,

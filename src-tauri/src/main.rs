@@ -1,4 +1,4 @@
-//! Drone Logbook - Backend
+//! Open DroneLog - Backend
 //!
 //! A high-performance application for analyzing DJI drone flight logs.
 //! Supports two build modes:
@@ -209,14 +209,15 @@ mod tauri_app {
             Ok(result) => result,
             Err(crate::parser::ParserError::AlreadyImported(matching_flight)) => {
                 log::info!("Skipping already-imported file: {} — matches flight '{}' in database", file_path, matching_flight);
-                // Still copy the file even though flight is already imported
-                try_copy_file(None);
+                // Compute file hash so copy_uploaded_file can properly deduplicate
+                let file_hash = LogParser::calculate_file_hash(&path).ok();
+                try_copy_file(file_hash.as_deref());
                 return Ok(ImportResult {
                     success: false,
                     flight_id: None,
                     message: format!("This flight log has already been imported (matches: {})", matching_flight),
                     point_count: 0,
-                    file_hash: None,
+                    file_hash,
                 });
             }
             Err(e) => {
@@ -398,6 +399,8 @@ mod tauri_app {
             home_lat: Some(home_lat),
             home_lon: Some(home_lon),
             point_count: 0, // No telemetry points for manual entries
+            photo_count: 0,
+            video_count: 0,
         };
 
         // Insert flight
@@ -871,17 +874,26 @@ mod tauri_app {
         
         let dest_path = dest_folder.join(file_name);
         
+        // Compute source file hash if not provided
+        let computed_hash: String;
+        let src_hash = match file_hash {
+            Some(h) => h,
+            None => {
+                computed_hash = LogParser::calculate_file_hash(src_path)
+                    .map_err(|e| format!("Failed to hash source file: {}", e))?;
+                &computed_hash
+            }
+        };
+        
         // If file with same name exists, check hash
         if dest_path.exists() {
             let existing_hash = LogParser::calculate_file_hash(&dest_path)
                 .map_err(|e| format!("Failed to hash existing file: {}", e))?;
             
             // If hashes match, skip (file already exists)
-            if let Some(hash) = file_hash {
-                if existing_hash == hash {
-                    log::info!("File already exists with same hash, skipping: {}", file_name);
-                    return Ok(());
-                }
+            if existing_hash == src_hash {
+                log::info!("File already exists with same hash, skipping: {}", file_name);
+                return Ok(());
             }
             
             // Hashes don't match - save with hash suffix
@@ -892,7 +904,7 @@ mod tauri_app {
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
             
-            let hash_suffix = file_hash.map(|h| &h[..8]).unwrap_or("unknown");
+            let hash_suffix = &src_hash[..8.min(src_hash.len())];
             let new_name = if extension.is_empty() {
                 format!("{}_{}", stem, hash_suffix)
             } else {
@@ -948,6 +960,8 @@ mod tauri_app {
             home_lat: flight.home_lat,
             home_lon: flight.home_lon,
             point_count: flight.point_count.unwrap_or(0),
+            photo_count: flight.photo_count.unwrap_or(0),
+            video_count: flight.video_count.unwrap_or(0),
         };
 
         match state.db.get_flight_telemetry(flight_id, Some(50000), None) {
@@ -1014,6 +1028,8 @@ mod tauri_app {
                         home_lat: flight.home_lat,
                         home_lon: flight.home_lon,
                         point_count: flight.point_count.unwrap_or(0),
+                        photo_count: flight.photo_count.unwrap_or(0),
+                        video_count: flight.video_count.unwrap_or(0),
                     };
 
                     // Get raw telemetry to compute stats
@@ -1080,8 +1096,42 @@ mod tauri_app {
             .setup(|app| {
                 let db = init_database(app.handle())?;
                 app.manage(AppState { db: Arc::new(db) });
-                log::info!("Drone Logbook initialized successfully");
+                log::info!("Open DroneLog initialized successfully");
                 Ok(())
+            })
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    log::info!("Window close requested. Intercepting to cleanly teardown database...");
+                    
+                    // Prevent immediate close
+                    api.prevent_close();
+                    
+                    // Hide window to give immediate feedback to user
+                    let _ = window.hide();
+                    
+                    let app_handle = window.app_handle().clone();
+                    
+                    // Spawn task to handle the actual teardown
+                    tauri::async_runtime::spawn(async move {
+                        // Extract state and drop the DB explicitly
+                        if let Some(state) = app_handle.try_state::<AppState>() {
+                            log::info!("Forcing explicit drop of AppState DB connection...");
+                            
+                            // To actually drop the inner value from the Arc, we'd need strong count=1.
+                            // But since the process is shutting down anyway, we can just execute CHECKPOINT directly.
+                            if let Err(e) = state.db.checkpoint() {
+                                log::warn!("Final shutdown WAL checkpoint failed: {}", e);
+                            } else {
+                                log::info!("Final shutdown WAL checkpoint completed successfully.");
+                            }
+                        }
+                        
+                        // We give DuckDB a tiny grace period to flush file handlers
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        log::info!("Safe to exit process now.");
+                        app_handle.exit(0);
+                    });
+                }
             })
             .invoke_handler(tauri::generate_handler![
                 import_log,
@@ -1119,7 +1169,7 @@ mod tauri_app {
                 regenerate_all_smart_tags,
             ])
             .run(tauri::generate_context!())
-            .expect("Failed to run Drone Logbook");
+            .expect("Failed to run Open DroneLog");
     }
 }
 

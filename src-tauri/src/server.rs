@@ -147,22 +147,25 @@ async fn import_log(
     log::info!("Importing uploaded log file: {}", file_name);
 
     // Check if we should keep uploaded files (via env var or config) - check early for all code paths
+    let upload_config_path = state.db.data_dir.join("config.json");
+    let upload_config: serde_json::Value = if upload_config_path.exists() {
+        std::fs::read_to_string(&upload_config_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
     let keep_enabled = std::env::var("KEEP_UPLOADED_FILES")
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or_else(|_| {
-            // Fallback to config.json
-            let config_path = state.db.data_dir.join("config.json");
-            if config_path.exists() {
-                std::fs::read_to_string(&config_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                    .and_then(|v| v.get("keep_uploaded_files").and_then(|v| v.as_bool()))
-                    .unwrap_or(false) // Default to false for web mode
-            } else {
-                false
-            }
+            upload_config.get("keep_uploaded_files").and_then(|v| v.as_bool()).unwrap_or(false)
         });
-    let upload_folder = state.db.data_dir.join("uploaded");
+    let default_upload_folder = state.db.data_dir.join("uploaded");
+    let upload_folder = upload_config.get("uploaded_files_path")
+        .and_then(|v| v.as_str())
+        .map(|s| std::path::PathBuf::from(s))
+        .unwrap_or(default_upload_folder);
 
     // Helper to copy uploaded file if setting is enabled
     let try_copy_file = |file_hash: Option<&str>| {
@@ -178,9 +181,9 @@ async fn import_log(
     let parse_result = match parser.parse_log(&temp_path).await {
         Ok(result) => result,
         Err(crate::parser::ParserError::AlreadyImported(matching_flight)) => {
-            // Compute file hash for keep-uploaded-files feature
+            // Compute file hash so copy_uploaded_file_web can properly deduplicate
             let file_hash = compute_file_hash(&temp_path).ok();
-            // Still copy the file even though flight is already imported
+            // Copy the file even though flight is already imported
             try_copy_file(file_hash.as_deref());
             // Clean up temp file
             let _ = std::fs::remove_file(&temp_path);
@@ -386,6 +389,8 @@ async fn create_manual_flight(
         home_lat: Some(payload.home_lat),
         home_lon: Some(payload.home_lon),
         point_count: 0,
+        photo_count: 0,
+        video_count: 0,
     };
 
     // Insert flight
@@ -922,6 +927,8 @@ async fn regenerate_flight_smart_tags(
         home_lat: flight.home_lat,
         home_lon: flight.home_lon,
         point_count: flight.point_count.unwrap_or(0),
+        photo_count: flight.photo_count.unwrap_or(0),
+        video_count: flight.video_count.unwrap_or(0),
     };
 
     match state.db.get_flight_telemetry(flight_id, Some(50000), None) {
@@ -989,6 +996,8 @@ async fn regenerate_smart_tags(
                     home_lat: flight.home_lat,
                     home_lon: flight.home_lon,
                     point_count: flight.point_count.unwrap_or(0),
+                    photo_count: flight.photo_count.unwrap_or(0),
+                    video_count: flight.video_count.unwrap_or(0),
                 };
 
                 match state.db.get_flight_telemetry(*flight_id, Some(50000), None) {
@@ -1568,7 +1577,7 @@ pub async fn start_server(data_dir: PathBuf) -> Result<(), Box<dyn std::error::E
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".to_string());
     let addr = format!("{}:{}", host, port);
 
-    log::info!("Starting Drone Logbook web server on {}", addr);
+    log::info!("Starting Open DroneLog web server on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;
