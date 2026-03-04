@@ -7,14 +7,36 @@ when:
   event: [push, tag, release, manual]
 
 steps:
-  publish:
+  publish-testing:
     image: codeberg.org/woodpecker-plugins/docker-buildx:6.0.3
+    when:
+      event: [push, manual]
     settings:
       dockerfile: *dockerfile
       platforms: linux/amd64
       repo: *repo
       registry: codeberg.org
-      tags: "${CI_PIPELINE_EVENT == 'tag' || CI_PIPELINE_EVENT == 'release' ? 'latest' : 'testing'}"
+      tags: testing
+      username: ${CI_REPO_OWNER}
+      password:
+        from_secret: codeberg_token
+      logins:
+        - registry: https://index.docker.io/v1/
+          username:
+            from_secret: docker_username
+          password:
+            from_secret: docker_password
+
+  publish-latest:
+    image: codeberg.org/woodpecker-plugins/docker-buildx:6.0.3
+    when:
+      event: [tag, release]
+    settings:
+      dockerfile: *dockerfile
+      platforms: linux/amd64
+      repo: *repo
+      registry: codeberg.org
+      tags: latest
       auto_tag: true
       username: ${CI_REPO_OWNER}
       password:
