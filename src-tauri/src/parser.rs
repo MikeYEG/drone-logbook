@@ -719,7 +719,40 @@ impl<'a> LogParser<'a> {
                     // drones have 20-char serials stored in ComponentSerial records.
                     let records = parser_ref.records(keychains)?;
                     let comp_serials = extract_component_serials(&records);
-                    let frames = records_to_frames(records, parser_ref.details.clone());
+                    
+                    // The dji-log-parser library resets camera state to false on every OSD tick
+                    // because not all OSD ticks have a matching camera record. This causes
+                    // false `is_photo` and `is_video` transitions in the extracted frames.
+                    // We must track the true persistent state out-of-band to override the frames.
+                    let mut persistent_camera_states = Vec::new();
+                    let mut current_is_photo = false;
+                    let mut current_is_video = false;
+                    let mut osd_count = 0;
+
+                    for record in &records {
+                        match record {
+                            dji_log_parser::record::Record::Camera(camera) => {
+                                current_is_photo = camera.is_shooting_single_photo;
+                                current_is_video = camera.is_recording;
+                            }
+                            dji_log_parser::record::Record::OSD(_) => {
+                                if osd_count > 0 {
+                                    persistent_camera_states.push((current_is_photo, current_is_video));
+                                }
+                                osd_count += 1;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let mut frames = records_to_frames(records, parser_ref.details.clone());
+                    
+                    // Override the artificially false values injected by the library with our persistent trackers
+                    for (frame, &(is_photo, is_video)) in frames.iter_mut().zip(persistent_camera_states.iter()) {
+                        frame.camera.is_photo = is_photo;
+                        frame.camera.is_video = is_video;
+                    }
+
                     Ok((frames, comp_serials))
                 }))
             }),
@@ -768,6 +801,9 @@ impl<'a> LogParser<'a> {
         } else {
             100 // default 10Hz assumption
         };
+
+        let mut prev_is_photo = false;
+        let mut prev_is_video = false;
 
         for frame in frames {
             let osd = &frame.osd;
@@ -883,10 +919,17 @@ impl<'a> LogParser<'a> {
             point.rc_throttle = Some(((rc.throttle as f64) - 1024.0) / 1024.0 * 100.0);
             point.rc_rudder = Some(((rc.rudder as f64) - 1024.0) / 1024.0 * 100.0);
 
-            // Camera state: extract is_photo and is_video from frame.camera
+            // Camera state: extract rising edge transitions to guarantee exactly one "true" per event
             let camera = &frame.camera;
-            point.is_photo = Some(camera.is_photo);
-            point.is_video = Some(camera.is_video);
+            
+            let is_photo_now = camera.is_photo;
+            let is_video_now = camera.is_video;
+
+            point.is_photo = Some(is_photo_now && !prev_is_photo);
+            point.is_video = Some(is_video_now && !prev_is_video);
+
+            prev_is_photo = is_photo_now;
+            prev_is_video = is_video_now;
 
             points.push(point);
 

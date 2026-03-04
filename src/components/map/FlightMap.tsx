@@ -1122,7 +1122,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     if (!showMedia || mediaClusters.length === 0) return [];
 
     // Use meters for radius so markers scale with zoom
-    const baseRadius = 3; // meters
+    const baseRadius = 4; // increased from 3 to 5 based on user request
 
     // Define offset cluster type
     type OffsetCluster = MediaCluster & { offset: [number, number] };
@@ -1168,8 +1168,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         getPosition: (d: OffsetCluster) => d.position,
         getRadius: baseRadius * 1.3,
         radiusUnits: 'meters',
-        radiusMinPixels: 5,
-        radiusMaxPixels: 12,
+        radiusMinPixels: 8,
+        radiusMaxPixels: 14,
         getFillColor: [255, 255, 255, 255],
         stroked: false,
         filled: true,
@@ -1184,8 +1184,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         getPosition: (d: OffsetCluster) => d.position,
         getRadius: baseRadius,
         radiusUnits: 'meters',
-        radiusMinPixels: 3,
-        radiusMaxPixels: 9,
+        radiusMinPixels: 5,
+        radiusMaxPixels: 11,
         getFillColor: [59, 130, 246, 255], // Blue
         stroked: false,
         filled: true,
@@ -1201,8 +1201,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         getText: (d: OffsetCluster) => String(d.count),
         getSize: baseRadius * 1.8,
         sizeUnits: 'meters',
-        sizeMinPixels: 7,
-        sizeMaxPixels: 10,
+        sizeMinPixels: 10,
+        sizeMaxPixels: 14,
         getColor: [255, 255, 255, 255],
         getTextAnchor: 'middle',
         getAlignmentBaseline: 'center',
@@ -1220,8 +1220,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         getPosition: (d: OffsetCluster) => d.position,
         getRadius: baseRadius * 1.3,
         radiusUnits: 'meters',
-        radiusMinPixels: 5,
-        radiusMaxPixels: 12,
+        radiusMinPixels: 8,
+        radiusMaxPixels: 14,
         getFillColor: [255, 255, 255, 255],
         stroked: false,
         filled: true,
@@ -1236,8 +1236,8 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         getPosition: (d: OffsetCluster) => d.position,
         getRadius: baseRadius,
         radiusUnits: 'meters',
-        radiusMinPixels: 3,
-        radiusMaxPixels: 9,
+        radiusMinPixels: 5,
+        radiusMaxPixels: 11,
         getFillColor: (d: OffsetCluster) => {
           if (d.type === 'videoStart') return [34, 197, 94, 255];  // Green
           return [239, 68, 68, 255];  // Red for stop
