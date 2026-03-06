@@ -10,7 +10,10 @@
     "bannerBy": "作者：Arpan Ghosh",
     "bannerSupport": "如果您觉得有用，请考虑在以下平台请开发者喝杯咖啡",
     "dismiss": "关闭",
-    "dismissBanner": "关闭捐赠横幅"
+    "dismissBanner": "关闭捐赠横幅",
+    "profileLocked": "配置文件已锁定",
+    "profileLockedDesc": "此配置文件受密码保护。请输入密码以继续，或切换到其他配置文件。",
+    "wrongPassword": "密码不正确。请重试。"
   },
   "dashboard": {
     "flights": "飞行记录",
@@ -677,6 +680,8 @@
     "passwordTooShort": "密码至少需要4个字符",
     "passwordMismatch": "密码不匹配",
     "unlock": "解锁",
-    "locked": "密码保护"
+    "login": "登录",
+    "locked": "密码保护",
+    "logout": "退出登录"
   }
 }

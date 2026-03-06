@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { useFlightStore } from '@/stores/flightStore';
@@ -8,6 +8,83 @@ import { isWebMode } from '@/lib/api';
 /** Loading overlay shown during database initialization/migration */
 function InitializationOverlay() {
   const { t } = useTranslation();
+  const { needsAuth, activeProfile, profiles, profilePasswords, loadProfiles, loadFlights } = useFlightStore();
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState(activeProfile);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Load profile list so the dropdown is populated
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
+
+  // Keep selectedProfile in sync with activeProfile
+  useEffect(() => {
+    setSelectedProfile(activeProfile);
+  }, [activeProfile]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  /** Lock icon SVG for protected profiles */
+  const LockIcon = useCallback(({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+    </svg>
+  ), []);
+
+  const handleAuth = async () => {
+    if (profilePasswords[selectedProfile] && !authPassword.trim()) {
+      setAuthError(t('profile.passwordRequired'));
+      return;
+    }
+    setAuthError(null);
+    setAuthBusy(true);
+    try {
+      if (profilePasswords[selectedProfile]) {
+        // Protected profile — authenticate via switchProfile to get a session token
+        const { switchProfile } = useFlightStore.getState();
+        await switchProfile(selectedProfile, { password: authPassword });
+        // switchProfile reloads the page, so we won't reach here normally.
+        // But as a fallback, try reloading flights:
+        await loadFlights();
+      } else {
+        // Unprotected profile — just reload flights directly
+        await loadFlights();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Show localised "wrong password" when the backend says so
+      if (/incorrect password/i.test(msg)) {
+        setAuthError(t('app.wrongPassword'));
+      } else {
+        setAuthError(msg);
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSwitchToUnprotected = async (profile: string) => {
+    try {
+      const { switchProfile } = useFlightStore.getState();
+      await switchProfile(profile);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-drone-dark">
       <div className="flex flex-col items-center gap-6">
@@ -28,15 +105,120 @@ function InitializationOverlay() {
           </svg>
         </div>
 
-        <div className="text-center">
-          <h2 className="text-lg font-medium text-white mb-2">{t('app.initializing')}</h2>
-          <p className="text-sm text-gray-400">{t('app.initProgress')}</p>
-        </div>
+        {!needsAuth ? (
+          <>
+            <div className="text-center">
+              <h2 className="text-lg font-medium text-white mb-2">{t('app.initializing')}</h2>
+              <p className="text-sm text-gray-400">{t('app.initProgress')}</p>
+            </div>
 
-        {/* Animated progress bar */}
-        <div className="w-64 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-          <div className="h-full w-1/2 bg-drone-primary rounded-full init-progress-bar" />
-        </div>
+            {/* Animated progress bar */}
+            <div className="w-64 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full w-1/2 bg-drone-primary rounded-full init-progress-bar" />
+            </div>
+          </>
+        ) : (
+          /* Auth prompt for locked profile */
+          <div className="w-80 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <h2 className="text-lg font-medium text-white">{t('app.profileLocked')}</h2>
+            </div>
+            <p className="text-sm text-gray-400 mb-4">{t('app.profileLockedDesc')}</p>
+
+            {/* Profile selector dropdown (custom, so we can show SVG lock icons) */}
+            <div ref={dropdownRef} className="relative w-full mb-2">
+              <button
+                type="button"
+                onClick={() => setDropdownOpen((o) => !o)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white flex items-center justify-between focus:outline-none focus:border-drone-primary cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  {selectedProfile === 'default' ? t('profile.default') : selectedProfile}
+                  {profilePasswords[selectedProfile] && <LockIcon className="w-3.5 h-3.5 text-amber-400" />}
+                </span>
+                <svg className={`w-3.5 h-3.5 ml-1 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <polyline points="6 9 12 15 18 9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {dropdownOpen && (
+                <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-600 bg-gray-800 shadow-xl max-h-48 overflow-y-auto">
+                  {profiles.map((name) => (
+                    <div
+                      key={name}
+                      onClick={() => {
+                        setSelectedProfile(name);
+                        setAuthPassword('');
+                        setAuthError(null);
+                        setDropdownOpen(false);
+                        if (!profilePasswords[name]) {
+                          handleSwitchToUnprotected(name);
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer hover:bg-drone-primary/20 ${
+                        name === selectedProfile ? 'text-white font-medium bg-drone-primary/10' : 'text-gray-300'
+                      }`}
+                    >
+                      {name === 'default' ? t('profile.default') : name}
+                      {profilePasswords[name] && <LockIcon className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {profilePasswords[selectedProfile] ? (
+              <>
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => { setAuthPassword(e.target.value); setAuthError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAuth(); }}
+                  placeholder={t('profile.passwordPlaceholder')}
+                  className="w-full px-3 py-2 mb-2 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-drone-primary"
+                  autoFocus
+                />
+                {authError && (
+                  <p className="text-xs text-red-400 mb-2">{authError}</p>
+                )}
+                <button
+                  onClick={handleAuth}
+                  disabled={authBusy || !authPassword.trim()}
+                  className="w-full py-2 rounded-lg bg-drone-primary text-white text-sm font-medium hover:bg-drone-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  {authBusy && (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  )}
+                  {t('profile.unlock')}
+                </button>
+              </>
+            ) : (
+              <>
+                {authError && (
+                  <p className="text-xs text-red-400 mb-2">{authError}</p>
+                )}
+                <button
+                  onClick={handleAuth}
+                  disabled={authBusy}
+                  className="w-full py-2 rounded-lg bg-drone-primary text-white text-sm font-medium hover:bg-drone-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  {authBusy && (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  )}
+                  {t('profile.login')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -81,7 +263,7 @@ class AppErrorBoundary extends React.Component<
 
 function App() {
   const { t } = useTranslation();
-  const { loadFlights, error, clearError, donationAcknowledged, themeMode, isFlightsInitialized } = useFlightStore();
+  const { loadFlights, error, clearError, donationAcknowledged, themeMode, isFlightsInitialized, needsAuth } = useFlightStore();
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     if (typeof sessionStorage === 'undefined') return false;
     return sessionStorage.getItem('donationBannerDismissed') === 'true';
@@ -154,8 +336,8 @@ function App() {
 
   return (
     <div className="w-full h-full flex flex-col bg-drone-dark overflow-hidden">
-      {/* Initialization overlay - shown during DB migration */}
-      {!isFlightsInitialized && <InitializationOverlay />}
+      {/* Initialization overlay - shown during DB migration or auth required */}
+      {(!isFlightsInitialized || needsAuth) && <InitializationOverlay />}
 
       {showDonationBanner && (
         <div

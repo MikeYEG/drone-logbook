@@ -61,6 +61,7 @@ interface FlightState {
   // State
   flights: Flight[];
   isFlightsInitialized: boolean;  // true after first loadFlights completes
+  needsAuth: boolean;  // true when loadFlights fails due to auth (locked profile)
   selectedFlightId: number | null;
   currentFlightData: FlightDataResponse | null;
   overviewStats: OverviewStats | null;
@@ -194,12 +195,14 @@ interface FlightState {
   loadProfiles: () => Promise<void>;
   switchProfile: (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => Promise<void>;
   deleteProfile: (name: string, opts?: { password?: string; masterPassword?: string }) => Promise<void>;
+  logout: () => void;
 }
 
 export const useFlightStore = create<FlightState>((set, get) => ({
   // Initial state
   flights: [],
   isFlightsInitialized: false,
+  needsAuth: false,
   selectedFlightId: null,
   currentFlightData: null,
   overviewStats: null,
@@ -345,10 +348,10 @@ export const useFlightStore = create<FlightState>((set, get) => ({
 
   // Load all flights from database
   loadFlights: async () => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, needsAuth: false });
     try {
       const flights = await api.getFlights();
-      set({ flights, isLoading: false, isFlightsInitialized: true });
+      set({ flights, isLoading: false, isFlightsInitialized: true, needsAuth: false });
 
       // Load all tags in background
       get().loadAllTags();
@@ -378,9 +381,12 @@ export const useFlightStore = create<FlightState>((set, get) => ({
         }
       }
     } catch (err) {
+      const errMsg = String(err);
+      const isAuthError = /password.protected|Session expired|re-authenticate|UNAUTHORIZED/i.test(errMsg);
       set({ 
         isLoading: false, 
-        error: `Failed to load flights: ${err}` 
+        needsAuth: isAuthError,
+        error: isAuthError ? null : `Failed to load flights: ${err}` 
       });
     }
   },
@@ -1054,7 +1060,8 @@ export const useFlightStore = create<FlightState>((set, get) => ({
 
   switchProfile: async (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => {
     const currentProfile = get().activeProfile;
-    if (currentProfile === name) return;
+    // Skip early return if a password is provided (re-authenticating the same profile)
+    if (currentProfile === name && !opts?.password) return;
 
     // ── Save current profile's localStorage settings ──
     const perProfileKeys = [
@@ -1131,5 +1138,14 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     }
     // Refresh the profile list
     await get().loadProfiles();
+  },
+
+  logout: () => {
+    // Clear session token (web mode)
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('profileSession');
+    }
+    // Reset initialised flag + trigger auth overlay
+    set({ needsAuth: true, isFlightsInitialized: false });
   },
 }));

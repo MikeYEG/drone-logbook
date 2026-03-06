@@ -10,7 +10,10 @@
     "bannerBy": "door Arpan Ghosh",
     "bannerSupport": "Als je dit nuttig vindt, overweeg dan de ontwikkelaar te steunen met een koffie op",
     "dismiss": "Sluiten",
-    "dismissBanner": "Donatiebanner sluiten"
+    "dismissBanner": "Donatiebanner sluiten",
+    "profileLocked": "Profiel vergrendeld",
+    "profileLockedDesc": "Dit profiel is beveiligd met een wachtwoord. Voer het wachtwoord in om door te gaan of schakel naar een ander profiel.",
+    "wrongPassword": "Onjuist wachtwoord. Probeer het opnieuw."
   },
   "dashboard": {
     "flights": "Vluchten",
@@ -677,6 +680,8 @@
     "passwordTooShort": "Wachtwoord moet minimaal 4 tekens bevatten",
     "passwordMismatch": "Wachtwoorden komen niet overeen",
     "unlock": "Ontgrendelen",
-    "locked": "Beveiligd met wachtwoord"
+    "login": "Inloggen",
+    "locked": "Beveiligd met wachtwoord",
+    "logout": "Uitloggen"
   }
 }

@@ -36,6 +36,7 @@ fn session_ttl() -> Duration {
         log::info!("Session TTL configured to {} hour(s)", hours);
         Duration::from_secs(hours * 3600)
     })
+}
 
 // ────────────────────────────── Types ──────────────────────────────────
 

@@ -10,7 +10,10 @@
     "bannerBy": "作者: Arpan Ghosh",
     "bannerSupport": "便利だと感じたら、開発者へのコーヒーでのサポートをご検討ください。",
     "dismiss": "閉じる",
-    "dismissBanner": "寄付バナーを閉じる"
+    "dismissBanner": "寄付バナーを閉じる",
+    "profileLocked": "プロファイルがロックされています",
+    "profileLockedDesc": "このプロファイルはパスワードで保護されています。パスワードを入力して続行するか、別のプロファイルに切り替えてください。",
+    "wrongPassword": "パスワードが正しくありません。もう一度お試しください。"
   },
   "dashboard": {
     "flights": "フライト",
@@ -677,6 +680,8 @@
     "passwordTooShort": "パスワードは4文字以上にしてください",
     "passwordMismatch": "パスワードが一致しません",
     "unlock": "ロック解除",
-    "locked": "パスワード保護"
+    "login": "ログイン",
+    "locked": "パスワード保護",
+    "logout": "ログアウト"
   }
 }

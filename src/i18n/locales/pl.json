@@ -10,7 +10,10 @@
     "bannerBy": "autorstwa Arpan Ghosh",
     "bannerSupport": "Jeśli uważasz to za przydatne, rozważ wsparcie twórcy kawą na",
     "dismiss": "Zamknij",
-    "dismissBanner": "Zamknij baner darowizny"
+    "dismissBanner": "Zamknij baner darowizny",
+    "profileLocked": "Profil zablokowany",
+    "profileLockedDesc": "Ten profil jest chroniony hasłem. Wprowadź hasło, aby kontynuować, lub przejdź do innego profilu.",
+    "wrongPassword": "Nieprawidłowe hasło. Spróbuj ponownie."
   },
   "dashboard": {
     "flights": "Loty",
@@ -677,6 +680,8 @@
     "passwordTooShort": "Hasło musi mieć co najmniej 4 znaki",
     "passwordMismatch": "Hasła nie są zgodne",
     "unlock": "Odblokuj",
-    "locked": "Chronione hasłem"
+    "login": "Zaloguj się",
+    "locked": "Chronione hasłem",
+    "logout": "Wyloguj się"
   }
 }

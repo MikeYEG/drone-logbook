@@ -10,7 +10,10 @@
     "bannerBy": "por Arpan Ghosh",
     "bannerSupport": "Si le resulta útil, considere apoyar al desarrollador con un café en",
     "dismiss": "Cerrar",
-    "dismissBanner": "Cerrar banner de donación"
+    "dismissBanner": "Cerrar banner de donación",
+    "profileLocked": "Perfil bloqueado",
+    "profileLockedDesc": "Este perfil está protegido con contraseña. Introduzca la contraseña para continuar o cambie a otro perfil.",
+    "wrongPassword": "Contraseña incorrecta. Inténtelo de nuevo."
   },
   "dashboard": {
     "flights": "Vuelos",
@@ -677,6 +680,8 @@
     "passwordTooShort": "La contraseña debe tener al menos 4 caracteres",
     "passwordMismatch": "Las contraseñas no coinciden",
     "unlock": "Desbloquear",
-    "locked": "Protegido con contraseña"
+    "login": "Iniciar sesión",
+    "locked": "Protegido con contraseña",
+    "logout": "Cerrar sesión"
   }
 }

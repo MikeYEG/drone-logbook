@@ -364,7 +364,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="p-4 overflow-y-auto min-h-0 settings-scroll">
           <div className="flex flex-col md:flex-row gap-6 md:gap-0">
             {/* Left Column: Preferences & API Key */}
-            <div className="flex-1 space-y-4 md:pr-5">
+            <div className="md:w-1/2 space-y-4 md:pr-5">
               {/* Units + Theme + Time Format — stack on mobile */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
@@ -895,21 +895,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   )}
                 </div>
 
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={hasKey ? '••••••••••••••••' : 'Enter your DJI API key'}
-                  className="input w-full"
-                />
-
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving || !apiKey.trim()}
-                  className="btn-primary w-full mt-3"
-                >
-                  {isSaving ? t('settings.savingApiKey') : hasKey ? t('settings.updateApiKey') : t('settings.saveApiKey')}
-                </button>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={hasKey ? '••••••••••••••••' : 'Enter your DJI API key'}
+                    className="flex-1 min-w-0 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                  />
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving || !apiKey.trim()}
+                    className="py-1.5 px-3 rounded-lg bg-drone-primary text-white text-xs hover:bg-drone-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  >
+                    {isSaving ? t('settings.savingApiKey') : hasKey ? t('settings.updateApiKey') : t('settings.saveApiKey')}
+                  </button>
+                </div>
 
                 {/* Message (auto-dismisses after 5s) */}
                 {message && (
@@ -929,7 +930,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <div className="md:hidden h-px w-full bg-gray-700 shrink-0" />
 
             {/* Right Column: Donation, Support, Info & Data */}
-            <div className="flex-1 space-y-4 md:pl-5">
+            <div className="md:w-1/2 space-y-4 md:pl-5">
               {/* Donation Status */}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">

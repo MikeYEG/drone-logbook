@@ -10,7 +10,10 @@
     "bannerBy": "Arpan Ghosh 제작",
     "bannerSupport": "유용하다고 생각되시면 개발자에게 커피 한 잔으로 응원해 주세요",
     "dismiss": "닫기",
-    "dismissBanner": "기부 배너 닫기"
+    "dismissBanner": "기부 배너 닫기",
+    "profileLocked": "프로필 잠김",
+    "profileLockedDesc": "이 프로필은 비밀번호로 보호되어 있습니다. 비밀번호를 입력하여 계속하거나 다른 프로필로 전환하세요.",
+    "wrongPassword": "비밀번호가 올바르지 않습니다. 다시 시도해 주세요."
   },
   "dashboard": {
     "flights": "비행 기록",
@@ -677,6 +680,8 @@
     "passwordTooShort": "비밀번호는 4자 이상이어야 합니다",
     "passwordMismatch": "비밀번호가 일치하지 않습니다",
     "unlock": "잠금 해제",
-    "locked": "비밀번호 보호"
+    "login": "로그인",
+    "locked": "비밀번호 보호",
+    "logout": "로그아웃"
   }
 }
