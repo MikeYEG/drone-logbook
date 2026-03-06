@@ -190,9 +190,10 @@ interface FlightState {
   // Profile management
   activeProfile: string;
   profiles: string[];
+  profilePasswords: Record<string, boolean>; // name -> hasPassword
   loadProfiles: () => Promise<void>;
-  switchProfile: (name: string, create?: boolean) => Promise<void>;
-  deleteProfile: (name: string) => Promise<void>;
+  switchProfile: (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => Promise<void>;
+  deleteProfile: (name: string, opts?: { password?: string; masterPassword?: string }) => Promise<void>;
 }
 
 export const useFlightStore = create<FlightState>((set, get) => ({
@@ -316,6 +317,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   // Profile management
   activeProfile: (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('activeProfile')) || 'default',
   profiles: ['default'],
+  profilePasswords: {},
 
   setMaintenanceThreshold: (type, field, value) => {
     const thresholds = { ...get().maintenanceThresholds };
@@ -1027,7 +1029,12 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   // Profile management actions
   loadProfiles: async () => {
     try {
-      const profiles = await api.listProfiles();
+      const profileInfos = await api.listProfiles();
+      const profiles = profileInfos.map(p => p.name);
+      const profilePasswords: Record<string, boolean> = {};
+      for (const p of profileInfos) {
+        profilePasswords[p.name] = p.hasPassword;
+      }
       // Use the client-side (per-tab) active profile from sessionStorage,
       // falling back to the server-default only on first visit.
       let active = typeof sessionStorage !== 'undefined'
@@ -1039,13 +1046,13 @@ export const useFlightStore = create<FlightState>((set, get) => ({
           sessionStorage.setItem('activeProfile', active);
         }
       }
-      set({ profiles, activeProfile: active });
+      set({ profiles, activeProfile: active, profilePasswords });
     } catch (err) {
       console.warn('Failed to load profiles:', err);
     }
   },
 
-  switchProfile: async (name: string, create?: boolean) => {
+  switchProfile: async (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => {
     const currentProfile = get().activeProfile;
     if (currentProfile === name) return;
 
@@ -1069,7 +1076,22 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     }
 
     // ── Switch database on the backend ──
-    await api.switchProfile(name, create);
+    const result = await api.switchProfile({
+      name,
+      create: opts?.create,
+      password: opts?.password,
+      new_password: opts?.newPassword,
+      master_password: opts?.masterPassword,
+    });
+
+    // ── Store session token if provided (web mode, protected profile) ──
+    if (typeof sessionStorage !== 'undefined') {
+      if (result.session) {
+        sessionStorage.setItem('profileSession', result.session);
+      } else {
+        sessionStorage.removeItem('profileSession');
+      }
+    }
 
     // ── Load target profile's settings ──
     if (typeof localStorage !== 'undefined') {
@@ -1097,8 +1119,16 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     window.location.reload();
   },
 
-  deleteProfile: async (name: string) => {
-    await api.deleteProfile(name);
+  deleteProfile: async (name: string, opts?: { password?: string; masterPassword?: string }) => {
+    await api.deleteProfile({
+      name,
+      password: opts?.password,
+      master_password: opts?.masterPassword,
+    });
+    // Remove session if this was the deleted profile
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('profileSession');
+    }
     // Refresh the profile list
     await get().loadProfiles();
   },

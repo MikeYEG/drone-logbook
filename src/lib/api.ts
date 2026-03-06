@@ -39,12 +39,21 @@ async function getTauriInvoke() {
  * Build the per-request headers that identify the caller's active profile.
  * In web mode every request includes `X-Profile` so the server can route
  * the request to the correct database — enabling independent multi-tab usage.
+ * When a session token is available (password-protected profile), it is
+ * sent via `X-Session` so the server can authenticate the request.
  */
 function profileHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
   if (typeof sessionStorage !== 'undefined') {
-    return { 'X-Profile': sessionStorage.getItem('activeProfile') || 'default' };
+    headers['X-Profile'] = sessionStorage.getItem('activeProfile') || 'default';
+    const session = sessionStorage.getItem('profileSession');
+    if (session) {
+      headers['X-Session'] = session;
+    }
+  } else {
+    headers['X-Profile'] = 'default';
   }
-  return { 'X-Profile': 'default' };
+  return headers;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -761,12 +770,17 @@ export async function restoreDatabase(file?: File): Promise<string> {
 // Profile Management
 // ============================================================================
 
-export async function listProfiles(): Promise<string[]> {
+export interface ProfileInfo {
+  name: string;
+  hasPassword: boolean;
+}
+
+export async function listProfiles(): Promise<ProfileInfo[]> {
   if (isWeb) {
-    return fetchJson<string[]>('/profiles');
+    return fetchJson<ProfileInfo[]>('/profiles');
   }
   const invoke = await getTauriInvoke();
-  return invoke('list_profiles') as Promise<string[]>;
+  return invoke('list_profiles') as Promise<ProfileInfo[]>;
 }
 
 export async function getActiveProfile(): Promise<string> {
@@ -777,23 +791,113 @@ export async function getActiveProfile(): Promise<string> {
   return invoke('get_active_profile') as Promise<string>;
 }
 
-export async function switchProfile(name: string, create?: boolean): Promise<string> {
+export interface SwitchProfileOptions {
+  name: string;
+  create?: boolean;
+  password?: string;
+  new_password?: string;
+  master_password?: string;
+}
+
+export interface SwitchProfileResponse {
+  name: string;
+  session: string | null;
+}
+
+export async function switchProfile(opts: SwitchProfileOptions): Promise<SwitchProfileResponse> {
   if (isWeb) {
-    return fetchJson<string>('/profiles/switch', {
+    return fetchJson<SwitchProfileResponse>('/profiles/switch', {
       method: 'POST',
-      body: JSON.stringify({ name, create: !!create }),
+      body: JSON.stringify({
+        name: opts.name,
+        create: !!opts.create,
+        password: opts.password || null,
+        new_password: opts.new_password || null,
+        master_password: opts.master_password || null,
+      }),
     });
   }
   const invoke = await getTauriInvoke();
-  return invoke('switch_profile', { name, create: !!create }) as Promise<string>;
+  // Tauri desktop — no session token, returns just the profile name string
+  const result = await invoke('switch_profile', {
+    name: opts.name,
+    create: !!opts.create,
+    password: opts.password || null,
+    newPassword: opts.new_password || null,
+  }) as string;
+  return { name: result, session: null };
 }
 
-export async function deleteProfile(name: string): Promise<boolean> {
+export interface DeleteProfileOptions {
+  name: string;
+  password?: string;
+  master_password?: string;
+}
+
+export async function deleteProfile(opts: DeleteProfileOptions): Promise<boolean> {
   if (isWeb) {
-    return fetchJson<boolean>(`/profiles/delete?name=${encodeURIComponent(name)}`, {
+    const params = new URLSearchParams({ name: opts.name });
+    if (opts.password) params.set('password', opts.password);
+    if (opts.master_password) params.set('master_password', opts.master_password);
+    return fetchJson<boolean>(`/profiles/delete?${params}`, {
       method: 'DELETE',
     });
   }
   const invoke = await getTauriInvoke();
-  return invoke('delete_profile', { name }) as Promise<boolean>;
+  return invoke('delete_profile', { name: opts.name, password: opts.password || null }) as Promise<boolean>;
+}
+
+// ── Password management ──
+
+export async function setProfilePassword(
+  profile: string,
+  newPassword: string,
+  currentPassword?: string,
+): Promise<boolean> {
+  if (isWeb) {
+    const session = sessionStorage.getItem('profileSession') || undefined;
+    return fetchJson<boolean>('/profiles/set_password', {
+      method: 'POST',
+      body: JSON.stringify({
+        profile,
+        new_password: newPassword,
+        current_password: currentPassword || null,
+        session: session || null,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('set_profile_password', {
+    profile,
+    newPassword,
+    currentPassword: currentPassword || null,
+  }) as Promise<boolean>;
+}
+
+export async function removeProfilePassword(
+  profile: string,
+  currentPassword: string,
+): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/profiles/remove_password', {
+      method: 'POST',
+      body: JSON.stringify({
+        profile,
+        current_password: currentPassword,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('remove_profile_password', {
+    profile,
+    currentPassword,
+  }) as Promise<boolean>;
+}
+
+export async function hasMasterPassword(): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/profiles/has_master_password');
+  }
+  // Tauri desktop doesn't use master password
+  return false;
 }

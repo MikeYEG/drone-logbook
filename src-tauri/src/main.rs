@@ -19,9 +19,13 @@ mod dronelogbook_parser;
 mod litchi_parser;
 mod models;
 mod parser;
+mod profile_auth;
 
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 mod server;
+
+#[cfg(all(feature = "web", not(feature = "tauri-app")))]
+mod session_store;
 
 // ============================================================================
 // TAURI DESKTOP MODE
@@ -40,6 +44,7 @@ mod tauri_app {
     use crate::models::{Flight, FlightDataResponse, FlightTag, ImportResult, OverviewStats, TelemetryData};
     use crate::parser::LogParser;
     use crate::api::DjiApi;
+    use crate::profile_auth;
 
     /// Application state containing the database connection (swappable for profile switching)
     pub struct AppState {
@@ -1141,9 +1146,20 @@ mod tauri_app {
     // PROFILE MANAGEMENT COMMANDS
     // ========================================================================
 
+    #[derive(serde::Serialize)]
+    pub struct ProfileInfo {
+        name: String,
+        #[serde(rename = "hasPassword")]
+        has_password: bool,
+    }
+
     #[tauri::command]
-    pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-        Ok(database::list_profiles(&state.data_dir))
+    pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileInfo>, String> {
+        let names = database::list_profiles(&state.data_dir);
+        Ok(names.into_iter().map(|name| {
+            let has_pw = profile_auth::has_password(&state.data_dir, &name);
+            ProfileInfo { name, has_password: has_pw }
+        }).collect())
     }
 
     #[tauri::command]
@@ -1152,7 +1168,13 @@ mod tauri_app {
     }
 
     #[tauri::command]
-    pub async fn switch_profile(name: String, create: bool, state: State<'_, AppState>) -> Result<String, String> {
+    pub async fn switch_profile(
+        name: String,
+        create: bool,
+        password: Option<String>,
+        new_password: Option<String>,
+        state: State<'_, AppState>,
+    ) -> Result<String, String> {
         let profile = name.trim().to_string();
 
         // Validate (unless default)
@@ -1163,6 +1185,18 @@ mod tauri_app {
         // If this is a create request, reject if profile already exists
         if create && database::profile_exists(&state.data_dir, &profile) {
             return Err(format!("Profile '{}' already exists", profile));
+        }
+
+        // Password verification for existing protected profiles
+        if !create && profile_auth::profile_is_protected(&state.data_dir, &profile) {
+            match &password {
+                Some(pw) => {
+                    profile_auth::verify_profile_password(&state.data_dir, &profile, pw)?;
+                }
+                None => {
+                    return Err("Password is required for this profile".to_string());
+                }
+            }
         }
 
         let current = database::get_active_profile(&state.data_dir);
@@ -1188,16 +1222,37 @@ mod tauri_app {
         database::set_active_profile(&state.data_dir, &profile)
             .map_err(|e| format!("Failed to persist profile: {}", e))?;
 
+        // Set password on newly created profile (if provided)
+        if create {
+            if let Some(ref new_pw) = new_password {
+                if !new_pw.is_empty() {
+                    profile_auth::set_password(&state.data_dir, &profile, new_pw, None)?;
+                }
+            }
+        }
+
         log::info!("Switched to profile '{}'", profile);
         Ok(profile)
     }
 
     #[tauri::command]
-    pub async fn delete_profile(name: String, state: State<'_, AppState>) -> Result<bool, String> {
+    pub async fn delete_profile(name: String, password: Option<String>, state: State<'_, AppState>) -> Result<bool, String> {
         let profile = name.trim().to_string();
 
         if profile == "default" {
             return Err("Cannot delete the default profile".to_string());
+        }
+
+        // Password verification for protected profiles
+        if profile_auth::profile_is_protected(&state.data_dir, &profile) {
+            match &password {
+                Some(pw) => {
+                    profile_auth::verify_profile_password(&state.data_dir, &profile, pw)?;
+                }
+                None => {
+                    return Err("Password is required to delete this profile".to_string());
+                }
+            }
         }
 
         let active = database::get_active_profile(&state.data_dir);
@@ -1205,7 +1260,36 @@ mod tauri_app {
             return Err("Cannot delete the currently active profile. Switch to a different profile first.".to_string());
         }
 
+        // Remove auth entry
+        profile_auth::remove_auth_entry(&state.data_dir, &profile);
+
         database::delete_profile(&state.data_dir, &profile)?;
+        Ok(true)
+    }
+
+    #[tauri::command]
+    pub async fn set_profile_password(
+        profile: String,
+        new_password: String,
+        current_password: Option<String>,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        profile_auth::set_password(
+            &state.data_dir,
+            &profile,
+            &new_password,
+            current_password.as_deref(),
+        )?;
+        Ok(true)
+    }
+
+    #[tauri::command]
+    pub async fn remove_profile_password(
+        profile: String,
+        current_password: String,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        profile_auth::remove_password(&state.data_dir, &profile, &current_password)?;
         Ok(true)
     }
 
@@ -1316,6 +1400,8 @@ mod tauri_app {
                 get_active_profile,
                 switch_profile,
                 delete_profile,
+                set_profile_password,
+                remove_profile_password,
             ])
             .run(tauri::generate_context!())
             .expect("Failed to run Open DroneLog");

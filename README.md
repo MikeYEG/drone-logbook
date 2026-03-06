@@ -73,6 +73,8 @@
 - [Usage](#usage)
 - [Building from source (Linux users)](#building-from-source-linux-users)
 - [Docker deployment (Self-hosted Web)](#docker-deployment-self-hosted-web)
+- [Profiles and Password Protection](#profiles-and-password-protection)
+- [Security Warning (Web/Docker)](#security-warning-webdocker)
 - [Configuration](#configuration)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -102,6 +104,7 @@
 - **Multi-Language Support**: Full internationalization with 11 language locales (English, German, Spanish, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, Chinese) and locale-aware number and date formatting.
 - **Progressive Web App (PWA)**: Optionally install the application directly from the browser for a native-like experience on desktop and mobile.
 - **Backup & Restore**: Export/import full database across desktop and Docker instances.
+- **Profile System**: Create multiple profiles to separate flight data by pilot, drone fleet, or purpose. Each profile has its own database, config, uploads, and sync folder.Optionally lock any profile (including the default) with a password.
 
 ## Accessing flight log files
 
@@ -296,6 +299,7 @@ When `KEEP_UPLOADED_FILES=true` is set, original log files are preserved in an `
 | `SYNC_LOGS_PATH`| (not set)              | Path to internal folder for automatic log import (e.g., `/sync-logs`)       |
 | `SYNC_INTERVAL` | (not set)              | Cron expression for scheduled sync (e.g., `0 0 */8 * * *` for every 8 hours)|
 | `KEEP_UPLOADED_FILES` | `true`      | When `true`, keeps copies of uploaded log files in the `uploaded` folder    |
+| `PROFILE_CREATION_PASS` | (not set) | Master password required for creating or deleting profiles in web/Docker mode. When unset, anyone can create and delete profiles. |
 
 ### Automatic log sync (Docker)
 
@@ -340,6 +344,58 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 > You can set the external host path same for both `/sync-logs` and `/data/drone-logbook/uploaded` to unify the log file collection. Make sure to remove the `:ro` part from the `/sync-logs` mount. I do it myself for convinience, but we recommend our users to keep them separate to make sure you accidentally don't lose any log files from the sync folder due to overwrite or any issue with the application. 
 
 
+## Profiles and Password Protection
+
+Open DroneLog supports multiple named profiles. Each profile is a fully isolated environment with its own database, config, uploads, and sync folder. Profiles are managed from the **profile selector** dropdown in the header.
+
+### Creating and switching profiles
+
+- Click the profile selector (top-left, next to the logo) and choose **New Profile**
+- Enter a name and, optionally, a password to protect it
+- Switch between profiles by selecting them from the dropdown
+- Each browser tab can be on a different profile (uses `sessionStorage` for isolation)
+
+### Password protection
+
+- Set, change, or remove a profile password from **Settings → Profile Password**
+- Protected profiles display a lock icon and prompt for a password when switching to them
+- Passwords are hashed with **argon2id** and verified server-side
+- In web/Docker mode, a session token is issued after successful authentication and sent via the `X-Session` header
+- **Lockout policy**: 5 consecutive failed attempts lock the profile for 60 seconds
+
+### Master password (web/Docker only)
+
+Set the `PROFILE_CREATION_PASS` environment variable to require a master password for creating and deleting profiles. This is useful for shared or publicly exposed instances.
+
+```yaml
+environment:
+  - PROFILE_CREATION_PASS=your-secret-master-password
+```
+
+When set, any create or delete operation must include the matching master password.
+
+## Security Warning (Web/Docker)
+
+> [!WARNING]
+> **Open DroneLog is designed as a local-first application and does NOT include TLS/HTTPS.** If you expose your instance to the internet, passwords and session tokens are transmitted in **plaintext** over HTTP.
+
+**Strongly recommended for internet-facing deployments:**
+
+1. **Use a reverse proxy** (e.g., Nginx, Caddy, Traefik) with TLS termination in front of the container
+2. **Do not expose port 80 directly** to the public internet without encryption
+3. Set `PROFILE_CREATION_PASS` to prevent unauthorized profile creation
+
+### Security limitations
+
+| Area | Limitation |
+|------|------------|
+| **Transport** | No built-in TLS - passwords and tokens sent in plaintext over HTTP |
+| **Session storage** | Sessions are in-memory only; a server restart invalidates all sessions |
+| **CSRF** | No CSRF token; relies on same-origin policy and the `X-Session` / `X-Profile` custom headers |
+| **Brute force** | Argon2id provides strong hashing, but without TLS an attacker on the network can intercept tokens via MITM|
+
+For production deployments, a reverse proxy with TLS is essential.
+
 ## Configuration
 
 - **DJI API Key**: Stored locally in `config.json`. You can also provide it via `.env` or via the `settings` menu inside the application. The standalone app ships with a default key, but users should enter their own to avoid rate limits for log file decryption key fetching.
@@ -376,7 +432,9 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 │   │   ├── database.rs      # DuckDB connection & schema
 │   │   ├── parser.rs        # dji-log-parser wrapper
 │   │   ├── models.rs        # Data structures
-│   │   └── api.rs           # DJI API key fetching (if present)
+│   │   ├── api.rs           # DJI API key fetching (if present)
+│   │   ├── profile_auth.rs  # Per-profile password hashing (argon2id)
+│   │   └── session_store.rs # Session token management (web only)
 │   ├── Cargo.toml           # Rust dependencies + feature flags
 │   └── tauri.conf.json      # App configuration
 │

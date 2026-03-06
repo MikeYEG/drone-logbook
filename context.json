@@ -32,7 +32,9 @@
       "other": [
         "flate2 (gzip)",
         "tar 0.4 (backup archives)",
-        "tower-http 0.5 (CORS, static files)"
+        "tower-http 0.5 (CORS, static files)",
+        "argon2 0.5 (password hashing — argon2id)",
+        "rand 0.8 (secure random token generation)"
       ]
     },
     "runtime": {
@@ -94,6 +96,8 @@
         "dronelogbook_parser.rs": "Re-import parser for Open DroneLog CSV exports (preserves notes, colors)",
         "models.rs": "Shared data structures (Flight, TelemetryPoint, FlightMessage, OverviewStats, etc.)",
         "api.rs": "DJI API key management and keychain fetching",
+        "profile_auth.rs": "Per-profile password hashing and verification using argon2id. Stores hashes in profile_auth.json.",
+        "session_store.rs": "In-memory session token management for web mode. 256-bit tokens, 24h TTL, 5-attempt lockout with 60s cooldown.",
         "lib.rs": "Library root (re-exports)"
       }
     },
@@ -105,7 +109,7 @@
         "dashboard/FlightStats.tsx": "Selected flight stats bar with metrics, tags, weather button, export dropdown",
         "dashboard/FlightImporter.tsx": "File import area with drag-drop, browse, batch progress, manual entry button, sync button (web)",
         "dashboard/Overview.tsx": "Overview dashboard: stats cards, activity heatmap, pie charts, cluster map, battery health, maintenance tracking",
-        "dashboard/SettingsModal.tsx": "Two-column settings: Units, Theme, Language, Time Format, Smart Tags, API Key, Badge, Backup/Restore, Delete",
+        "dashboard/SettingsModal.tsx": "Two-column settings: Units, Theme, Language, Time Format, Smart Tags, Profile Password (set/change/remove), API Key, Badge, Backup/Restore, Delete",
         "dashboard/WeatherModal.tsx": "Historical weather data display (via portal to body)",
         "dashboard/ManualEntryModal.tsx": "Manual flight entry form",
         "dashboard/HtmlReportModal.tsx": "HTML report configuration and generation",
@@ -139,7 +143,7 @@
       "Dockerfile": "Multi-stage build: rust:1.85 → node:20 → nginx:stable",
       "docker-compose.yml": "Production deployment with pre-built GHCR image",
       "docker-compose-build.yml": "Build from source locally",
-      "docker/nginx.conf": "Nginx reverse proxy routing /api/* to Axum backend",
+      "docker/nginx.conf": "Nginx reverse proxy routing /api/* to Axum backend. Includes security headers (CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy).",
       "docker/entrypoint.sh": "Container startup script"
     },
     "ci": {
@@ -150,6 +154,7 @@
     "config_files": {
       ".env": "DJI API key environment variable",
       "config.json": "Local config (API key, smart tags setting) — stored in app data dir",
+      "profile_auth.json": "Per-profile argon2id password hashes — stored in app data dir",
       "context.json": "Machine-readable project context for LLM reference (gitignored)"
     }
   },
@@ -295,6 +300,14 @@
       "folder_sync": "Web/Docker mode: mount a folder via SYNC_LOGS_PATH, import unprocessed files manually or on a cron schedule (SYNC_INTERVAL).",
       "keep_uploaded_files": "Optional feature to retain copies of log files with SHA256 hash-based filename deduplication. Enabled by default on desktop.",
       "manual_entry": "Create flight records without log files — collects aircraft, serials, coordinates, duration, optional distance/altitude/notes. Auto-tagged 'Manual Entry'."
+    },
+    "profiles": {
+      "description": "Multiple named profiles with isolated databases, config, uploads, and sync folders. Managed from the profile selector dropdown.",
+      "per_profile_isolation": "Each profile has its own DuckDB database, config.json, uploaded/ folder, and sync path (within the data directory).",
+      "password_protection": "Optional argon2id-hashed password per profile (including default). Set/change/remove via Settings. Session-based auth in web mode.",
+      "master_password": "PROFILE_CREATION_PASS env var gates creation and deletion in web/Docker mode.",
+      "session_management": "Web mode issues 256-bit session tokens (24h TTL) stored in sessionStorage. Each browser tab can be on a different profile.",
+      "lockout": "5 consecutive failed attempts lock the profile for 60 seconds."
     },
     "flight_visualization": {
       "map": {
@@ -458,6 +471,7 @@
       "smart_tags": "Enable/disable auto-tagging, per-type configuration, regenerate for all flights, remove all auto tags",
       "api_key": "DJI API key management: personal key, default key, or remove. Stored in config.json.",
       "keep_uploaded_files": "Toggle + folder picker (desktop only). Files stored with SHA256 hash filenames.",
+      "profile_password": "Set, change, or remove a password for the active profile. Uses api.setProfilePassword() and api.removeProfilePassword(). Protected profiles show a lock icon.",
       "app_info": "Version display with automatic update check against GitHub releases. Green 'Latest' or amber 'Update to vX.X.X' badge.",
       "supporter_badge": "SHA-256 verified activation code. Amber gradient badge in sidebar. Ko-fi donation linked.",
       "layout": "Two-column modal (max-w-3xl): Left (Units, Theme, Language, Smart Tags, API Key) + Right (Donation, Badge, Info, Backup, Delete)."
@@ -521,6 +535,15 @@
     "utility": [
       "GET    /api/app_data_dir        — Data directory path",
       "GET    /api/app_log_dir         — Log directory path"
+    ],
+    "profiles": [
+      "GET    /api/profiles             — List profiles with password status ({name, hasPassword}[])",
+      "POST   /api/profiles/switch      — Create or switch profile (JSON: name, create?, password?, new_password?, master_password?). Returns {name, session?}",
+      "DELETE /api/profiles/delete       — Delete profile (query: name, password?, master_password?)",
+      "GET    /api/profiles/active       — Get current active profile name",
+      "POST   /api/profiles/set_password — Set or change profile password (JSON: profile, new_password, current_password?, session?)",
+      "POST   /api/profiles/remove_password — Remove profile password (JSON: profile, current_password)",
+      "GET    /api/profiles/has_master_password — Check if PROFILE_CREATION_PASS is configured"
     ]
   },
   "commands": {
@@ -551,7 +574,8 @@
     "DJI_API_KEY": "Override bundled DJI API key for better rate limits",
     "SYNC_LOGS_PATH": "Path to internal folder for automatic log import (e.g., /sync-logs)",
     "SYNC_INTERVAL": "Cron expression for scheduled sync (e.g., 0 0 */8 * * *)",
-    "KEEP_UPLOADED_FILES": "When true (default), keeps copies of uploaded log files"
+    "KEEP_UPLOADED_FILES": "When true (default), keeps copies of uploaded log files",
+    "PROFILE_CREATION_PASS": "Master password for creating/deleting profiles in web/Docker mode. When unset, profile management is open."
   },
   "ci_cd": {
     "github_desktop_builds": {
@@ -588,5 +612,20 @@
     "Older DJI logs (pre-2020) may produce garbage telemetry values; parser validation filters these out.",
     "Node engine warnings may appear for some transient packages; app still runs.",
     "If import fails with column order mismatch, telemetry table rebuild should correct it automatically."
-  ]
+  ],
+  "security": {
+    "password_hashing": "argon2id via the argon2 0.5 crate with default (RFC 9106) parameters",
+    "session_tokens": "256-bit cryptographically random tokens, base64url-encoded, 24-hour TTL, stored in-memory (lost on restart)",
+    "lockout": "5 consecutive failed password attempts lock the profile for 60 seconds",
+    "master_password": "PROFILE_CREATION_PASS env var gates profile creation and deletion in web/Docker mode",
+    "transport": "No built-in TLS — users MUST place a reverse proxy (Nginx, Caddy, Traefik) with TLS in front for internet-facing deployments",
+    "headers": "Nginx config includes Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy",
+    "limitations": [
+      "No TLS — passwords and tokens sent in plaintext over HTTP without a reverse proxy",
+      "Sessions are in-memory only; server restart invalidates all sessions",
+      "No global IP-based rate limiting (lockout is per-profile only)",
+      "No CSRF tokens; relies on same-origin policy and custom headers",
+      "Session store is not shared across multiple backend instances"
+    ]
+  }
 }

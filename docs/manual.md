@@ -11,6 +11,7 @@
 - [Interface Layout](#interface-layout)
 - [Importing Flight Logs](#importing-flight-logs)
 - [Manual Flight Entry](#manual-flight-entry)
+- [Profiles](#profiles)
 - [Flight List and Selection](#flight-list-and-selection)
 - [Filters and Search](#filters-and-search)
 - [Tags System](#tags-system)
@@ -21,6 +22,7 @@
 - [Battery and Maintenance Tracking](#battery-and-maintenance-tracking)
 - [Exporting Data](#exporting-data)
 - [Settings](#settings)
+- [Security Considerations (Web/Docker)](#security-considerations-webdocker)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Tips and Tricks](#tips-and-tricks)
 - [Troubleshooting](#troubleshooting)
@@ -46,6 +48,7 @@ Drone Logbook is a high-performance application for analyzing drone flight logs.
 | **Manual Entry** | Record flights without log files |
 | **Multiple Exports** | Export to CSV, JSON, GPX, and KML formats |
 | **Full Backup** | Complete database backup and restore |
+| **Profiles** | Multiple isolated profiles with optional password protection |
 | **Single Instance** | Only one app window runs at a time (desktop) |
 
 ---
@@ -190,6 +193,60 @@ Click the **Manual Entry** button in the Import section of the sidebar.
 
 > [!NOTE]
 > Manual entries have no telemetry data, so the charts panel will be empty and the map will show only the home location marker.
+
+---
+
+## Profiles
+
+Open DroneLog supports multiple named profiles. Each profile is a fully isolated environment with its own database, configuration, uploaded files, and sync folder. This is useful for separating data by pilot, drone fleet, client, or purpose.
+
+### Creating a Profile
+
+1. Click the **profile selector** dropdown in the header (next to the logo)
+2. Click **New Profile**
+3. Enter a profile name (letters, numbers, hyphens, and underscores)
+4. Optionally enter a **password** to protect the profile
+5. If a master password is configured (Docker/web), you'll also need to enter it
+6. Click **Create**
+
+### Switching Profiles
+
+- Click the profile selector and choose the desired profile
+- If the profile is password-protected (shown with a lock icon), you'll be prompted to enter the password
+- Each browser tab maintains its own active profile (via `sessionStorage`), so you can have multiple tabs open on different profiles
+
+### Deleting a Profile
+
+1. Click the **trash icon** next to the profile name in the dropdown
+2. If the profile is password-protected, enter the profile password
+3. If a master password is configured, enter it as well
+4. Confirm deletion
+
+> [!WARNING]
+> Deleting a profile permanently removes its entire database, including all flights, telemetry, tags, and settings. This cannot be undone.
+
+### Password Protection
+
+Any profile (including the default profile) can be protected with a password:
+
+- **Set a password**: Go to **Settings → Profile Password** and enter a new password
+- **Change a password**: Enter the current password and the new password in the same section
+- **Remove a password**: Enter the current password and click **Remove Password**
+
+Password details:
+- Passwords are hashed with **argon2id** (industry-standard)
+- In web/Docker mode, a successful login issues a **session token** (valid for 24 hours)
+- **Lockout**: 5 consecutive failed password attempts lock the profile for 60 seconds
+- Protected profiles show an amber **lock icon** in the profile selector dropdown
+
+### Master Password (Web/Docker Only)
+
+Administrators can set the `PROFILE_CREATION_PASS` environment variable to require a master password for creating or deleting profiles. This prevents unauthorized users from adding or removing profiles on shared instances.
+
+```yaml
+environment:
+  - PROFILE_CREATION_PASS=your-secret-master-password
+```
 
 ---
 
@@ -820,6 +877,19 @@ Select the display language for the interface. Available locales include English
 | **Regenerate** | Re-apply smart tags to all existing flights |
 | **Remove Auto Tags** | Clear all auto-generated tags (keeps manual tags) |
 
+### Profile Password
+
+Manage the password for the currently active profile. This section appears in the left column of the Settings modal.
+
+| State | Available Actions |
+|-------|-------------------|
+| **No password set** | Enter a new password and confirm it, then click **Set Password** |
+| **Password is set** | Enter current password to **Change Password** (provide new password) or **Remove Password** |
+
+- The status indicator shows whether the current profile has a password
+- Protected profiles display a lock icon in the profile selector dropdown
+- Passwords are hashed with argon2id and never stored in plaintext
+
 ### DJI API Key
 
 Required for decrypting V13+ DJI flight logs.
@@ -860,6 +930,29 @@ Required for decrypting V13+ DJI flight logs.
 ### Donation and Support
 
 Options to support the project and activate a supporter badge.
+
+---
+
+## Security Considerations (Web/Docker)
+
+> [!WARNING]
+> Open DroneLog does **not** include built-in TLS/HTTPS. If you expose your Docker instance to the internet, passwords and session tokens will be transmitted in **plaintext** over HTTP.
+
+### Recommendations for internet-facing deployments
+
+1. **Always use a reverse proxy** (Nginx, Caddy, Traefik) with TLS termination in front of the container
+2. **Do not expose port 80** directly to the public internet
+3. Set `PROFILE_CREATION_PASS` to prevent unauthorized profile creation/deletion
+
+### Current security limitations
+
+| Area | Limitation |
+|------|------------|
+| **Transport** | No built-in TLS — passwords and tokens sent in plaintext without a reverse proxy |
+| **Sessions** | In-memory only; server restart invalidates all active sessions |
+| **Rate limiting** | Per-profile lockout (5 attempts / 60s) but no global IP-based rate limiting |
+| **CSRF** | No CSRF tokens; relies on same-origin policy and custom headers |
+| **Multi-instance** | Session store is not shared across multiple backend instances |
 
 ---
 

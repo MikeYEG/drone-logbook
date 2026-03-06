@@ -21,6 +21,8 @@ use crate::api::DjiApi;
 use crate::database::{self, Database};
 use crate::models::{FlightDataResponse, FlightTag, ImportResult, OverviewStats, TelemetryData};
 use crate::parser::LogParser;
+use crate::profile_auth;
+use crate::session_store::SessionStore;
 
 /// Shared application state for Axum handlers.
 ///
@@ -30,6 +32,9 @@ use crate::parser::LogParser;
 pub struct WebAppState {
     databases: Arc<std::sync::RwLock<HashMap<String, Arc<Database>>>>,
     pub data_dir: PathBuf,
+    pub sessions: Arc<SessionStore>,
+    /// Argon2id hash of PROFILE_CREATION_PASS (None if env var not set).
+    pub master_password_hash: Option<String>,
 }
 
 impl WebAppState {
@@ -107,12 +112,39 @@ impl FromRequestParts<WebAppState> for ProfileDb {
         parts: &mut axum::http::request::Parts,
         state: &WebAppState,
     ) -> Result<Self, Self::Rejection> {
-        let profile = parts
+        // 1. If X-Session is present, validate it — this takes priority
+        let profile = if let Some(token) = parts
             .headers
-            .get("X-Profile")
+            .get("X-Session")
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| database::get_active_profile(&state.data_dir));
+        {
+            match state.sessions.validate(token) {
+                Some(p) => p,
+                None => {
+                    return Err(err_response(
+                        StatusCode::UNAUTHORIZED,
+                        "Session expired or invalid — please re-authenticate",
+                    ))
+                }
+            }
+        } else {
+            // 2. Fall back to X-Profile header (or server default)
+            let p = parts
+                .headers
+                .get("X-Profile")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| database::get_active_profile(&state.data_dir));
+
+            // 3. If this profile is password-protected, reject unauthenticated access
+            if profile_auth::profile_is_protected(&state.data_dir, &p) {
+                return Err(err_response(
+                    StatusCode::UNAUTHORIZED,
+                    "This profile is password-protected — please authenticate first",
+                ));
+            }
+            p
+        };
 
         let db = state
             .db_for_profile(&profile)
@@ -1694,10 +1726,26 @@ async fn set_equipment_name(
 // PROFILE MANAGEMENT
 // ============================================================================
 
+/// Response for listing profiles — includes protection status.
+#[derive(Serialize)]
+struct ProfileInfo {
+    name: String,
+    #[serde(rename = "hasPassword")]
+    has_password: bool,
+}
+
 async fn list_profiles(
     AxumState(state): AxumState<WebAppState>,
-) -> Json<Vec<String>> {
-    Json(database::list_profiles(&state.data_dir))
+) -> Json<Vec<ProfileInfo>> {
+    let names = database::list_profiles(&state.data_dir);
+    let infos: Vec<ProfileInfo> = names
+        .into_iter()
+        .map(|name| {
+            let has_pw = profile_auth::has_password(&state.data_dir, &name);
+            ProfileInfo { name, has_password: has_pw }
+        })
+        .collect();
+    Json(infos)
 }
 
 async fn get_active_profile(
@@ -1711,12 +1759,26 @@ struct SwitchProfilePayload {
     name: String,
     #[serde(default)]
     create: bool,
+    /// Password for the profile being switched TO (required if protected).
+    password: Option<String>,
+    /// New password to set when creating a profile (optional).
+    new_password: Option<String>,
+    /// Master password required for creation/deletion when PROFILE_CREATION_PASS is set.
+    master_password: Option<String>,
+}
+
+/// Response from switch_profile when authentication succeeds.
+#[derive(Serialize)]
+struct SwitchProfileResponse {
+    name: String,
+    /// Session token — present only when the profile is password-protected.
+    session: Option<String>,
 }
 
 async fn switch_profile(
     AxumState(state): AxumState<WebAppState>,
     Json(payload): Json<SwitchProfilePayload>,
-) -> Result<Json<String>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<SwitchProfileResponse>, (StatusCode, Json<ErrorResponse>)> {
     let profile = payload.name.trim().to_string();
 
     // Validate (unless default)
@@ -1725,9 +1787,51 @@ async fn switch_profile(
             .map_err(|e| err_response(StatusCode::BAD_REQUEST, e))?;
     }
 
+    // ── Master password gate (create only) ──
+    if payload.create {
+        if let Some(ref hash) = state.master_password_hash {
+            match &payload.master_password {
+                Some(mp) if profile_auth::verify_password(mp, hash) => { /* ok */ }
+                Some(_) => {
+                    log::warn!("Failed master password attempt for profile creation '{}'", profile);
+                    return Err(err_response(StatusCode::FORBIDDEN, "Invalid master password"));
+                }
+                None => {
+                    return Err(err_response(StatusCode::FORBIDDEN, "Master password is required to create profiles"));
+                }
+            }
+        }
+    }
+
     // If this is a create request, reject if profile already exists
     if payload.create && database::profile_exists(&state.data_dir, &profile) {
         return Err(err_response(StatusCode::CONFLICT, format!("Profile '{}' already exists", profile)));
+    }
+
+    // ── Lockout check ──
+    if state.sessions.is_locked_out(&profile) {
+        return Err(err_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many failed attempts — please wait 60 seconds",
+        ));
+    }
+
+    // ── Password verification for existing protected profiles ──
+    if !payload.create && profile_auth::profile_is_protected(&state.data_dir, &profile) {
+        match &payload.password {
+            Some(pw) => {
+                if let Err(msg) = profile_auth::verify_profile_password(&state.data_dir, &profile, pw) {
+                    let locked = state.sessions.record_failure(&profile);
+                    if locked {
+                        log::warn!("Profile '{}' locked out after too many failed attempts", profile);
+                    }
+                    return Err(err_response(StatusCode::UNAUTHORIZED, msg));
+                }
+            }
+            None => {
+                return Err(err_response(StatusCode::UNAUTHORIZED, "Password is required for this profile"));
+            }
+        }
     }
 
     log::info!("Ensuring profile '{}' exists", profile);
@@ -1740,13 +1844,32 @@ async fn switch_profile(
     database::set_active_profile(&state.data_dir, &profile)
         .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to persist profile: {}", e)))?;
 
+    // ── Set password on newly created profile (if provided) ──
+    if payload.create {
+        if let Some(ref new_pw) = payload.new_password {
+            if !new_pw.is_empty() {
+                profile_auth::set_password(&state.data_dir, &profile, new_pw, None)
+                    .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+            }
+        }
+    }
+
+    // ── Issue session token if profile is protected ──
+    let session = if profile_auth::profile_is_protected(&state.data_dir, &profile) {
+        Some(state.sessions.create_session(&profile))
+    } else {
+        None
+    };
+
     log::info!("Profile '{}' ready", profile);
-    Ok(Json(profile))
+    Ok(Json(SwitchProfileResponse { name: profile, session }))
 }
 
 #[derive(Deserialize)]
 struct DeleteProfileParams {
     name: String,
+    password: Option<String>,
+    master_password: Option<String>,
 }
 
 async fn delete_profile_endpoint(
@@ -1759,6 +1882,33 @@ async fn delete_profile_endpoint(
         return Err(err_response(StatusCode::BAD_REQUEST, "Cannot delete the default profile"));
     }
 
+    // ── Master password gate ──
+    if let Some(ref hash) = state.master_password_hash {
+        match &params.master_password {
+            Some(mp) if profile_auth::verify_password(mp, hash) => { /* ok */ }
+            Some(_) => {
+                log::warn!("Failed master password attempt for profile deletion '{}'", profile);
+                return Err(err_response(StatusCode::FORBIDDEN, "Invalid master password"));
+            }
+            None => {
+                return Err(err_response(StatusCode::FORBIDDEN, "Master password is required to delete profiles"));
+            }
+        }
+    }
+
+    // ── Profile password gate ──
+    if profile_auth::profile_is_protected(&state.data_dir, &profile) {
+        match &params.password {
+            Some(pw) => {
+                profile_auth::verify_profile_password(&state.data_dir, &profile, pw)
+                    .map_err(|e| err_response(StatusCode::UNAUTHORIZED, e))?;
+            }
+            None => {
+                return Err(err_response(StatusCode::UNAUTHORIZED, "Password is required to delete this profile"));
+            }
+        }
+    }
+
     let active = database::get_active_profile(&state.data_dir);
     if active == profile {
         return Err(err_response(StatusCode::BAD_REQUEST, "Cannot delete the currently active profile. Switch to a different profile first."));
@@ -1767,10 +1917,99 @@ async fn delete_profile_endpoint(
     // Evict cached connection before deleting the file
     state.evict_profile(&profile);
 
+    // Revoke any sessions for this profile
+    state.sessions.revoke_profile(&profile);
+
+    // Remove auth entry
+    profile_auth::remove_auth_entry(&state.data_dir, &profile);
+
     database::delete_profile(&state.data_dir, &profile)
         .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(Json(true))
+}
+
+// ============================================================================
+// PASSWORD MANAGEMENT
+// ============================================================================
+
+#[derive(Deserialize)]
+struct SetPasswordPayload {
+    profile: String,
+    new_password: String,
+    current_password: Option<String>,
+    /// Session token for authenticated callers (used when changing password).
+    session: Option<String>,
+}
+
+/// POST /api/profiles/set_password — Set or change a profile password.
+/// Requires either a valid session token or the current password.
+async fn set_profile_password(
+    AxumState(state): AxumState<WebAppState>,
+    Json(payload): Json<SetPasswordPayload>,
+) -> Result<Json<bool>, (StatusCode, Json<ErrorResponse>)> {
+    let profile = payload.profile.trim().to_string();
+
+    // Verify caller identity: either session token or current password
+    let authenticated = if let Some(ref token) = payload.session {
+        state.sessions.validate(token).map(|p| p == profile).unwrap_or(false)
+    } else {
+        false
+    };
+
+    let cur_pw = if authenticated {
+        // Already authenticated via session — allow change without re-entering current password
+        // (unless one was explicitly provided, in which case verify it too)
+        payload.current_password.as_deref()
+    } else if profile_auth::has_password(&state.data_dir, &profile) {
+        // Not authenticated via session — must provide current password
+        match &payload.current_password {
+            Some(pw) => Some(pw.as_str()),
+            None => return Err(err_response(StatusCode::UNAUTHORIZED, "Current password is required")),
+        }
+    } else {
+        None
+    };
+
+    profile_auth::set_password(&state.data_dir, &profile, &payload.new_password, cur_pw)
+        .map_err(|e| err_response(StatusCode::UNAUTHORIZED, e))?;
+
+    // Revoke existing sessions so the user must re-authenticate with the new password
+    state.sessions.revoke_profile(&profile);
+
+    Ok(Json(true))
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct RemovePasswordPayload {
+    profile: String,
+    current_password: String,
+    session: Option<String>,
+}
+
+/// POST /api/profiles/remove_password — Remove a profile password.
+async fn remove_profile_password(
+    AxumState(state): AxumState<WebAppState>,
+    Json(payload): Json<RemovePasswordPayload>,
+) -> Result<Json<bool>, (StatusCode, Json<ErrorResponse>)> {
+    let profile = payload.profile.trim().to_string();
+
+    profile_auth::remove_password(&state.data_dir, &profile, &payload.current_password)
+        .map_err(|e| err_response(StatusCode::UNAUTHORIZED, e))?;
+
+    // Revoke sessions — profile is now unprotected, no session needed
+    state.sessions.revoke_profile(&profile);
+
+    Ok(Json(true))
+}
+
+/// GET /api/profiles/has_master_password — Check if PROFILE_CREATION_PASS is set.
+/// The frontend uses this to decide whether to show the master password input.
+async fn has_master_password(
+    AxumState(state): AxumState<WebAppState>,
+) -> Json<bool> {
+    Json(state.master_password_hash.is_some())
 }
 
 // ============================================================================
@@ -1824,6 +2063,9 @@ pub fn build_router(state: WebAppState) -> Router {
         .route("/api/profiles/active", get(get_active_profile))
         .route("/api/profiles/switch", post(switch_profile))
         .route("/api/profiles/delete", delete(delete_profile_endpoint))
+        .route("/api/profiles/set_password", post(set_profile_password))
+        .route("/api/profiles/remove_password", post(remove_profile_password))
+        .route("/api/profiles/has_master_password", get(has_master_password))
         .layer(cors)
         .layer(DefaultBodyLimit::max(250 * 1024 * 1024)) // 250 MB
         .with_state(state)
@@ -1838,9 +2080,24 @@ pub async fn start_server(data_dir: PathBuf) -> Result<(), Box<dyn std::error::E
     let db = Database::new(data_dir.clone(), &profile)?;
     let mut initial_pool = HashMap::new();
     initial_pool.insert(profile, Arc::new(db));
+    // ── Hash the master password at startup, then clear the env var ──
+    let master_password_hash = match std::env::var("PROFILE_CREATION_PASS") {
+        Ok(val) if !val.is_empty() => {
+            let hash = profile_auth::hash_password(&val)
+                .expect("Failed to hash PROFILE_CREATION_PASS");
+            // Remove plaintext from process environment
+            std::env::remove_var("PROFILE_CREATION_PASS");
+            log::info!("Master password (PROFILE_CREATION_PASS) hashed and env var cleared");
+            Some(hash)
+        }
+        _ => None,
+    };
+
     let state = WebAppState {
         databases: Arc::new(std::sync::RwLock::new(initial_pool)),
         data_dir,
+        sessions: Arc::new(SessionStore::new()),
+        master_password_hash,
     };
 
     // Start the scheduled sync if SYNC_INTERVAL and SYNC_LOGS_PATH are configured

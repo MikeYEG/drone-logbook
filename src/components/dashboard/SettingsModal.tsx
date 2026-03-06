@@ -39,6 +39,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const tagTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [keepUploadSettings, setKeepUploadSettingsState] = useState<KeepUploadSettings | null>(null);
 
+  // Profile password management state
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwMessage, setPwMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+
   const {
     unitSystem,
     setUnitSystem,
@@ -72,6 +79,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     loadApiKeyType,
     hideSerialNumbers,
     setHideSerialNumbers,
+    activeProfile,
+    profilePasswords,
+    loadProfiles,
   } = useFlightStore();
 
   // Local state so the dropdown responds instantly; store update is deferred via startTransition
@@ -690,6 +700,145 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Profile Password Section */}
+              <div className="pt-4 border-t border-gray-700">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  {t('settings.profilePassword')}
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  {t('settings.profilePasswordDesc')}
+                </p>
+
+                {/* Current status */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-sm text-gray-400">
+                    {profilePasswords[activeProfile]
+                      ? t('settings.passwordEnabled')
+                      : t('settings.passwordDisabled')}
+                  </span>
+                  {profilePasswords[activeProfile] && (
+                    <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  )}
+                </div>
+
+                {pwMessage && (
+                  <div className={`text-xs mb-2 ${pwMessage.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                    {pwMessage.text}
+                  </div>
+                )}
+
+                {profilePasswords[activeProfile] ? (
+                  /* Profile has a password — change or remove */
+                  <div className="space-y-2">
+                    <input
+                      type="password"
+                      placeholder={t('settings.currentPassword')}
+                      value={pwCurrent}
+                      onChange={e => setPwCurrent(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                    />
+                    <input
+                      type="password"
+                      placeholder={t('settings.newPasswordOpt')}
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                    />
+                    {pwNew && (
+                      <input
+                        type="password"
+                        placeholder={t('settings.confirmPassword')}
+                        value={pwConfirm}
+                        onChange={e => setPwConfirm(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                      />
+                    )}
+                    <div className="flex gap-2">
+                      {pwNew && (
+                        <button
+                          type="button"
+                          disabled={pwBusy || !pwCurrent || !pwNew || pwNew !== pwConfirm}
+                          onClick={async () => {
+                            setPwBusy(true);
+                            setPwMessage(null);
+                            try {
+                              await api.setProfilePassword(activeProfile, pwNew, pwCurrent);
+                              setPwMessage({ type: 'success', text: t('settings.passwordChanged') });
+                              setPwCurrent(''); setPwNew(''); setPwConfirm('');
+                            } catch (err) {
+                              setPwMessage({ type: 'error', text: String(err) });
+                            } finally { setPwBusy(false); }
+                          }}
+                          className="flex-1 py-1.5 px-3 rounded-lg bg-drone-primary text-white text-xs hover:bg-drone-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {t('settings.changePassword')}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={pwBusy || !pwCurrent}
+                        onClick={async () => {
+                          setPwBusy(true);
+                          setPwMessage(null);
+                          try {
+                            await api.removeProfilePassword(activeProfile, pwCurrent);
+                            setPwMessage({ type: 'success', text: t('settings.passwordRemoved') });
+                            setPwCurrent(''); setPwNew(''); setPwConfirm('');
+                            await loadProfiles();
+                          } catch (err) {
+                            setPwMessage({ type: 'error', text: String(err) });
+                          } finally { setPwBusy(false); }
+                        }}
+                        className="flex-1 py-1.5 px-3 rounded-lg border border-red-600 text-red-400 text-xs hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {t('settings.removePassword')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Profile has no password — set one */
+                  <div className="space-y-2">
+                    <input
+                      type="password"
+                      placeholder={t('settings.newPasswordLabel')}
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                    />
+                    {pwNew && (
+                      <input
+                        type="password"
+                        placeholder={t('settings.confirmPassword')}
+                        value={pwConfirm}
+                        onChange={e => setPwConfirm(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-drone-primary"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      disabled={pwBusy || !pwNew || pwNew !== pwConfirm}
+                      onClick={async () => {
+                        setPwBusy(true);
+                        setPwMessage(null);
+                        try {
+                          await api.setProfilePassword(activeProfile, pwNew);
+                          setPwMessage({ type: 'success', text: t('settings.passwordSet') });
+                          setPwNew(''); setPwConfirm('');
+                          await loadProfiles();
+                        } catch (err) {
+                          setPwMessage({ type: 'error', text: String(err) });
+                        } finally { setPwBusy(false); }
+                      }}
+                      className="w-full py-1.5 px-3 rounded-lg bg-drone-primary text-white text-xs hover:bg-drone-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t('settings.setPassword')}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* API Key Section */}

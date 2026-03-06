@@ -15,6 +15,7 @@ The frontend automatically routes to the appropriate backend based on the deploy
 - [Telemetry and Data](#telemetry-and-data)
 - [Tags](#tags)
 - [Settings](#settings)
+- [Profiles and Authentication](#profiles-and-authentication)
 - [Backup and Restore](#backup-and-restore)
 - [Sync (Web Mode Only)](#sync-web-mode-only)
 - [Equipment Names](#equipment-names)
@@ -158,6 +159,68 @@ The telemetry response includes these arrays (all keyed by index):
 | `remove_api_key` | - | Remove API key |
 | `get_keep_upload_settings` | - | Get keep uploaded files settings |
 | `set_keep_upload_settings` | `enabled: bool, folder_path: Option<String>` | Set keep files settings |
+
+---
+
+## Profiles and Authentication
+
+All data operations use the active profile. In web/Docker mode, the active profile is determined by the `X-Profile` and `X-Session` headers. In desktop mode, profiles are managed via Tauri IPC commands.
+
+### Profile Management
+
+| Method | Endpoint / Command | Description |
+|--------|-------------------|-------------|
+| GET | `/api/profiles` | List all profiles. Returns array of `ProfileInfo` objects with `name` and `hasPassword` fields. |
+| POST | `/api/profiles/switch` | Create or switch to a profile. Body: `{ name, create?, password?, new_password?, master_password? }`. Returns `{ name, session? }`. |
+| DELETE | `/api/profiles/delete?name={name}&password={pw}&master_password={mp}` | Delete a profile. Requires profile password (if set) and master password (if configured). |
+| GET | `/api/profiles/active` | Get the name of the currently active profile. |
+
+### Password Management
+
+| Method | Endpoint / Command | Description |
+|--------|-------------------|-------------|
+| POST | `/api/profiles/set_password` | Set or change profile password. Body: `{ profile, new_password, current_password?, session? }` |
+| POST | `/api/profiles/remove_password` | Remove profile password. Body: `{ profile, current_password }` |
+| GET | `/api/profiles/has_master_password` | Check if `PROFILE_CREATION_PASS` env var is configured. Returns boolean. |
+
+### Tauri Commands (Desktop)
+
+| Command | Parameters | Description |
+|---------|------------|-------------|
+| `list_profiles` | - | List profiles with password status |
+| `switch_profile` | `name: String, create: Option<bool>, password: Option<String>, new_password: Option<String>` | Switch or create profile |
+| `delete_profile` | `name: String, password: Option<String>` | Delete profile |
+| `get_active_profile` | - | Get active profile name |
+| `set_profile_password` | `profile: String, new_password: String, current_password: Option<String>` | Set/change password |
+| `remove_profile_password` | `profile: String, current_password: String` | Remove password |
+
+### Authentication Flow (Web/Docker)
+
+1. Client sends `X-Profile: <name>` header with every request
+2. If the profile is password-protected, the client must first authenticate via `POST /api/profiles/switch` with the correct `password`
+3. On success, the server returns a session token in `{ session: "<token>" }`
+4. Client stores the token in `sessionStorage` and sends it as `X-Session: <token>` with all subsequent requests
+5. The `ProfileDb` extractor validates the session token and routes the request to the correct profile database
+6. Sessions expire after **24 hours**; a new login is required after expiry
+
+### Lockout Policy
+
+- **5 consecutive failed** password attempts lock the profile for **60 seconds**
+- During lockout, all authentication attempts are rejected with a `401` status
+
+### Response Types
+
+```typescript
+interface ProfileInfo {
+  name: string;
+  hasPassword: boolean;
+}
+
+interface SwitchProfileResponse {
+  name: string;
+  session?: string;  // Present when profile is password-protected
+}
+```
 
 ---
 
@@ -357,8 +420,37 @@ Common error scenarios:
 
 ## Authentication
 
-The application does not require authentication. All data is stored locally:
+The application supports optional per-profile password protection:
+
+- **Desktop**: Passwords are verified locally via Tauri IPC commands. No session tokens are used.
+- **Docker/Web**: Password-protected profiles require authentication via `POST /api/profiles/switch`. A session token is issued and must be sent as `X-Session` header. Unprotected profiles work without authentication.
+
+### Headers (Web/Docker)
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Profile` | Always | The active profile name (defaults to `default`) |
+| `X-Session` | When profile is protected | Session token from successful authentication |
+
+### Data Storage
+
+All data is stored locally:
 - **Desktop**: `~/.local/share/com.drone-logbook.app/`
 - **Docker**: `/data/drone-logbook/` (persistent volume)
+- **Password hashes**: Stored in `profile_auth.json` (argon2id)
+- **Sessions**: In-memory only (lost on server restart)
 
 The DJI API key (for log decryption) is stored in `config.json` and never sent anywhere except the official DJI API.
+
+### Security Limitations
+
+> [!WARNING]
+> Open DroneLog does **not** include built-in TLS. For internet-facing deployments, always use a reverse proxy with TLS termination.
+
+| Area | Limitation |
+|------|------------|
+| **Transport** | No TLS — passwords and tokens are plaintext over HTTP |
+| **Sessions** | In-memory; server restart invalidates all sessions |
+| **Rate limiting** | Per-profile lockout only (5 attempts / 60s); no global IP-based limiting |
+| **CSRF** | No CSRF tokens; relies on same-origin policy |
+| **Multi-instance** | Session store not shared across backend instances |
