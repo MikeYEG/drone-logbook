@@ -8,6 +8,12 @@ on:
         required: false
         type: string
         default: ''
+  workflow_run:
+    workflows:
+      - 'Build Tauri Binaries'
+      - 'Nightly Tauri Build'
+    types:
+      - completed
 
 permissions:
   id-token: write
@@ -17,6 +23,9 @@ permissions:
 jobs:
   sign-and-release:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       id-token: write
       contents: write
@@ -27,9 +36,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "${{ inputs.release-tag }}" ]; then
-            TAG="${{ inputs.release-tag }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.release-tag }}" ]; then
+              TAG="${{ inputs.release-tag }}"
+            else
+              TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q '.tagName')
+            fi
+          elif [ "${{ github.event.workflow_run.name }}" = "Nightly Tauri Build" ]; then
+            TAG="nightly"
           else
+            # Build Tauri Binaries — resolve the latest non-prerelease tag
             TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q '.tagName')
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
