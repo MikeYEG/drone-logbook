@@ -685,6 +685,7 @@ impl<'a> AirdataParser<'a> {
         let min_battery = points
             .iter()
             .filter_map(|p| p.battery_percent)
+            .filter(|&v| v > 0)
             .min()
             .unwrap_or(0);
 

@@ -90,9 +90,9 @@ export function FlightStats({ data }: FlightStatsProps) {
     setIsAddingTag(false);
   };
 
-  // Calculate min battery from telemetry
+  // Calculate min battery from telemetry, ignoring 0 values
   const minBattery = telemetry.battery.reduce<number | null>((min, val) => {
-    if (val === null) return min;
+    if (val === null || val === 0) return min;
     if (min === null) return val;
     return val < min ? val : min;
   }, null);

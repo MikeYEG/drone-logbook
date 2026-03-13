@@ -20,6 +20,7 @@ use tokio::time::timeout;
 
 use dji_log_parser::frame::{records_to_frames, Frame};
 use dji_log_parser::layout::auxiliary::Department;
+use dji_log_parser::layout::details::ProductType;
 use dji_log_parser::record::component_serial::ComponentType;
 use dji_log_parser::record::smart_battery_group::SmartBatteryGroup;
 use dji_log_parser::record::Record;
@@ -754,8 +755,17 @@ impl<'a> LogParser<'a> {
                     // full-length ComponentSerial data before converting to frames.
                     // The details header truncates serials to 16 bytes, but Enterprise
                     // drones have 20-char serials stored in ComponentSerial records.
-                    let records = parser_ref.records(keychains)?;
+                    let mut records = parser_ref.records(keychains)?;
                     let comp_serials = extract_component_serials(&records);
+                    
+                    // Filter out corrupt SmartBatteryGroup payloads for DJI Mini 2 & Mini 2 SE
+                    // which would otherwise overwrite valid SmartBattery (magic byte 8) data
+                    match parser_ref.details.product_type {
+                        ProductType::Mini2 | ProductType::Mini2SE => {
+                            records.retain(|r| !matches!(r, dji_log_parser::record::Record::SmartBatteryGroup(_)));
+                        }
+                        _ => {}
+                    }
                     
                     // The dji-log-parser library resets camera state to false on every OSD tick
                     // because not all OSD ticks have a matching camera record. This causes
@@ -1025,6 +1035,7 @@ impl<'a> LogParser<'a> {
         let min_battery = points
             .iter()
             .filter_map(|p| p.battery_percent)
+            .filter(|&v| v > 0)
             .min()
             .unwrap_or(0);
 
@@ -1406,6 +1417,7 @@ pub fn calculate_stats_from_records(records: &[crate::models::TelemetryRecord]) 
 
     let min_battery = records.iter()
         .filter_map(|r| r.battery_percent)
+        .filter(|&v| v > 0)
         .min()
         .unwrap_or(0);
 

@@ -142,6 +142,13 @@ function getFieldData(
     return rawData as (number | null)[];
   }
 
+  // Special handling for battery percentage and voltage: ignore 0 values
+  if (fieldId === 'battery' || fieldId === 'batteryVoltage') {
+    const rawData = data[fieldId as ('battery' | 'batteryVoltage')];
+    if (!rawData || !Array.isArray(rawData)) return [];
+    return rawData.map(v => (v === null || v === undefined || v === 0) ? null : v);
+  }
+
   const rawData = data[field.dataKey as keyof TelemetryData];
   if (!rawData || !Array.isArray(rawData)) return [];
 

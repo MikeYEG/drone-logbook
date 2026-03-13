@@ -516,6 +516,7 @@ impl<'a> LitchiParser<'a> {
         let min_battery = points
             .iter()
             .filter_map(|p| p.battery_percent)
+            .filter(|&v| v > 0)
             .min()
             .unwrap_or(end_battery_percent.unwrap_or(0));
 

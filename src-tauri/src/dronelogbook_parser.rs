@@ -701,7 +701,7 @@ impl<'a> DroneLogbookParser<'a> {
             max_altitude_m: max_altitude,
             max_speed_ms: max_speed,
             avg_speed_ms: if duration_secs.unwrap_or(0.0) > 0.0 { total_distance / duration_secs.unwrap_or(1.0) } else { 0.0 },
-            min_battery: points.iter().filter_map(|p| p.battery_percent).min().unwrap_or(0),
+            min_battery: points.iter().filter_map(|p| p.battery_percent).filter(|&v| v > 0).min().unwrap_or(0),
             home_location: home_lat.zip(home_lon).map(|(lat, lon)| [lon, lat]),
             max_distance_from_home_m: 0.0, // Not calculated during re-import
             start_battery_percent: points.first().and_then(|p| p.battery_percent),
