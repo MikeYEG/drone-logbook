@@ -455,7 +455,7 @@ export function FlightList({
         // Tags filter
         if (exclude !== 'tags' && selectedTags.length > 0) {
           const flightTagNames = (flight.tags ?? []).map(t => typeof t === 'string' ? t : t.tag);
-          if (!selectedTags.every((tag) => flightTagNames.includes(tag))) return false;
+          if (!selectedTags.some((tag) => flightTagNames.includes(tag))) return false;
         }
         // Color filter
         if (exclude !== 'color' && selectedColors.length > 0) {
@@ -838,10 +838,10 @@ export function FlightList({
         if (isFilterInverted ? matchesDistance : !matchesDistance) return false;
       }
 
-      // Tag filter: normal = flight must have ALL selected tags; inverted = must have NONE
+      // Tag filter: normal = flight must have ANY selected tag; inverted = must have NONE
       if (selectedTags.length > 0) {
         const flightTagNames = (flight.tags ?? []).map(t => typeof t === 'string' ? t : t.tag);
-        const matchesTags = selectedTags.every((tag) => flightTagNames.includes(tag));
+        const matchesTags = selectedTags.some((tag) => flightTagNames.includes(tag));
         if (isFilterInverted ? matchesTags : !matchesTags) return false;
       }
 
