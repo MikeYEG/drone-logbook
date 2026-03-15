@@ -26,7 +26,15 @@ interface FlightMapProps {
   messages?: FlightMessage[];
 }
 
-type ColorByMode = 'progress' | 'height' | 'speed' | 'distance' | 'videoSegment';
+type ColorByMode =
+  | 'progress'
+  | 'height'
+  | 'speed'
+  | 'distance'
+  | 'videoSegment'
+  | 'batteryPercent'
+  | 'rcSignal'
+  | 'satelliteCount';
 
 const TERRAIN_SOURCE_ID = 'terrain-dem';
 const TERRAIN_SOURCE = {
@@ -199,6 +207,12 @@ const RAMP_DISTANCE: [number, number, number][] = [
   [251, 146, 60],
   [239, 68, 68],
 ];
+// Red → Yellow → Green (signal/quality metrics)
+const RAMP_QUALITY: [number, number, number][] = [
+  [239, 68, 68],
+  [250, 204, 21],
+  [34, 197, 94],
+];
 
 // Blue for normal flight, Red for video recording segments
 const COLOR_VIDEO_NORMAL: [number, number, number] = [59, 130, 246]; // Blue
@@ -209,6 +223,9 @@ const COLOR_BY_OPTIONS: { value: ColorByMode; labelKey: string }[] = [
   { value: 'height', labelKey: 'map.height' },
   { value: 'speed', labelKey: 'map.speed' },
   { value: 'distance', labelKey: 'map.distFromHome' },
+  { value: 'batteryPercent', labelKey: 'map.batteryPercent' },
+  { value: 'rcSignal', labelKey: 'map.rcSignal' },
+  { value: 'satelliteCount', labelKey: 'map.satelliteCount' },
   { value: 'videoSegment', labelKey: 'map.videoSegment' },
 ];
 
@@ -336,7 +353,11 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
   });
   const [colorBy, setColorBy] = useState<ColorByMode>(() => {
     if (typeof window === 'undefined') return 'progress';
-    return (window.sessionStorage.getItem('map:colorBy') as ColorByMode) || 'progress';
+    const stored = window.sessionStorage.getItem('map:colorBy') as ColorByMode | null;
+    if (stored && COLOR_BY_OPTIONS.some((opt) => opt.value === stored)) {
+      return stored;
+    }
+    return 'progress';
   });
   const [showTooltip, setShowTooltip] = useState(() => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -827,6 +848,22 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
       }
     }
 
+    const mapTelemetrySeriesToPath = (series?: (number | null)[]): (number | null)[] => {
+      const telemetryLen = series?.length ?? 0;
+      if (!series || telemetryLen === 0) return new Array(n).fill(null);
+      const mapped: (number | null)[] = [];
+      for (let i = 0; i < n; i++) {
+        const rawTrackIndex = Math.round((i / Math.max(1, n - 1)) * Math.max(1, rawN - 1));
+        const telemetryIndex = Math.round((rawTrackIndex / Math.max(1, rawN - 1)) * Math.max(1, telemetryLen - 1));
+        mapped.push(series[telemetryIndex] ?? null);
+      }
+      return mapped;
+    };
+
+    const batteryAtIndex = mapTelemetrySeriesToPath(telemetry?.battery);
+    const rcSignalAtIndex = mapTelemetrySeriesToPath(telemetry?.rcSignal);
+    const satelliteCountAtIndex = mapTelemetrySeriesToPath(telemetry?.satellites);
+
     if (colorBy === 'height') {
       values = smoothedTrack.map((p) => p[2]);
       minVal = values[0] ?? 0;
@@ -861,6 +898,18 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         if (values[i] < minVal) minVal = values[i];
         if (values[i] > maxVal) maxVal = values[i];
       }
+    } else if (colorBy === 'batteryPercent') {
+      values = batteryAtIndex.map((v) => v ?? 0);
+      minVal = 0;
+      maxVal = 100;
+    } else if (colorBy === 'rcSignal') {
+      values = rcSignalAtIndex.map((v) => v ?? 0);
+      minVal = 0;
+      maxVal = 100;
+    } else if (colorBy === 'satelliteCount') {
+      values = satelliteCountAtIndex.map((v) => v ?? 3);
+      minVal = 3;
+      maxVal = 30;
     }
 
     const range = maxVal - minVal || 1;
@@ -870,6 +919,10 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         case 'height': return RAMP_HEIGHT;
         case 'speed': return RAMP_SPEED;
         case 'distance': return RAMP_DISTANCE;
+        case 'batteryPercent':
+        case 'rcSignal':
+        case 'satelliteCount':
+          return RAMP_QUALITY;
         default: return RAMP_PROGRESS;
       }
     };
@@ -885,20 +938,6 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
     const hLat = homeLat ?? smoothedTrack[0]?.[1] ?? 0;
     const hLon = homeLon ?? smoothedTrack[0]?.[0] ?? 0;
     const distances: number[] = smoothedTrack.map((p) => haversineM(hLat, hLon, p[1], p[0]));
-
-    // Pre-compute battery values mapped to smoothed track
-    const batteryAtIndex: (number | null)[] = [];
-    const telemetryBattery = telemetry?.battery;
-    const telemetryLen = telemetryBattery?.length ?? 0;
-    for (let i = 0; i < n; i++) {
-      if (telemetryLen > 0 && telemetryBattery) {
-        const rawTrackIndex = Math.round((i / Math.max(1, n - 1)) * Math.max(1, rawN - 1));
-        const telemetryIndex = Math.round((rawTrackIndex / Math.max(1, rawN - 1)) * Math.max(1, telemetryLen - 1));
-        batteryAtIndex.push(telemetryBattery[telemetryIndex] ?? null);
-      } else {
-        batteryAtIndex.push(null);
-      }
-    }
 
     const segments: {
       path: [number, number, number][];
@@ -1571,6 +1610,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
                     value={colorBy}
                     onChange={(v) => setColorBy(v as ColorByMode)}
                     className="text-xs"
+                    listMaxHeight="h-40"
                     options={COLOR_BY_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
                   />
                 </div>
