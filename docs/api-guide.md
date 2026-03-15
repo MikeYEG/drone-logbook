@@ -15,6 +15,7 @@ The frontend automatically routes to the appropriate backend based on the deploy
 - [Telemetry and Data](#telemetry-and-data)
 - [Tags](#tags)
 - [Settings](#settings)
+- [Profiles and Authentication](#profiles-and-authentication)
 - [Backup and Restore](#backup-and-restore)
 - [Sync (Web Mode Only)](#sync-web-mode-only)
 - [Equipment Names](#equipment-names)
@@ -34,6 +35,7 @@ The frontend automatically routes to the appropriate backend based on the deploy
 | POST | `/api/flights/deduplicate` | Remove duplicate flights based on drone serial + battery serial + start time. Returns count of removed duplicates. |
 | PUT | `/api/flights/name` | Update flight display name. Body: `{ flight_id, display_name }` |
 | PUT | `/api/flights/notes` | Update flight notes. Body: `{ flight_id, notes }` |
+| PUT | `/api/flights/color` | Update custom color for a flight. Body: `{ flight_id, color }` |
 
 ### Tauri Commands (Desktop)
 
@@ -47,7 +49,11 @@ The frontend automatically routes to the appropriate backend based on the deploy
 | `deduplicate_flights` | - | Remove duplicates |
 | `update_flight_name` | `flight_id: i64, display_name: String` | Rename flight |
 | `update_flight_notes` | `flight_id: i64, notes: Option<String>` | Update notes |
+| `update_flight_color` | `flight_id: i64, color: String` | Update flight color |
 | `compute_file_hash` | `file_path: String` | Compute SHA256 hash of a file |
+
+### Note on Exports
+File exports (CSV, JSON, GPX, KML, HTML Report) are generated entirely on the frontend (client-side) using `src/lib/exportUtils.ts` and `src/lib/htmlReportBuilder.ts`. There are no dedicated backend API endpoints for exports; the frontend requests data via `GET /api/flight_data` and packages the files locally.
 
 ---
 
@@ -57,6 +63,7 @@ The frontend automatically routes to the appropriate backend based on the deploy
 |--------|-------------------|-------------|
 | GET | `/api/flight_data?flight_id={id}&max_points={n}` | Get flight details with telemetry data. Returns `FlightDataResponse` containing flight metadata, telemetry arrays, track coordinates, and messages. `max_points` limits downsampling (default ~5000). |
 | GET | `/api/overview` | Get aggregate statistics across all flights. Returns `OverviewStats` with totals for flights, distance, time, and max values. |
+| GET | `/api/battery_capacity_history?battery_serial={serial}` | Get full-charge capacity history for a specific battery. Returns array of `[flight_id, start_time, max_capacity]` tuples across all flights using that battery. |
 
 ### Tauri Commands (Desktop)
 
@@ -64,6 +71,7 @@ The frontend automatically routes to the appropriate backend based on the deploy
 |---------|------------|-------------|
 | `get_flight_data` | `flight_id: i64, max_points: Option<usize>` | Get flight telemetry |
 | `get_overview_stats` | - | Get aggregate statistics |
+| `get_battery_full_capacity_history` | `battery_serial: String` | Get capacity history for a battery |
 
 ### Telemetry Data Structure
 
@@ -88,6 +96,10 @@ The telemetry response includes these arrays (all keyed by index):
 | `rcUplink/rcDownlink` | `i32[]` | Signal quality metrics |
 | `satellites` | `i32[]` | GPS satellite count |
 | `distanceToHome` | `f64[]` | Distance from takeoff (meters) |
+| `isPhoto` | `bool[]` | Photo capture state per frame |
+| `isVideo` | `bool[]` | Video recording state per frame |
+| `batteryFullCapacity` | `f64[]` | Battery design/full capacity (mAh) |
+| `batteryRemainedCapacity` | `f64[]` | Remaining usable capacity (mAh) |
 
 ---
 
@@ -151,6 +163,73 @@ The telemetry response includes these arrays (all keyed by index):
 | `remove_api_key` | - | Remove API key |
 | `get_keep_upload_settings` | - | Get keep uploaded files settings |
 | `set_keep_upload_settings` | `enabled: bool, folder_path: Option<String>` | Set keep files settings |
+
+---
+
+## Profiles and Authentication
+
+All data operations use the active profile. In web/Docker mode, the active profile is determined by the `X-Profile` and `X-Session` headers. In desktop mode, profiles are managed via Tauri IPC commands.
+
+### Profile Management
+
+| Method | Endpoint / Command | Description |
+|--------|-------------------|-------------|
+| GET | `/api/profiles` | List all profiles. Returns array of `ProfileInfo` objects with `name` and `hasPassword` fields. |
+| POST | `/api/profiles/switch` | Create or switch to a profile. Body: `{ name, create?, password?, new_password?, master_password? }`. Returns `{ name, session? }`. |
+| DELETE | `/api/profiles/delete?name={name}&password={pw}&master_password={mp}` | Delete a profile. Requires profile password (if set) and master password (if configured). |
+| GET | `/api/profiles/active` | Get the name of the currently active profile. |
+
+### Password Management
+
+| Method | Endpoint / Command | Description |
+|--------|-------------------|-------------|
+| POST | `/api/profiles/set_password` | Set or change profile password. Body: `{ profile, new_password, current_password?, session? }` |
+| POST | `/api/profiles/remove_password` | Remove profile password. Body: `{ profile, current_password }` |
+| GET | `/api/profiles/has_master_password` | Check if `PROFILE_CREATION_PASS` env var is configured. Returns boolean. |
+
+### Tauri Commands (Desktop)
+
+| Command | Parameters | Description |
+|---------|------------|-------------|
+| `list_profiles` | - | List profiles with password status |
+| `switch_profile` | `name: String, create: Option<bool>, password: Option<String>, new_password: Option<String>` | Switch or create profile |
+| `delete_profile` | `name: String, password: Option<String>` | Delete profile |
+| `get_active_profile` | - | Get active profile name |
+| `set_profile_password` | `profile: String, new_password: String, current_password: Option<String>` | Set/change password |
+| `remove_profile_password` | `profile: String, current_password: String` | Remove password |
+| `lock_profile` | - | Lock the active profile (desktop auto-logout on close) |
+| `unlock_profile` | `password: String` | Unlock a locked profile with the correct password |
+| `is_app_locked` | - | Check if the current profile is locked (returns boolean) |
+
+### Authentication Flow (Web/Docker)
+
+1. Client sends `X-Profile: <name>` header with every request
+2. If the profile is password-protected, the client must first authenticate via `POST /api/profiles/switch` with the correct `password`
+3. On success, the server returns a session token in `{ session: "<token>" }`
+4. Client stores the token using a hybrid strategy: `sessionStorage` for per-tab isolation, plus `localStorage` as a persistent fallback so sessions survive browser restarts. Each tab reads its own `sessionStorage` first, falling back to `localStorage` for freshly opened tabs.
+5. The token is sent as `X-Session: <token>` with all subsequent requests
+6. The `ProfileDb` extractor validates the session token and routes the request to the correct profile database
+7. Sessions expire after **24 hours** (configurable via `SESSION_TTL_HOURS` env var); a new login is required after expiry
+8. On a **401 response** (expired or invalid token), the client automatically clears the stored token and displays the login overlay
+
+### Lockout Policy
+
+- **5 consecutive failed** password attempts lock the profile for **60 seconds**
+- During lockout, all authentication attempts are rejected with a `429 Too Many Requests` status
+
+### Response Types
+
+```typescript
+interface ProfileInfo {
+  name: string;
+  hasPassword: boolean;
+}
+
+interface SwitchProfileResponse {
+  name: string;
+  session?: string;  // Present when profile is password-protected
+}
+```
 
 ---
 
@@ -265,8 +344,14 @@ interface Flight {
   homeLat?: number;
   homeLon?: number;
   pointCount?: number;
+  photoCount?: number;
+  videoCount?: number;
   tags?: FlightTag[];
+  color?: string;
   notes?: string;
+  cycleCount?: number;
+  rcSerial?: string;      // Remote controller serial number
+  batteryLife?: number;   // Battery capacity/life percentage
 }
 ```
 
@@ -292,8 +377,48 @@ interface OverviewStats {
   avgDistanceM: number;
   avgDurationSecs: number;
   totalDataPoints: number;
+  totalPhotos: number;
+  totalVideos: number;
+  batteriesUsed: BatteryUsage[];
+  dronesUsed: DroneUsage[];
+  flightsByDate: FlightDateCount[];
+  topFlights: TopFlight[];
+  topDistanceFlights: TopDistanceFlight[];
+  batteryHealthPoints: BatteryHealthPoint[];
+}
+
+interface BatteryUsage {
+  batterySerial: string;
+  flightCount: number;
+  totalDurationSecs: number;
+  maxCycleCount: number | null; // From DJI SmartBatteryStatic loop_times
 }
 ```
+
+### FlightMessage
+
+```typescript
+interface FlightMessage {
+  timestampMs: number;       // Milliseconds from flight start
+  messageType: 'tip' | 'warn' | 'caution';
+  message: string;
+}
+```
+
+### FlightDataResponse
+
+Returned by `GET /api/flight_data` and the `get_flight_data` Tauri command.
+
+```typescript
+interface FlightDataResponse {
+  flight: Flight;
+  telemetry: TelemetryData;        // Arrays of values per telemetry field, same length
+  track: [number, number, number][]; // [longitude, latitude, altitude] tuples
+  messages?: FlightMessage[];
+}
+```
+
+`TelemetryData` contains parallel arrays (one value per telemetry frame) for fields such as `time`, `latitude`, `longitude`, `height`, `speed`, `battery`, `batteryVoltage`, `batteryTemp`, `cellVoltages`, `pitch`, `roll`, `yaw`, `rcSignal`, `satellites`, `distanceToHome`, and others. All arrays share the same length as `time`.
 
 ---
 
@@ -320,8 +445,37 @@ Common error scenarios:
 
 ## Authentication
 
-The application does not require authentication. All data is stored locally:
+The application supports optional per-profile password protection:
+
+- **Desktop**: Passwords are verified locally via Tauri IPC commands. No session tokens are used.
+- **Docker/Web**: Password-protected profiles require authentication via `POST /api/profiles/switch`. A session token is issued and must be sent as `X-Session` header. Unprotected profiles work without authentication.
+
+### Headers (Web/Docker)
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Profile` | Always | The active profile name (defaults to `default`) |
+| `X-Session` | When profile is protected | Session token from successful authentication |
+
+### Data Storage
+
+All data is stored locally:
 - **Desktop**: `~/.local/share/com.drone-logbook.app/`
 - **Docker**: `/data/drone-logbook/` (persistent volume)
+- **Password hashes**: Stored in `profile_auth.json` (argon2id)
+- **Sessions**: In-memory only (lost on server restart)
 
 The DJI API key (for log decryption) is stored in `config.json` and never sent anywhere except the official DJI API.
+
+### Security Limitations
+
+> [!WARNING]
+> Open DroneLog does **not** include built-in TLS. For internet-facing deployments, always use a reverse proxy with TLS termination.
+
+| Area | Limitation |
+|------|------------|
+| **Transport** | No TLS — passwords and tokens are plaintext over HTTP |
+| **Sessions** | In-memory; server restart invalidates all sessions |
+| **Rate limiting** | Per-profile lockout only (5 attempts / 60s); no global IP-based limiting |
+| **CSRF** | No CSRF tokens; relies on same-origin policy |
+| **Multi-instance** | Session store not shared across backend instances |

@@ -175,6 +175,7 @@ impl<'a> LitchiParser<'a> {
         let mut points = Vec::new();
         let mut first_row_data: Option<Vec<String>> = None;
         let mut last_row_data: Option<Vec<String>> = None;
+        let mut battery_full_capacity: Option<f64> = None;
 
         for line_result in lines {
             let line = match line_result {
@@ -198,11 +199,15 @@ impl<'a> LitchiParser<'a> {
             // Store first and last row for metadata extraction
             if first_row_data.is_none() {
                 first_row_data = Some(fields.iter().map(|s| s.to_string()).collect());
+
+                // Extract battery full capacity from first row only (later rows report 0)
+                battery_full_capacity = col_map.get_f64(&fields, "CENTER_BATTERY.fullCapacity")
+                    .filter(|&v| v > 0.0);
             }
             last_row_data = Some(fields.iter().map(|s| s.to_string()).collect());
 
             // Parse telemetry point
-            let point = self.parse_row(&col_map, &fields);
+            let point = self.parse_row(&col_map, &fields, battery_full_capacity);
             if point.latitude.is_some() && point.longitude.is_some() {
                 points.push(point);
             }
@@ -252,11 +257,11 @@ impl<'a> LitchiParser<'a> {
         tags.insert(0, "Litchi".to_string()); // Add Litchi tag at the beginning
         log::info!("Generated smart tags: {:?}", tags);
 
-        Ok(ParseResult { metadata, points, tags, manual_tags: Vec::new(), notes: None, messages: Vec::new() })
+        Ok(ParseResult { metadata, points, tags, manual_tags: Vec::new(), notes: None, color: None, messages: Vec::new() })
     }
 
     /// Parse a single CSV row into a TelemetryPoint
-    fn parse_row(&self, col_map: &ColumnMap, row: &[&str]) -> TelemetryPoint {
+    fn parse_row(&self, col_map: &ColumnMap, row: &[&str], battery_full_capacity: Option<f64>) -> TelemetryPoint {
         // Parse timestamp - prefer time(millisecond) as relative ms from flight start
         // If time column exists, use it (with 0 for empty values)
         // Otherwise use datetime as epoch ms (will be normalized later)
@@ -297,17 +302,31 @@ impl<'a> LitchiParser<'a> {
             roll: col_map.get_f64(row, "roll"),
             yaw: col_map.get_f64(row, "yaw"),
 
-            // Gimbal
-            gimbal_pitch: col_map.get_f64(row, "gimbalPitchRaw").or(col_map.get_f64(row, "gimbalPitch")),
-            gimbal_roll: col_map.get_f64(row, "gimbalRollRaw").or(col_map.get_f64(row, "gimbalRoll")),
-            gimbal_yaw: col_map.get_f64(row, "gimbalYawRaw").or(col_map.get_f64(row, "gimbalYaw")),
+            // Gimbal - Raw values are in tenths of degrees, converted columns are already in degrees
+            gimbal_pitch: col_map.get_f64(row, "gimbalPitchRaw").map(|v| v / 10.0).or(col_map.get_f64(row, "gimbalPitch")),
+            gimbal_roll: col_map.get_f64(row, "gimbalRollRaw").map(|v| v / 10.0).or(col_map.get_f64(row, "gimbalRoll")),
+            gimbal_yaw: col_map.get_f64(row, "gimbalYawRaw").map(|v| v / 10.0).or(col_map.get_f64(row, "gimbalYaw")),
 
             // Power
             battery_percent: col_map.get_i32(row, "remainPowerPercent"),
-            battery_voltage: col_map.get_f64(row, "voltage").or(col_map.get_f64(row, "currentVoltage")),
+            battery_voltage: col_map.get_f64(row, "voltage").or(
+                col_map.get_f64(row, "currentVoltage").map(|v| if v > 1000.0 { v / 1000.0 } else { v }) // currentVoltage is in mV
+            ),
             battery_current: col_map.get_f64(row, "currentCurrent"),
-            battery_temp: col_map.get_f64(row, "batteryTemperature").or(col_map.get_f64(row, "temperature")),
-            cell_voltages: None, // Litchi CSV doesn't include cell voltages
+            battery_temp: col_map.get_f64(row, "batteryTemperature")
+                .map(|v| if v > 200.0 { v / 10.0 - 273.15 } else { v }) // Convert tenths-of-Kelvin to Celsius
+                .or(col_map.get_f64(row, "temperature")), // temperature(F) is auto-converted by unit system
+            cell_voltages: {
+                // Parse Battery_Cell1..6 columns (values in millivolts, convert to volts)
+                let cells: Vec<f64> = (1..=6)
+                    .filter_map(|i| {
+                        col_map.get_f64(row, &format!("Battery_Cell{}", i))
+                            .filter(|&v| v > 0.0)
+                            .map(|v| if v > 100.0 { v / 1000.0 } else { v }) // mV to V
+                    })
+                    .collect();
+                if cells.is_empty() { None } else { Some(cells) }
+            },
 
             // Status
             flight_mode: col_map.get_str(row, "flightmode"),
@@ -326,6 +345,12 @@ impl<'a> LitchiParser<'a> {
             // Camera state
             is_photo: col_map.get_bool(row, "istakingphoto"),
             is_video: col_map.get_bool(row, "isTakingVideo"),
+
+            // Battery capacity
+            battery_full_capacity,
+            battery_remained_capacity: col_map.get_f64(row, "CENTER_BATTERY.remainedCapacity")
+                .or(col_map.get_f64(row, "currentElectricity"))
+                .filter(|&v| v > 0.0),
         }
     }
 
@@ -399,6 +424,9 @@ impl<'a> LitchiParser<'a> {
             .get_str(first_row, "Dronetype")
             .map(|dt| self.map_drone_type(&dt));
 
+        // Count photo and video capture events
+        let (photo_count, video_count) = crate::models::count_media_events(points);
+
         Ok(FlightMetadata {
             id: self.db.generate_flight_id(),
             file_name,
@@ -412,6 +440,9 @@ impl<'a> LitchiParser<'a> {
             battery_serial: col_map.get_str(first_row, "BatterySerialNumber")
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| !s.is_empty()),
+            cycle_count: None,
+            rc_serial: None,
+            battery_life: None,
             start_time,
             end_time,
             duration_secs,
@@ -421,6 +452,8 @@ impl<'a> LitchiParser<'a> {
             home_lat,
             home_lon,
             point_count: points.len() as i32,
+            photo_count,
+            video_count,
         })
     }
 
@@ -483,6 +516,7 @@ impl<'a> LitchiParser<'a> {
         let min_battery = points
             .iter()
             .filter_map(|p| p.battery_percent)
+            .filter(|&v| v > 0)
             .min()
             .unwrap_or(end_battery_percent.unwrap_or(0));
 

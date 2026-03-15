@@ -15,10 +15,16 @@ services:
       - DATA_DIR=/data/drone-logbook
       - RUST_LOG=info
       - KEEP_UPLOADED_FILES=true
+      # Obtain a key at https://developer.dji.com/user (see README for details).
+      # - DJI_API_KEY=your_api_key_here
       # Uncomment to enable automatic sync from mounted folder
       # - SYNC_LOGS_PATH=/sync-logs
       # Uncomment to enable scheduled sync (cron expression, default: every 8 hours)
       # - SYNC_INTERVAL=0 0 */8 * * *
+      # Uncomment to customize session token lifetime (default: 24 hours)
+      # - SESSION_TTL_HOURS=24
+      # Uncomment to require a master password for creating new profiles
+      # - PROFILE_CREATION_PASS=your_master_password_here
     restart: unless-stopped
 
 volumes:

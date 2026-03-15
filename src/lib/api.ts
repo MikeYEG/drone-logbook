@@ -35,10 +35,72 @@ async function getTauriInvoke() {
 // Web fetch helpers
 // ============================================================================
 
+// ============================================================================
+// Session-expired callback (avoids circular import with the store)
+// ============================================================================
+
+let _onSessionExpired: (() => void) | null = null;
+
+/** Register a callback invoked when a 401 indicates the session is stale. */
+export function onSessionExpired(cb: () => void): void {
+  _onSessionExpired = cb;
+}
+
+/**
+ * Read a profile-related key, preferring the tab-scoped sessionStorage
+ * (so each tab can be on a different profile) and falling back to
+ * localStorage (so a freshly-opened tab inherits the last-used profile).
+ */
+export function getProfileKey(key: string): string | null {
+  if (typeof sessionStorage !== 'undefined') {
+    const v = sessionStorage.getItem(key);
+    if (v !== null) return v;
+  }
+  if (typeof localStorage !== 'undefined') {
+    const v = localStorage.getItem(key);
+    // Seed sessionStorage so subsequent reads stay tab-local
+    if (v !== null && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(key, v);
+    }
+    return v;
+  }
+  return null;
+}
+
+/** Write a profile-related key to both storages (tab-scope + persistence). */
+export function setProfileKey(key: string, value: string): void {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(key, value);
+  if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+}
+
+/** Remove a profile-related key from both storages. */
+export function removeProfileKey(key: string): void {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(key);
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+}
+
+/**
+ * Build the per-request headers that identify the caller's active profile.
+ * In web mode every request includes `X-Profile` so the server can route
+ * the request to the correct database — enabling independent multi-tab usage.
+ * When a session token is available (password-protected profile), it is
+ * sent via `X-Session` so the server can authenticate the request.
+ */
+function profileHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  headers['X-Profile'] = getProfileKey('activeProfile') || 'default';
+  const session = getProfileKey('profileSession');
+  if (session) {
+    headers['X-Session'] = session;
+  }
+  return headers;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const { headers: optionHeaders, ...restOptions } = options || {};
   const response = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
+    headers: { 'Content-Type': 'application/json', ...profileHeaders(), ...optionHeaders },
+    ...restOptions,
   });
   if (!response.ok) {
     const body = await response.text();
@@ -48,6 +110,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       errorMsg = parsed.error || body;
     } catch {
       errorMsg = body;
+    }
+    // On 401 the session token is expired or invalid — clear it and
+    // notify the store so the login overlay is shown.
+    if (response.status === 401) {
+      removeProfileKey('profileSession');
+      _onSessionExpired?.();
     }
     throw new Error(errorMsg);
   }
@@ -72,6 +140,17 @@ export async function getOverviewStats(): Promise<OverviewStats> {
   }
   const invoke = await getTauriInvoke();
   return invoke('get_overview_stats') as Promise<OverviewStats>;
+}
+
+export async function getBatteryFullCapacityHistory(
+  batterySerial: string,
+): Promise<[number, string, number][]> {
+  if (isWeb) {
+    const params = new URLSearchParams({ battery_serial: batterySerial });
+    return fetchJson<[number, string, number][]>(`/battery_capacity_history?${params}`);
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('get_battery_full_capacity_history', { batterySerial }) as Promise<[number, string, number][]>;
 }
 
 export async function getFlightData(
@@ -107,6 +186,7 @@ export async function importLog(
     const response = await fetch(`${API_BASE}/import`, {
       method: 'POST',
       body: formData,
+      headers: profileHeaders(),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -243,6 +323,20 @@ export async function updateFlightNotes(
   }
   const invoke = await getTauriInvoke();
   return invoke('update_flight_notes', { flightId, notes }) as Promise<boolean>;
+}
+
+export async function updateFlightColor(
+  flightId: number,
+  color: string,
+): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/flights/color', {
+      method: 'PUT',
+      body: JSON.stringify({ flight_id: flightId, color }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('update_flight_color', { flightId, color }) as Promise<boolean>;
 }
 
 export async function hasApiKey(): Promise<boolean> {
@@ -673,7 +767,7 @@ function getBackupFilename(): string {
 export async function backupDatabase(): Promise<boolean> {
   if (isWeb) {
     // Web mode: download via fetch
-    const response = await fetch(`${API_BASE}/backup`);
+    const response = await fetch(`${API_BASE}/backup`, { headers: profileHeaders() });
     if (!response.ok) {
       const body = await response.text();
       throw new Error(body);
@@ -709,6 +803,7 @@ export async function restoreDatabase(file?: File): Promise<string> {
     const response = await fetch(`${API_BASE}/backup/restore`, {
       method: 'POST',
       body: formData,
+      headers: profileHeaders(),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -727,4 +822,225 @@ export async function restoreDatabase(file?: File): Promise<string> {
   const filePath = typeof srcPath === 'string' ? srcPath : (srcPath as { path: string }).path;
   const invoke = await getTauriInvoke();
   return invoke('import_backup', { srcPath: filePath }) as Promise<string>;
+}
+
+// ============================================================================
+// Profile Management
+// ============================================================================
+
+export interface ProfileInfo {
+  name: string;
+  hasPassword: boolean;
+}
+
+export async function listProfiles(): Promise<ProfileInfo[]> {
+  if (isWeb) {
+    return fetchJson<ProfileInfo[]>('/profiles');
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('list_profiles') as Promise<ProfileInfo[]>;
+}
+
+export async function getActiveProfile(): Promise<string> {
+  if (isWeb) {
+    return fetchJson<string>('/profiles/active');
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('get_active_profile') as Promise<string>;
+}
+
+export interface SwitchProfileOptions {
+  name: string;
+  create?: boolean;
+  password?: string;
+  new_password?: string;
+  master_password?: string;
+}
+
+export interface SwitchProfileResponse {
+  name: string;
+  session: string | null;
+}
+
+export async function switchProfile(opts: SwitchProfileOptions): Promise<SwitchProfileResponse> {
+  if (isWeb) {
+    return fetchJson<SwitchProfileResponse>('/profiles/switch', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: opts.name,
+        create: !!opts.create,
+        password: opts.password || null,
+        new_password: opts.new_password || null,
+        master_password: opts.master_password || null,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  // Tauri desktop — no session token, returns just the profile name string
+  const result = await invoke('switch_profile', {
+    name: opts.name,
+    create: !!opts.create,
+    password: opts.password || null,
+    newPassword: opts.new_password || null,
+  }) as string;
+  return { name: result, session: null };
+}
+
+export interface DeleteProfileOptions {
+  name: string;
+  password?: string;
+  master_password?: string;
+}
+
+export async function deleteProfile(opts: DeleteProfileOptions): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/profiles/delete', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: opts.name,
+        password: opts.password || null,
+        master_password: opts.master_password || null,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('delete_profile', { name: opts.name, password: opts.password || null }) as Promise<boolean>;
+}
+
+// ── Password management ──
+
+export async function setProfilePassword(
+  profile: string,
+  newPassword: string,
+  currentPassword?: string,
+): Promise<boolean> {
+  if (isWeb) {
+    const session = getProfileKey('profileSession') || undefined;
+    return fetchJson<boolean>('/profiles/set_password', {
+      method: 'POST',
+      body: JSON.stringify({
+        profile,
+        new_password: newPassword,
+        current_password: currentPassword || null,
+        session: session || null,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('set_profile_password', {
+    profile,
+    newPassword,
+    currentPassword: currentPassword || null,
+  }) as Promise<boolean>;
+}
+
+export async function removeProfilePassword(
+  profile: string,
+  currentPassword: string,
+): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/profiles/remove_password', {
+      method: 'POST',
+      body: JSON.stringify({
+        profile,
+        current_password: currentPassword,
+      }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('remove_profile_password', {
+    profile,
+    currentPassword,
+  }) as Promise<boolean>;
+}
+
+export async function hasMasterPassword(): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/profiles/has_master_password');
+  }
+  // Tauri desktop doesn't use master password
+  return false;
+}
+
+// ── Auto-logout (Tauri desktop only) ──
+
+export async function getAutoLogout(): Promise<boolean> {
+  if (isWeb) return false;
+  const invoke = await getTauriInvoke();
+  return invoke('get_auto_logout') as Promise<boolean>;
+}
+
+export async function setAutoLogout(enabled: boolean): Promise<boolean> {
+  if (isWeb) return false;
+  const invoke = await getTauriInvoke();
+  return invoke('set_auto_logout', { enabled }) as Promise<boolean>;
+}
+
+// ── App lock (Tauri desktop only) ──
+
+export async function isAppLocked(): Promise<boolean> {
+  if (isWeb) return false;
+  const invoke = await getTauriInvoke();
+  return invoke('is_app_locked') as Promise<boolean>;
+}
+
+export async function unlockProfile(password: string): Promise<boolean> {
+  if (isWeb) return false;
+  const invoke = await getTauriInvoke();
+  return invoke('unlock_profile', { password }) as Promise<boolean>;
+}
+
+// ============================================================================
+// Supporter Badge (server-side verification)
+// ============================================================================
+
+/** Verify a supporter code on the backend. Returns true if the code is valid. */
+export async function verifySupporterCode(code: string): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/supporter/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('verify_supporter_code', { code }) as Promise<boolean>;
+}
+
+/** Get the supporter badge status from the database. */
+export async function getSupporterStatus(): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/supporter/status');
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('get_supporter_status') as Promise<boolean>;
+}
+
+/** Remove the supporter badge in the database. */
+export async function removeSupporterBadge(): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/supporter/remove', { method: 'POST' });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('remove_supporter_badge') as Promise<boolean>;
+}
+
+/** Get the donation-acknowledged flag from the database. */
+export async function getDonationAcknowledged(): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/supporter/donation');
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('get_donation_acknowledged') as Promise<boolean>;
+}
+
+/** Set the donation-acknowledged flag in the database. */
+export async function setDonationAcknowledgedApi(acknowledged: boolean): Promise<boolean> {
+  if (isWeb) {
+    return fetchJson<boolean>('/supporter/donation', {
+      method: 'POST',
+      body: JSON.stringify({ acknowledged }),
+    });
+  }
+  const invoke = await getTauriInvoke();
+  return invoke('set_donation_acknowledged', { acknowledged }) as Promise<boolean>;
 }

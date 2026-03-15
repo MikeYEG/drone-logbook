@@ -18,18 +18,87 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::time::timeout;
 
-use dji_log_parser::frame::Frame;
+use dji_log_parser::frame::{records_to_frames, Frame};
 use dji_log_parser::layout::auxiliary::Department;
+use dji_log_parser::layout::details::ProductType;
+use dji_log_parser::record::component_serial::ComponentType;
+use dji_log_parser::record::smart_battery_group::SmartBatteryGroup;
+use dji_log_parser::record::Record;
 use dji_log_parser::DJILog;
 
 use crate::api::DjiApi;
 use crate::database::Database;
+use crate::airdata_parser::AirdataParser;
 use crate::dronelogbook_parser::DroneLogbookParser;
 use crate::litchi_parser::LitchiParser;
 use crate::models::{FlightMessage, FlightMetadata, FlightStats, TelemetryPoint};
 
 /// Maximum time allowed for parsing a single log file (seconds)
 const PARSE_TIMEOUT_SECS: u64 = 40;
+
+/// Full-length serial numbers extracted from ComponentSerial records.
+/// The details header in DJI logs truncates serials to 16 bytes, but
+/// Enterprise drones (e.g. Mavic 3 Enterprise) have 20-character SNs.
+/// ComponentSerial records store the complete serial with a length prefix.
+#[derive(Debug, Default, Clone)]
+struct ComponentSerials {
+    aircraft: Option<String>,
+    battery: Option<String>,
+    rc: Option<String>,
+    /// Battery cycle count extracted from SmartBatteryStatic.loop_times (divided by 256)
+    cycle_count: Option<i32>,
+    /// Battery life percentage from SmartBatteryStatic
+    battery_life: Option<i32>,
+}
+
+/// Scan raw records for ComponentSerial entries and return full-length serials.
+fn extract_component_serials(records: &[Record]) -> ComponentSerials {
+    let mut result = ComponentSerials::default();
+    for record in records {
+        if let Record::ComponentSerial(ref cs) = record {
+            let sn = cs.serial.trim().to_uppercase();
+            if sn.is_empty() {
+                continue;
+            }
+            match cs.component_type {
+                ComponentType::Aircraft => {
+                    log::debug!("ComponentSerial: Aircraft SN = {} ({} chars)", sn, sn.len());
+                    result.aircraft = Some(sn);
+                }
+                ComponentType::Battery => {
+                    log::debug!("ComponentSerial: Battery SN = {} ({} chars)", sn, sn.len());
+                    result.battery = Some(sn);
+                }
+                ComponentType::RC => {
+                    log::debug!("ComponentSerial: RC SN = {} ({} chars)", sn, sn.len());
+                    result.rc = Some(sn);
+                }
+                _ => {}
+            }
+        }
+        // Extract cycle count from SmartBatteryStatic records
+        if let Record::SmartBatteryGroup(SmartBatteryGroup::SmartBatteryStatic(ref sbs)) = record {
+            let raw = sbs.loop_times as i32;
+            let normalized = raw / 256;
+            if normalized > 0 {
+                log::debug!("SmartBatteryStatic: loop_times={} -> cycle_count={}", raw, normalized);
+                // Keep the maximum cycle count seen across all SmartBatteryStatic records
+                result.cycle_count = Some(
+                    result.cycle_count.map_or(normalized, |prev| prev.max(normalized))
+                );
+            }
+            // Extract battery life from SmartBatteryStatic
+            let battery_life_val = sbs.battery_life as i32;
+            if battery_life_val > 0 {
+                log::debug!("SmartBatteryStatic: battery_life={}", battery_life_val);
+                result.battery_life = Some(
+                    result.battery_life.map_or(battery_life_val, |prev| prev.min(battery_life_val))
+                );
+            }
+        }
+    }
+    result
+}
 
 #[derive(Error, Debug)]
 pub enum ParserError {
@@ -57,7 +126,7 @@ pub enum ParserError {
     #[error("Parsing timed out after {0} seconds — file may be corrupt or unsupported")]
     Timeout(u64),
 
-    #[error("Incompatible file format — only DJI flight logs (.txt), Litchi CSV exports, and Drone Logbook CSV exports are supported")]
+    #[error("Incompatible file format — only DJI flight logs (.txt), Litchi CSV exports, Airdata CSV exports, and Open DroneLog CSV exports are supported")]
     IncompatibleFile,
 }
 
@@ -70,6 +139,8 @@ pub struct ParseResult {
     pub manual_tags: Vec<String>,
     /// Notes to preserve from re-imported CSV exports
     pub notes: Option<String>,
+    /// Color label to preserve from re-imported CSV exports
+    pub color: Option<String>,
     /// App messages (tips and warnings) from the flight log
     pub messages: Vec<FlightMessage>,
 }
@@ -130,27 +201,73 @@ impl<'a> LogParser<'a> {
         }
 
         // Detect file format and route to appropriate parser
-        // Check for Drone Logbook CSV format first (our own export)
+        let builtin_err;
+
+        // Try built-in CSV parsers first
         if DroneLogbookParser::is_dronelogbook_csv(file_path) {
             log::info!("Detected Drone Logbook CSV format, using DroneLogbookParser");
-            let dronelogbook_parser = DroneLogbookParser::new(self.db);
-            return dronelogbook_parser.parse(file_path, &file_hash);
-        }
-
-        // Check for Litchi CSV format
-        if LitchiParser::is_litchi_csv(file_path) {
+            match DroneLogbookParser::new(self.db).parse(file_path, &file_hash) {
+                Ok(res) => return Ok(res),
+                Err(e) => builtin_err = e,
+            }
+        } else if AirdataParser::is_airdata_csv(file_path) {
+            log::info!("Detected Airdata CSV format, using AirdataParser");
+            match AirdataParser::new(self.db).parse(file_path, &file_hash) {
+                Ok(res) => return Ok(res),
+                Err(e) => builtin_err = e,
+            }
+        } else if LitchiParser::is_litchi_csv(file_path) {
             log::info!("Detected Litchi CSV format, using LitchiParser");
-            let litchi_parser = LitchiParser::new(self.db);
-            return litchi_parser.parse(file_path, &file_hash);
+            match LitchiParser::new(self.db).parse(file_path, &file_hash) {
+                Ok(res) => return Ok(res),
+                Err(e) => builtin_err = e,
+            }
+        } else {
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext.eq_ignore_ascii_case("txt") {
+                // Try DJI log parser
+                match self.parse_dji_txt(file_path, &file_hash, parse_start).await {
+                    Ok(res) => return Ok(res),
+                    Err(e) => builtin_err = e,
+                }
+            } else {
+                builtin_err = ParserError::IncompatibleFile;
+            }
         }
 
-        // Check if this looks like a valid DJI log file
-        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !ext.eq_ignore_ascii_case("txt") {
-            log::warn!("Unsupported file extension: .{}", ext);
-            return Err(ParserError::IncompatibleFile);
-        }
+        // Custom Plugin Fallback
+        let err = builtin_err;
+        log::info!("Built-in parser failed or incompatible: {}. Trying custom plugins...", err);
+        if let Some(config) = crate::plugins::get_plugin_config(&self.db.data_dir) {
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if let Some(mapping) = config.mappings.get(&ext) {
+                let temp_dir = std::env::temp_dir();
+                let output_csv = temp_dir.join(format!("{}_plugin_out.csv", uuid::Uuid::new_v4()));
+                
+                if let Err(plugin_err) = crate::plugins::run_plugin(mapping, file_path, &output_csv).await {
+                    log::error!("Custom plugin failed: {}", plugin_err);
+                    return Err(err); // Return original built-in error
+                }
 
+                // On success, parse the resulting CSV using DroneLogbookParser
+                let drone_parser = DroneLogbookParser::new(self.db);
+                let result = drone_parser.parse(&output_csv, &file_hash);
+                let _ = fs::remove_file(&output_csv); // Clean up temp file
+                
+                match result {
+                    Ok(res) => return Ok(res),
+                    Err(e) => {
+                        log::error!("Failed to parse custom plugin output CSV: {}", e);
+                        return Err(err); // Return original built-in error
+                    }
+                }
+            }
+        }
+        Err(err)
+    }
+
+    /// Parse a DJI TXT log file
+    async fn parse_dji_txt(&self, file_path: &Path, file_hash: &str, parse_start: std::time::Instant) -> Result<ParseResult, ParserError> {
         // Read the file
         let file_data = fs::read(file_path)?;
 
@@ -194,8 +311,28 @@ impl<'a> LogParser<'a> {
         );
 
         // Check if we need an encryption key for V13+ logs
-        let (frames, used_djifly_fallback) = self.get_frames(&parser).await?;
+        let (frames, used_djifly_fallback, component_serials) = self.get_frames(&parser).await?;
         log::info!("Extracted {} frames from log", frames.len());
+
+        // Log when ComponentSerial provides a longer serial than the header
+        if let Some(ref full_sn) = component_serials.aircraft {
+            if full_sn.len() > parser.details.aircraft_sn.trim().len() {
+                log::info!(
+                    "ComponentSerial override: aircraft_sn '{}' ({} chars) -> '{}' ({} chars)",
+                    parser.details.aircraft_sn.trim(), parser.details.aircraft_sn.trim().len(),
+                    full_sn, full_sn.len()
+                );
+            }
+        }
+        if let Some(ref full_sn) = component_serials.battery {
+            if full_sn.len() > parser.details.battery_sn.trim().len() {
+                log::info!(
+                    "ComponentSerial override: battery_sn '{}' ({} chars) -> '{}' ({} chars)",
+                    parser.details.battery_sn.trim(), parser.details.battery_sn.trim().len(),
+                    full_sn, full_sn.len()
+                );
+            }
+        }
 
         if frames.is_empty() {
             log::warn!("No frames extracted from log file — file may be empty or corrupt");
@@ -238,15 +375,21 @@ impl<'a> LogParser<'a> {
             .unwrap_or(&file_name)
             .to_string();
 
+        // Count photo and video capture events from telemetry transitions
+        let (photo_count, video_count) = crate::models::count_media_events(&points);
+
         let metadata = FlightMetadata {
             id: self.db.generate_flight_id(),
             file_name,
             display_name,
-            file_hash: Some(file_hash),
+            file_hash: Some(file_hash.to_string()),
             drone_model: self.extract_drone_model(&parser),
-            drone_serial: self.extract_serial(&parser),
+            drone_serial: component_serials.aircraft.clone()
+                .or_else(|| self.extract_serial(&parser)),
             aircraft_name: self.extract_aircraft_name(&parser),
-            battery_serial: self.extract_battery_serial(&parser),
+            battery_serial: component_serials.battery.clone()
+                .or_else(|| self.extract_battery_serial(&parser)),
+            cycle_count: component_serials.cycle_count,
             start_time: self.extract_start_time(&parser),
             end_time: self.extract_end_time(&parser),
             duration_secs: Some(
@@ -262,6 +405,14 @@ impl<'a> LogParser<'a> {
             home_lat: stats.home_location.map(|h| h[1]),
             home_lon: stats.home_location.map(|h| h[0]),
             point_count: points.len() as i32,
+            photo_count,
+            video_count,
+            rc_serial: component_serials.rc.clone()
+                .or_else(|| {
+                    let sn = parser.details.rc_sn.trim().to_uppercase();
+                    if sn.is_empty() { None } else { Some(sn) }
+                }),
+            battery_life: component_serials.battery_life,
         };
 
         log::info!(
@@ -286,7 +437,8 @@ impl<'a> LogParser<'a> {
         
         log::info!("Generated smart tags: {:?}", tags);
 
-        Ok(ParseResult { metadata, points, tags, manual_tags: Vec::new(), notes: None, messages })
+        Ok(ParseResult { metadata, points, tags, manual_tags: Vec::new(), notes: None, color: None, messages })
+
     }
 
     /// Generate smart tags based on flight metadata and statistics
@@ -593,7 +745,7 @@ impl<'a> LogParser<'a> {
     /// to prevent panics from crashing the application.
     /// Returns (frames, used_djifly_fallback) where used_djifly_fallback indicates
     /// if the DJIFly department override was needed (third-party app like Dronelink).
-    async fn get_frames(&self, parser: &DJILog) -> Result<(Vec<Frame>, bool), ParserError> {
+    async fn get_frames(&self, parser: &DJILog) -> Result<(Vec<Frame>, bool, ComponentSerials), ParserError> {
         // Version 13+ requires keychains for decryption
         let (keychains, used_djifly_fallback) = if parser.version >= 13 {
             let api_key = self.api.get_api_key().ok_or(ParserError::EncryptionKeyRequired)?;
@@ -639,7 +791,56 @@ impl<'a> LogParser<'a> {
             tokio::task::spawn_blocking(move || {
                 let parser_ref = unsafe { &*(parser_ptr as *const DJILog) };
                 panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                    parser_ref.frames(keychains)
+                    // Use records() instead of frames() so we can extract
+                    // full-length ComponentSerial data before converting to frames.
+                    // The details header truncates serials to 16 bytes, but Enterprise
+                    // drones have 20-char serials stored in ComponentSerial records.
+                    let mut records = parser_ref.records(keychains)?;
+                    let comp_serials = extract_component_serials(&records);
+                    
+                    // Filter out corrupt SmartBatteryGroup payloads for DJI Mini 2 & Mini 2 SE
+                    // which would otherwise overwrite valid SmartBattery (magic byte 8) data
+                    match parser_ref.details.product_type {
+                        ProductType::Mini2 | ProductType::Mini2SE => {
+                            records.retain(|r| !matches!(r, dji_log_parser::record::Record::SmartBatteryGroup(_)));
+                        }
+                        _ => {}
+                    }
+                    
+                    // The dji-log-parser library resets camera state to false on every OSD tick
+                    // because not all OSD ticks have a matching camera record. This causes
+                    // false `is_photo` and `is_video` transitions in the extracted frames.
+                    // We must track the true persistent state out-of-band to override the frames.
+                    let mut persistent_camera_states = Vec::new();
+                    let mut current_is_photo = false;
+                    let mut current_is_video = false;
+                    let mut osd_count = 0;
+
+                    for record in &records {
+                        match record {
+                            dji_log_parser::record::Record::Camera(camera) => {
+                                current_is_photo = camera.is_shooting_single_photo;
+                                current_is_video = camera.is_recording;
+                            }
+                            dji_log_parser::record::Record::OSD(_) => {
+                                if osd_count > 0 {
+                                    persistent_camera_states.push((current_is_photo, current_is_video));
+                                }
+                                osd_count += 1;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let mut frames = records_to_frames(records, parser_ref.details.clone());
+                    
+                    // Override the artificially false values injected by the library with our persistent trackers
+                    for (frame, &(is_photo, is_video)) in frames.iter_mut().zip(persistent_camera_states.iter()) {
+                        frame.camera.is_photo = is_photo;
+                        frame.camera.is_video = is_video;
+                    }
+
+                    Ok((frames, comp_serials))
                 }))
             }),
         )
@@ -658,8 +859,8 @@ impl<'a> LogParser<'a> {
             }
             Ok(Ok(Ok(frames_result))) => {
                 frames_result
-                    .map(|frames| (frames, used_djifly_fallback))
-                    .map_err(|e| ParserError::Parse(e.to_string()))
+                    .map(|(frames, comp_serials)| (frames, used_djifly_fallback, comp_serials))
+                    .map_err(|e: dji_log_parser::Error| ParserError::Parse(e.to_string()))
             }
         }
     }
@@ -688,14 +889,27 @@ impl<'a> LogParser<'a> {
             100 // default 10Hz assumption
         };
 
+        let mut prev_is_photo = false;
+        let mut prev_is_video = false;
+
         for frame in frames {
             let osd = &frame.osd;
             let gimbal = &frame.gimbal;
             let battery = &frame.battery;
             let rc = &frame.rc;
 
-            let current_timestamp_ms = if osd.fly_time > 0.0 {
+            // fly_time from DJI logs often has only ~1-second resolution:
+            // e.g., fly_time=1.0 for all 10 frames in that second.
+            // We must ensure unique, monotonically increasing timestamps so that
+            // sub-second data is preserved during insertion.
+            let fly_time_ms = if osd.fly_time > 0.0 {
                 (osd.fly_time * 1000.0) as i64
+            } else {
+                0
+            };
+            // Use fly_time when it advances past our counter, otherwise keep incrementing
+            let current_timestamp_ms = if fly_time_ms > timestamp_ms {
+                fly_time_ms
             } else {
                 timestamp_ms
             };
@@ -775,6 +989,15 @@ impl<'a> LogParser<'a> {
             point.battery_voltage = Some(battery.voltage as f64);
             point.battery_current = Some(battery.current as f64);
             point.battery_temp = Some(battery.temperature as f64);
+            // Extract battery capacity telemetry
+            let full_cap = battery.full_capacity as f64;
+            if full_cap > 0.0 {
+                point.battery_full_capacity = Some(full_cap);
+            }
+            let remained_cap = battery.current_capacity as f64;
+            if remained_cap > 0.0 {
+                point.battery_remained_capacity = Some(remained_cap);
+            }
             // Extract individual cell voltages if available
             point.cell_voltages = if !battery.cell_voltages.is_empty() {
                 Some(battery.cell_voltages.iter().map(|v| *v as f64).collect())
@@ -792,14 +1015,21 @@ impl<'a> LogParser<'a> {
             point.rc_throttle = Some(((rc.throttle as f64) - 1024.0) / 1024.0 * 100.0);
             point.rc_rudder = Some(((rc.rudder as f64) - 1024.0) / 1024.0 * 100.0);
 
-            // Camera state: extract is_photo and is_video from frame.camera
+            // Camera state: extract rising edge transitions to guarantee exactly one "true" per event
             let camera = &frame.camera;
-            point.is_photo = Some(camera.is_photo);
-            point.is_video = Some(camera.is_video);
+            
+            let is_photo_now = camera.is_photo;
+            let is_video_now = camera.is_video;
+
+            point.is_photo = Some(is_photo_now && !prev_is_photo);
+            point.is_video = Some(is_video_now && !prev_is_video);
+
+            prev_is_photo = is_photo_now;
+            prev_is_video = is_video_now;
 
             points.push(point);
 
-            // Increment timestamp using computed interval
+            // Always advance by fallback interval to ensure next frame gets a unique timestamp
             timestamp_ms = current_timestamp_ms + fallback_interval_ms;
         }
 
@@ -845,6 +1075,7 @@ impl<'a> LogParser<'a> {
         let min_battery = points
             .iter()
             .filter_map(|p| p.battery_percent)
+            .filter(|&v| v > 0)
             .min()
             .unwrap_or(0);
 
@@ -932,6 +1163,98 @@ impl<'a> LogParser<'a> {
             100 // default 10Hz assumption
         };
 
+        // ----------------------------------------------------------------
+        // OSD + Gimbal state change tracking
+        // Track all OSD status fields and gimbal.is_stuck. When a value
+        // changes between consecutive frames, emit a message:
+        //   "XXX changed from YYY to ZZZ"
+        // Severity mapping:
+        //   caution — hardware/sensor errors (compass, motor, barometer, IMU, …)
+        //   warn    — operational warnings (voltage, vibration, limits, RTH, …)
+        //   tip     — informational (vision, IOC, …)
+        // ----------------------------------------------------------------
+
+        // Helper formatting closures
+        fn fmt_bool(v: bool) -> &'static str { if v { "Yes" } else { "No" } }
+        fn fmt_voltage_warning(v: u8) -> String {
+            match v {
+                0 => "Normal".to_string(),
+                1 => "Low".to_string(),
+                2 => "Severe Low".to_string(),
+                3 => "Smart Low".to_string(),
+                n => format!("Level {}", n),
+            }
+        }
+        fn fmt_opt_enum<T: std::fmt::Debug>(v: &Option<T>) -> String {
+            match v {
+                Some(val) => format!("{:?}", val),
+                None => "None".to_string(),
+            }
+        }
+
+        // Previous-state trackers (Option<_> = None means first frame, skip)
+        // --- Caution-level (hardware / sensor errors) ---
+        let mut prev_is_compass_error: Option<bool> = None;
+        let mut prev_is_motor_blocked: Option<bool> = None;
+        let mut prev_is_barometer_dead_in_air: Option<bool> = None;
+        let mut prev_is_acceletor_over_range: Option<bool> = None;
+        let mut prev_is_not_enough_force: Option<bool> = None;
+        let mut prev_is_propeller_catapult: Option<bool> = None;
+        let mut prev_motor_start_failed_cause: Option<String> = None;
+        let mut prev_imu_init_fail_reason: Option<String> = None;
+        let mut prev_gimbal_is_stuck: Option<bool> = None;
+
+        // --- Warning-level (operational) ---
+        let mut prev_voltage_warning: Option<u8> = None;
+        let mut prev_wave_error: Option<bool> = None;
+        let mut prev_is_out_of_limit: Option<bool> = None;
+        let mut prev_go_home_status: Option<String> = None;
+        let mut prev_is_vibrating: Option<bool> = None;
+        let mut prev_is_go_home_height_modified: Option<bool> = None;
+        let mut prev_non_gps_cause: Option<String> = None;
+
+        // --- Info-level (informational) ---
+        let mut prev_is_vision_used: Option<bool> = None;
+        let mut prev_is_imu_preheated: Option<bool> = None;
+        let mut prev_can_ioc_work: Option<bool> = None;
+
+        // Flight action still tracked separately for descriptive event messages
+        let mut prev_flight_action_msg = std::option::Option::<&str>::None;
+
+        /// Macro: check a boolean field for change and emit a message
+        macro_rules! track_bool {
+            ($cur:expr, $prev:ident, $name:expr, $severity:expr, $ts:expr, $msgs:ident) => {
+                let cur_val = $cur;
+                if let Some(prev_val) = $prev {
+                    if cur_val != prev_val {
+                        $msgs.push(FlightMessage {
+                            timestamp_ms: $ts,
+                            message_type: $severity.to_string(),
+                            message: format!("{} changed from {} to {}", $name, fmt_bool(prev_val), fmt_bool(cur_val)),
+                        });
+                    }
+                }
+                $prev = Some(cur_val);
+            };
+        }
+
+        /// Macro: check a string-formatted enum/numeric field for change
+        macro_rules! track_string {
+            ($cur:expr, $prev:ident, $name:expr, $severity:expr, $ts:expr, $msgs:ident) => {
+                let cur_str: String = $cur;
+                if let Some(ref prev_str) = $prev {
+                    if cur_str != *prev_str {
+                        $msgs.push(FlightMessage {
+                            timestamp_ms: $ts,
+                            message_type: $severity.to_string(),
+                            message: format!("{} changed from {} to {}", $name, prev_str, cur_str),
+                        });
+                    }
+                }
+                $prev = Some(cur_str);
+            };
+        }
+
         for frame in frames {
             let current_timestamp_ms = if frame.osd.fly_time > 0.0 {
                 (frame.osd.fly_time * 1000.0) as i64
@@ -956,6 +1279,101 @@ impl<'a> LogParser<'a> {
                     message: frame.app.warn.clone(),
                 });
             }
+
+            // ============================================================
+            //  Caution-level state changes (hardware / sensor errors)
+            // ============================================================
+            track_bool!(frame.osd.is_compass_error, prev_is_compass_error,
+                "Compass Error", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_motor_blocked, prev_is_motor_blocked,
+                "Motor Blocked", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_barometer_dead_in_air, prev_is_barometer_dead_in_air,
+                "Barometer Dead In Air", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_acceletor_over_range, prev_is_acceletor_over_range,
+                "Accelerometer Over Range", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_not_enough_force, prev_is_not_enough_force,
+                "Not Enough Force", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_propeller_catapult, prev_is_propeller_catapult,
+                "Propeller Catapult", "caution", current_timestamp_ms, messages);
+            track_string!(fmt_opt_enum(&frame.osd.motor_start_failed_cause), prev_motor_start_failed_cause,
+                "Motor Start Failed Cause", "caution", current_timestamp_ms, messages);
+            track_string!(fmt_opt_enum(&frame.osd.imu_init_fail_reason), prev_imu_init_fail_reason,
+                "IMU Init Fail Reason", "caution", current_timestamp_ms, messages);
+            track_bool!(frame.gimbal.is_stuck, prev_gimbal_is_stuck,
+                "Gimbal Stuck", "caution", current_timestamp_ms, messages);
+
+            // ============================================================
+            //  Warning-level state changes (operational)
+            // ============================================================
+            {
+                let cur_vw = frame.osd.voltage_warning;
+                if let Some(prev_vw) = prev_voltage_warning {
+                    if cur_vw != prev_vw {
+                        messages.push(FlightMessage {
+                            timestamp_ms: current_timestamp_ms,
+                            message_type: "warn".to_string(),
+                            message: format!("Voltage Warning changed from {} to {}",
+                                fmt_voltage_warning(prev_vw), fmt_voltage_warning(cur_vw)),
+                        });
+                    }
+                }
+                prev_voltage_warning = Some(cur_vw);
+            }
+            track_bool!(frame.osd.wave_error, prev_wave_error,
+                "Wave Error", "warn", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_out_of_limit, prev_is_out_of_limit,
+                "Out Of Limit", "warn", current_timestamp_ms, messages);
+            track_string!(fmt_opt_enum(&frame.osd.go_home_status), prev_go_home_status,
+                "Go Home Status", "warn", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_vibrating, prev_is_vibrating,
+                "Vibrating", "warn", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_go_home_height_modified, prev_is_go_home_height_modified,
+                "Go Home Height Modified", "warn", current_timestamp_ms, messages);
+            track_string!(fmt_opt_enum(&frame.osd.non_gps_cause), prev_non_gps_cause,
+                "Non-GPS Cause", "warn", current_timestamp_ms, messages);
+
+            // ============================================================
+            //  Info-level state changes (informational)
+            // ============================================================
+            track_bool!(frame.osd.is_vision_used, prev_is_vision_used,
+                "Vision Positioning", "tip", current_timestamp_ms, messages);
+            track_bool!(frame.osd.is_imu_preheated, prev_is_imu_preheated,
+                "IMU Preheated", "tip", current_timestamp_ms, messages);
+            track_bool!(frame.osd.can_ioc_work, prev_can_ioc_work,
+                "IOC Available", "tip", current_timestamp_ms, messages);
+
+            // ============================================================
+            //  Flight Action transitions (descriptive event messages)
+            // ============================================================
+            let current_flight_action_msg = frame.osd.flight_action.and_then(|action| {
+                use dji_log_parser::record::osd::FlightAction;
+                match action {
+                    FlightAction::WarningPowerGoHome => Some("Low Battery RTH Triggered"),
+                    FlightAction::WarningPowerLanding => Some("Low Battery Auto Landing"),
+                    FlightAction::SmartPowerGoHome => Some("Smart RTH Triggered"),
+                    FlightAction::SmartPowerLanding => Some("Smart Auto Landing"),
+                    FlightAction::LowVoltageLanding => Some("Critical Low Voltage Landing"),
+                    FlightAction::LowVoltageGoHome => Some("Low Voltage RTH"),
+                    FlightAction::SeriousLowVoltageLanding => Some("Severe Low Voltage Landing"),
+                    FlightAction::BatteryForceLanding => Some("Battery Forced Landing"),
+                    FlightAction::MotorblockLanding => Some("Motor Blocked Forced Landing"),
+                    FlightAction::AppRequestForceLanding => Some("App Requested Forced Landing"),
+                    FlightAction::FakeBatteryLanding => Some("Non-intelligent Battery Landing"),
+                    FlightAction::GoHomeAvoid => Some("Obstacle Avoidance during RTH"),
+                    _ => std::option::Option::None,
+                }
+            });
+            
+            if current_flight_action_msg != prev_flight_action_msg {
+                if let Some(msg) = current_flight_action_msg {
+                    messages.push(FlightMessage {
+                        timestamp_ms: current_timestamp_ms,
+                        message_type: "warn".to_string(),
+                        message: msg.to_string(),
+                    });
+                }
+            }
+            prev_flight_action_msg = current_flight_action_msg;
 
             timestamp_ms = current_timestamp_ms + fallback_interval_ms;
         }
@@ -1039,6 +1457,7 @@ pub fn calculate_stats_from_records(records: &[crate::models::TelemetryRecord]) 
 
     let min_battery = records.iter()
         .filter_map(|r| r.battery_percent)
+        .filter(|&v| v > 0)
         .min()
         .unwrap_or(0);
 

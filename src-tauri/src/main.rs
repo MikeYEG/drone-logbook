@@ -1,4 +1,4 @@
-//! Drone Logbook - Backend
+//! Open DroneLog - Backend
 //!
 //! A high-performance application for analyzing DJI drone flight logs.
 //! Supports two build modes:
@@ -12,15 +12,21 @@
     windows_subsystem = "windows"
 )]
 
+mod airdata_parser;
 mod api;
 mod database;
 mod dronelogbook_parser;
 mod litchi_parser;
 mod models;
 mod parser;
+mod plugins;
+mod profile_auth;
 
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 mod server;
+
+#[cfg(all(feature = "web", not(feature = "tauri-app")))]
+mod session_store;
 
 // ============================================================================
 // TAURI DESKTOP MODE
@@ -29,20 +35,73 @@ mod server;
 #[cfg(feature = "tauri-app")]
 mod tauri_app {
     use std::path::PathBuf;
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
 
     use tauri::{AppHandle, Manager, State};
     use tauri_plugin_log::{Target, TargetKind};
     use log::LevelFilter;
 
-    use crate::database::{Database, DatabaseError};
+    use crate::database::{self, Database, DatabaseError};
     use crate::models::{Flight, FlightDataResponse, FlightTag, ImportResult, OverviewStats, TelemetryData};
     use crate::parser::LogParser;
     use crate::api::DjiApi;
+    use crate::profile_auth;
 
-    /// Application state containing the database connection
+    /// Application state containing the database connection (swappable for profile switching)
     pub struct AppState {
-        pub db: Arc<Database>,
+        active_db: RwLock<Arc<Database>>,
+        pub data_dir: PathBuf,
+        /// When true, data commands are blocked until the user authenticates.
+        locked: RwLock<bool>,
+    }
+
+    impl AppState {
+        /// Get a reference-counted handle to the current database (unchecked — for internal/close-hook use).
+        pub fn db(&self) -> Arc<Database> {
+            self.active_db.read().unwrap().clone()
+        }
+
+        /// Get the database only if the app is not locked.  All data-access commands should use this.
+        pub fn db_authenticated(&self) -> Result<Arc<Database>, String> {
+            if *self.locked.read().unwrap() {
+                return Err("Profile is locked — please authenticate first".to_string());
+            }
+            Ok(self.active_db.read().unwrap().clone())
+        }
+
+        /// Swap the active database (used for profile switching).
+        pub fn swap_db(&self, new_db: Database) {
+            *self.active_db.write().unwrap() = Arc::new(new_db);
+        }
+
+        /// Lock the app (block data access until authentication).
+        #[allow(dead_code)]
+        pub fn lock(&self) {
+            *self.locked.write().unwrap() = true;
+        }
+
+        /// Unlock the app after successful authentication.
+        pub fn unlock(&self) {
+            *self.locked.write().unwrap() = false;
+        }
+
+        /// Check if the app is locked.
+        #[allow(dead_code)]
+        pub fn is_locked(&self) -> bool {
+            *self.locked.read().unwrap()
+        }
+
+        /// Get the config file path for the currently active profile.
+        pub fn config_path(&self) -> PathBuf {
+            let profile = database::get_active_profile(&self.data_dir);
+            database::config_path_for_profile(&self.data_dir, &profile)
+        }
+
+        /// Get the default upload folder for the currently active profile.
+        pub fn default_upload_folder(&self) -> PathBuf {
+            let profile = database::get_active_profile(&self.data_dir);
+            database::default_upload_folder(&self.data_dir, &profile)
+        }
     }
 
     /// Get the app data directory for storing the database and logs
@@ -156,7 +215,11 @@ mod tauri_app {
             // Continue anyway - this is not fatal
         }
 
-        Database::new(data_dir).map_err(|e| format!("Failed to initialize database: {}", e))
+        // Read persisted active profile
+        let profile = database::get_active_profile(&data_dir);
+        log::info!("Active profile: {}", profile);
+
+        Database::new(data_dir, &profile).map_err(|e| format!("Failed to initialize database: {}", e))
     }
 
     #[tauri::command]
@@ -178,7 +241,7 @@ mod tauri_app {
         }
 
         // Load config early for keep_uploaded_files setting
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         let config: serde_json::Value = if config_path.exists() {
             std::fs::read_to_string(&config_path)
                 .ok()
@@ -188,7 +251,7 @@ mod tauri_app {
             serde_json::json!({})
         };
         let keep_enabled = config.get("keep_uploaded_files").and_then(|v| v.as_bool()).unwrap_or(true);
-        let default_folder = state.db.data_dir.join("uploaded");
+        let default_folder = state.default_upload_folder();
         let upload_folder = config.get("uploaded_files_path")
             .and_then(|v| v.as_str())
             .map(|s| PathBuf::from(s))
@@ -203,20 +266,22 @@ mod tauri_app {
             }
         };
 
-        let parser = LogParser::new(&state.db);
+        let db = state.db_authenticated()?;
+        let parser = LogParser::new(&db);
 
         let parse_result = match parser.parse_log(&path).await {
             Ok(result) => result,
             Err(crate::parser::ParserError::AlreadyImported(matching_flight)) => {
                 log::info!("Skipping already-imported file: {} — matches flight '{}' in database", file_path, matching_flight);
-                // Still copy the file even though flight is already imported
-                try_copy_file(None);
+                // Compute file hash so copy_uploaded_file can properly deduplicate
+                let file_hash = LogParser::calculate_file_hash(&path).ok();
+                try_copy_file(file_hash.as_deref());
                 return Ok(ImportResult {
                     success: false,
                     flight_id: None,
                     message: format!("This flight log has already been imported (matches: {})", matching_flight),
                     point_count: 0,
-                    file_hash: None,
+                    file_hash,
                 });
             }
             Err(e) => {
@@ -232,7 +297,7 @@ mod tauri_app {
         };
 
         // Check for duplicate flight based on signature (drone_serial + battery_serial + start_time)
-        if let Some(matching_flight) = state.db.is_duplicate_flight(
+        if let Some(matching_flight) = db.is_duplicate_flight(
             parse_result.metadata.drone_serial.as_deref(),
             parse_result.metadata.battery_serial.as_deref(),
             parse_result.metadata.start_time,
@@ -250,19 +315,17 @@ mod tauri_app {
         }
 
         log::debug!("Inserting flight metadata: id={}", parse_result.metadata.id);
-        let flight_id = state
-            .db
+        let flight_id = db
             .insert_flight(&parse_result.metadata)
             .map_err(|e| format!("Failed to insert flight: {}", e))?;
 
-        let point_count = match state
-            .db
+        let point_count = match db
             .bulk_insert_telemetry(flight_id, &parse_result.points)
         {
             Ok(count) => count,
             Err(e) => {
                 log::error!("Failed to insert telemetry for flight {}: {}. Cleaning up.", flight_id, e);
-                if let Err(cleanup_err) = state.db.delete_flight(flight_id) {
+                if let Err(cleanup_err) = db.delete_flight(flight_id) {
                     log::error!("Failed to clean up flight {}: {}", flight_id, cleanup_err);
                 }
                 return Ok(ImportResult {
@@ -276,7 +339,7 @@ mod tauri_app {
         };
 
         // Insert smart tags if the feature is enabled
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         let config: serde_json::Value = if config_path.exists() {
             std::fs::read_to_string(&config_path)
                 .ok()
@@ -297,29 +360,53 @@ mod tauri_app {
             } else {
                 parse_result.tags.clone()
             };
-            if let Err(e) = state.db.insert_flight_tags(flight_id, &tags) {
+            if let Err(e) = db.insert_flight_tags(flight_id, &tags) {
                 log::warn!("Failed to insert tags for flight {}: {}", flight_id, e);
             }
         }
 
         // Insert manual tags from re-imported CSV exports (always inserted regardless of smart_tags_enabled)
         for manual_tag in &parse_result.manual_tags {
-            if let Err(e) = state.db.add_flight_tag(flight_id, manual_tag) {
+            if let Err(e) = db.add_flight_tag(flight_id, manual_tag) {
                 log::warn!("Failed to insert manual tag '{}' for flight {}: {}", manual_tag, flight_id, e);
+            }
+        }
+
+        // Auto-tag with profile name for non-default profiles
+        {
+            let profile = database::get_active_profile(&state.data_dir);
+            if profile != "default" {
+                if let Err(e) = db.add_flight_tag(flight_id, &profile) {
+                    log::warn!("Failed to insert profile tag '{}' for flight {}: {}", profile, flight_id, e);
+                }
             }
         }
 
         // Insert notes from re-imported CSV exports
         if let Some(ref notes) = parse_result.notes {
-            if let Err(e) = state.db.update_flight_notes(flight_id, Some(notes.as_str())) {
+            if let Err(e) = db.update_flight_notes(flight_id, Some(notes.as_str())) {
                 log::warn!("Failed to insert notes for flight {}: {}", flight_id, e);
+            }
+        }
+
+        // Apply color from re-imported CSV exports
+        if let Some(ref color) = parse_result.color {
+            if let Err(e) = db.update_flight_color(flight_id, color) {
+                log::warn!("Failed to set color for flight {}: {}", flight_id, e);
             }
         }
 
         // Insert app messages (tips and warnings) from DJI logs
         if !parse_result.messages.is_empty() {
-            if let Err(e) = state.db.insert_flight_messages(flight_id, &parse_result.messages) {
+            if let Err(e) = db.insert_flight_messages(flight_id, &parse_result.messages) {
                 log::warn!("Failed to insert messages for flight {}: {}", flight_id, e);
+            }
+        }
+
+        // Restore any previously saved user customizations (display_name, notes, color, manual tags)
+        if let Some(ref hash) = parse_result.metadata.file_hash {
+            if let Err(e) = db.apply_saved_customizations(flight_id, hash) {
+                log::warn!("Failed to restore customizations for flight {}: {}", flight_id, e);
             }
         }
 
@@ -379,7 +466,7 @@ mod tauri_app {
             .map(|s| s.clone())
             .unwrap_or_else(|| aircraft_name.clone());
         
-        let flight_id = state.db.generate_flight_id();
+        let flight_id = state.db_authenticated()?.generate_flight_id();
         let metadata = crate::models::FlightMetadata {
             id: flight_id,
             file_name: format!("manual_entry_{}.log", flight_id),
@@ -389,6 +476,9 @@ mod tauri_app {
             drone_serial: Some(drone_serial.trim().to_uppercase()),
             aircraft_name: Some(aircraft_name),
             battery_serial: Some(battery_serial.trim().to_uppercase()),
+            cycle_count: None,
+            rc_serial: None,
+            battery_life: None,
             start_time: Some(parsed_start_time),
             end_time: Some(end_time),
             duration_secs: Some(duration_secs),
@@ -398,11 +488,13 @@ mod tauri_app {
             home_lat: Some(home_lat),
             home_lon: Some(home_lon),
             point_count: 0, // No telemetry points for manual entries
+            photo_count: 0,
+            video_count: 0,
         };
 
         // Insert flight
         state
-            .db
+            .db_authenticated()?
             .insert_flight(&metadata)
             .map_err(|e| format!("Failed to insert flight: {}", e))?;
 
@@ -410,7 +502,7 @@ mod tauri_app {
         if let Some(notes_text) = notes {
             if !notes_text.trim().is_empty() {
                 state
-                    .db
+                    .db_authenticated()?
                     .update_flight_notes(flight_id, Some(&notes_text))
                     .map_err(|e| format!("Failed to add notes: {}", e))?;
             }
@@ -418,7 +510,7 @@ mod tauri_app {
 
         // Add "Manual Entry" tag
         let tags = vec!["Manual Entry".to_string()];
-        if let Err(e) = state.db.insert_flight_tags(flight_id, &tags) {
+        if let Err(e) = state.db_authenticated()?.insert_flight_tags(flight_id, &tags) {
             log::warn!("Failed to add tags: {}", e);
         }
 
@@ -439,7 +531,7 @@ mod tauri_app {
         
         let smart_tags = crate::parser::LogParser::generate_smart_tags(&metadata, &stats);
         if !smart_tags.is_empty() {
-            if let Err(e) = state.db.insert_flight_tags(flight_id, &smart_tags) {
+            if let Err(e) = state.db_authenticated()?.insert_flight_tags(flight_id, &smart_tags) {
                 log::warn!("Failed to add smart tags: {}", e);
             }
         }
@@ -471,7 +563,7 @@ mod tauri_app {
     pub async fn get_flights(state: State<'_, AppState>) -> Result<Vec<Flight>, String> {
         let start = std::time::Instant::now();
         let flights = state
-            .db
+            .db_authenticated()?
             .get_all_flights()
             .map_err(|e| format!("Failed to get flights: {}", e))?;
         log::debug!("get_flights returned {} flights in {:.1}ms", flights.len(), start.elapsed().as_secs_f64() * 1000.0);
@@ -487,8 +579,8 @@ mod tauri_app {
         let start = std::time::Instant::now();
         log::debug!("Fetching flight data for ID: {} (max_points: {:?})", flight_id, max_points);
 
-        let flight = state
-            .db
+        let db = state.db_authenticated()?;
+        let flight = db
             .get_flight_by_id(flight_id)
             .map_err(|e| match e {
                 DatabaseError::FlightNotFound(id) => format!("Flight {} not found", id),
@@ -497,8 +589,7 @@ mod tauri_app {
 
         let known_point_count = flight.point_count.map(|c| c as i64);
 
-        let telemetry_records = state
-            .db
+        let telemetry_records = db
             .get_flight_telemetry(flight_id, max_points, known_point_count)
             .map_err(|e| match e {
                 DatabaseError::FlightNotFound(id) => format!("Flight {} not found", id),
@@ -509,8 +600,7 @@ mod tauri_app {
         let track = telemetry.extract_track(2000);
 
         // Get flight messages (tips and warnings)
-        let messages = state
-            .db
+        let messages = db
             .get_flight_messages(flight_id)
             .unwrap_or_else(|e| {
                 log::warn!("Failed to get messages for flight {}: {}", flight_id, e);
@@ -538,7 +628,7 @@ mod tauri_app {
     pub async fn get_overview_stats(state: State<'_, AppState>) -> Result<OverviewStats, String> {
         let start = std::time::Instant::now();
         let stats = state
-            .db
+            .db_authenticated()?
             .get_overview_stats()
             .map_err(|e| format!("Failed to get overview stats: {}", e))?;
         log::debug!(
@@ -551,10 +641,21 @@ mod tauri_app {
     }
 
     #[tauri::command]
+    pub async fn get_battery_full_capacity_history(
+        battery_serial: String,
+        state: State<'_, AppState>,
+    ) -> Result<Vec<(i64, String, f64)>, String> {
+        state
+            .db_authenticated()?
+            .get_battery_full_capacity_history(&battery_serial)
+            .map_err(|e| format!("Failed to get battery capacity history: {}", e))
+    }
+
+    #[tauri::command]
     pub async fn delete_flight(flight_id: i64, state: State<'_, AppState>) -> Result<bool, String> {
         log::info!("Deleting flight: {}", flight_id);
         state
-            .db
+            .db_authenticated()?
             .delete_flight(flight_id)
             .map(|_| true)
             .map_err(|e| format!("Failed to delete flight: {}", e))
@@ -564,7 +665,7 @@ mod tauri_app {
     pub async fn delete_all_flights(state: State<'_, AppState>) -> Result<bool, String> {
         log::warn!("Deleting ALL flights and telemetry");
         state
-            .db
+            .db_authenticated()?
             .delete_all_flights()
             .map(|_| true)
             .map_err(|e| format!("Failed to delete all flights: {}", e))
@@ -574,7 +675,7 @@ mod tauri_app {
     pub async fn deduplicate_flights(state: State<'_, AppState>) -> Result<usize, String> {
         log::info!("Running flight deduplication");
         state
-            .db
+            .db_authenticated()?
             .deduplicate_flights()
             .map_err(|e| format!("Failed to deduplicate flights: {}", e))
     }
@@ -593,7 +694,7 @@ mod tauri_app {
         log::info!("Renaming flight {} to '{}'", flight_id, trimmed);
 
         state
-            .db
+            .db_authenticated()?
             .update_flight_name(flight_id, trimmed)
             .map(|_| true)
             .map_err(|e| format!("Failed to update flight name: {}", e))
@@ -613,27 +714,47 @@ mod tauri_app {
         log::info!("Updating notes for flight {}", flight_id);
 
         state
-            .db
+            .db_authenticated()?
             .update_flight_notes(flight_id, notes_ref)
             .map(|_| true)
             .map_err(|e| format!("Failed to update flight notes: {}", e))
     }
 
     #[tauri::command]
+    pub async fn update_flight_color(
+        flight_id: i64,
+        color: String,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let trimmed = color.trim();
+        if trimmed.is_empty() {
+            return Err("Color cannot be empty".to_string());
+        }
+
+        log::info!("Updating color for flight {} to '{}'", flight_id, trimmed);
+
+        state
+            .db_authenticated()?
+            .update_flight_color(flight_id, trimmed)
+            .map(|_| true)
+            .map_err(|e| format!("Failed to update flight color: {}", e))
+    }
+
+    #[tauri::command]
     pub async fn has_api_key(state: State<'_, AppState>) -> Result<bool, String> {
-        let api = DjiApi::with_app_data_dir(state.db.data_dir.clone());
+        let api = DjiApi::with_app_data_dir(state.data_dir.clone());
         Ok(api.has_api_key())
     }
 
     #[tauri::command]
     pub async fn get_api_key_type(state: State<'_, AppState>) -> Result<String, String> {
-        let api = DjiApi::with_app_data_dir(state.db.data_dir.clone());
+        let api = DjiApi::with_app_data_dir(state.data_dir.clone());
         Ok(api.get_api_key_type())
     }
 
     #[tauri::command]
     pub async fn set_api_key(api_key: String, state: State<'_, AppState>) -> Result<bool, String> {
-        let api = DjiApi::with_app_data_dir(state.db.data_dir.clone());
+        let api = DjiApi::with_app_data_dir(state.data_dir.clone());
         api.save_api_key(&api_key)
             .map(|_| true)
             .map_err(|e| format!("Failed to save API key: {}", e))
@@ -641,7 +762,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn remove_api_key(state: State<'_, AppState>) -> Result<bool, String> {
-        let api = DjiApi::with_app_data_dir(state.db.data_dir.clone());
+        let api = DjiApi::with_app_data_dir(state.data_dir.clone());
         api.remove_api_key()
             .map(|_| true)
             .map_err(|e| format!("Failed to remove API key: {}", e))
@@ -649,7 +770,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String, String> {
-        Ok(state.db.data_dir.to_string_lossy().to_string())
+        Ok(state.data_dir.to_string_lossy().to_string())
     }
 
     #[tauri::command]
@@ -662,7 +783,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn get_equipment_names(state: State<'_, AppState>) -> Result<(Vec<(String, String)>, Vec<(String, String)>), String> {
-        state.db.get_all_equipment_names()
+        state.db_authenticated()?.get_all_equipment_names()
             .map_err(|e| format!("Failed to get equipment names: {}", e))
     }
 
@@ -673,7 +794,7 @@ mod tauri_app {
         display_name: String,
         state: State<'_, AppState>,
     ) -> Result<bool, String> {
-        state.db.set_equipment_name(&serial, &equipment_type, &display_name)
+        state.db_authenticated()?.set_equipment_name(&serial, &equipment_type, &display_name)
             .map(|_| true)
             .map_err(|e| format!("Failed to set equipment name: {}", e))
     }
@@ -683,7 +804,7 @@ mod tauri_app {
         let path = std::path::PathBuf::from(&dest_path);
         log::info!("Exporting database backup to: {}", dest_path);
         state
-            .db
+            .db_authenticated()?
             .export_backup(&path)
             .map(|_| true)
             .map_err(|e| format!("Failed to export backup: {}", e))
@@ -694,31 +815,29 @@ mod tauri_app {
         let path = std::path::PathBuf::from(&src_path);
         log::info!("Importing database backup from: {}", src_path);
         state
-            .db
+            .db_authenticated()?
             .import_backup(&path)
             .map_err(|e| format!("Failed to import backup: {}", e))
     }
 
     #[tauri::command]
     pub async fn add_flight_tag(flight_id: i64, tag: String, state: State<'_, AppState>) -> Result<Vec<FlightTag>, String> {
-        state
-            .db
+        let db = state.db_authenticated()?;
+        db
             .add_flight_tag(flight_id, &tag)
             .map_err(|e| format!("Failed to add tag: {}", e))?;
-        state
-            .db
+        db
             .get_flight_tags(flight_id)
             .map_err(|e| format!("Failed to get tags: {}", e))
     }
 
     #[tauri::command]
     pub async fn remove_flight_tag(flight_id: i64, tag: String, state: State<'_, AppState>) -> Result<Vec<FlightTag>, String> {
-        state
-            .db
+        let db = state.db_authenticated()?;
+        db
             .remove_flight_tag(flight_id, &tag)
             .map_err(|e| format!("Failed to remove tag: {}", e))?;
-        state
-            .db
+        db
             .get_flight_tags(flight_id)
             .map_err(|e| format!("Failed to get tags: {}", e))
     }
@@ -726,7 +845,7 @@ mod tauri_app {
     #[tauri::command]
     pub async fn get_all_tags(state: State<'_, AppState>) -> Result<Vec<String>, String> {
         state
-            .db
+            .db_authenticated()?
             .get_all_unique_tags()
             .map_err(|e| format!("Failed to get tags: {}", e))
     }
@@ -734,14 +853,14 @@ mod tauri_app {
     #[tauri::command]
     pub async fn remove_all_auto_tags(state: State<'_, AppState>) -> Result<usize, String> {
         state
-            .db
+            .db_authenticated()?
             .remove_all_auto_tags()
             .map_err(|e| format!("Failed to remove auto tags: {}", e))
     }
 
     #[tauri::command]
     pub async fn get_smart_tags_enabled(state: State<'_, AppState>) -> Result<bool, String> {
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)
                 .map_err(|e| format!("Failed to read config: {}", e))?;
@@ -755,7 +874,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn set_smart_tags_enabled(enabled: bool, state: State<'_, AppState>) -> Result<bool, String> {
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         let mut config: serde_json::Value = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
             serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
@@ -770,7 +889,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn get_enabled_tag_types(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)
                 .map_err(|e| format!("Failed to read config: {}", e))?;
@@ -794,7 +913,7 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn set_enabled_tag_types(types: Vec<String>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
-        let config_path = state.db.data_dir.join("config.json");
+        let config_path = state.config_path();
         let mut config: serde_json::Value = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
             serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
@@ -816,8 +935,8 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn get_keep_upload_settings(state: State<'_, AppState>) -> Result<KeepUploadSettings, String> {
-        let config_path = state.db.data_dir.join("config.json");
-        let default_folder = state.db.data_dir.join("uploaded").to_string_lossy().to_string();
+        let config_path = state.config_path();
+        let default_folder = state.default_upload_folder().to_string_lossy().to_string();
         
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)
@@ -839,8 +958,8 @@ mod tauri_app {
 
     #[tauri::command]
     pub async fn set_keep_upload_settings(enabled: bool, folder_path: Option<String>, state: State<'_, AppState>) -> Result<KeepUploadSettings, String> {
-        let config_path = state.db.data_dir.join("config.json");
-        let default_folder = state.db.data_dir.join("uploaded").to_string_lossy().to_string();
+        let config_path = state.config_path();
+        let default_folder = state.default_upload_folder().to_string_lossy().to_string();
         let actual_folder = folder_path.unwrap_or(default_folder);
         
         let mut config: serde_json::Value = if config_path.exists() {
@@ -859,6 +978,35 @@ mod tauri_app {
         Ok(KeepUploadSettings { enabled, folder_path: actual_folder })
     }
 
+    #[tauri::command]
+    pub async fn get_auto_logout(state: State<'_, AppState>) -> Result<bool, String> {
+        let config_path = state.config_path();
+        if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path)
+                .map_err(|e| format!("Failed to read config: {}", e))?;
+            let val: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| format!("Failed to parse config: {}", e))?;
+            Ok(val.get("auto_logout").and_then(|v| v.as_bool()).unwrap_or(false))
+        } else {
+            Ok(false)
+        }
+    }
+
+    #[tauri::command]
+    pub async fn set_auto_logout(enabled: bool, state: State<'_, AppState>) -> Result<bool, String> {
+        let config_path = state.config_path();
+        let mut config: serde_json::Value = if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+            serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        config["auto_logout"] = serde_json::json!(enabled);
+        std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+        Ok(enabled)
+    }
+
     /// Copy uploaded file to the keep folder with hash-based deduplication
     fn copy_uploaded_file(src_path: &PathBuf, dest_folder: &PathBuf, file_hash: Option<&str>) -> Result<(), String> {
         // Create the destination folder if it doesn't exist
@@ -871,17 +1019,26 @@ mod tauri_app {
         
         let dest_path = dest_folder.join(file_name);
         
+        // Compute source file hash if not provided
+        let computed_hash: String;
+        let src_hash = match file_hash {
+            Some(h) => h,
+            None => {
+                computed_hash = LogParser::calculate_file_hash(src_path)
+                    .map_err(|e| format!("Failed to hash source file: {}", e))?;
+                &computed_hash
+            }
+        };
+        
         // If file with same name exists, check hash
         if dest_path.exists() {
             let existing_hash = LogParser::calculate_file_hash(&dest_path)
                 .map_err(|e| format!("Failed to hash existing file: {}", e))?;
             
             // If hashes match, skip (file already exists)
-            if let Some(hash) = file_hash {
-                if existing_hash == hash {
-                    log::info!("File already exists with same hash, skipping: {}", file_name);
-                    return Ok(());
-                }
+            if existing_hash == src_hash {
+                log::info!("File already exists with same hash, skipping: {}", file_name);
+                return Ok(());
             }
             
             // Hashes don't match - save with hash suffix
@@ -892,7 +1049,7 @@ mod tauri_app {
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
             
-            let hash_suffix = file_hash.map(|h| &h[..8]).unwrap_or("unknown");
+            let hash_suffix = &src_hash[..8.min(src_hash.len())];
             let new_name = if extension.is_empty() {
                 format!("{}_{}", stem, hash_suffix)
             } else {
@@ -921,7 +1078,8 @@ mod tauri_app {
     ) -> Result<String, String> {
         use crate::parser::{LogParser, calculate_stats_from_records};
 
-        let flight = state.db.get_flight_by_id(flight_id)
+        let db = state.db_authenticated()?;
+        let flight = db.get_flight_by_id(flight_id)
             .map_err(|e| format!("Failed to get flight {}: {}", flight_id, e))?;
 
         let metadata = crate::models::FlightMetadata {
@@ -933,6 +1091,9 @@ mod tauri_app {
             drone_serial: flight.drone_serial.clone(),
             aircraft_name: flight.aircraft_name.clone(),
             battery_serial: flight.battery_serial.clone(),
+            cycle_count: flight.cycle_count,
+            rc_serial: flight.rc_serial.clone(),
+            battery_life: flight.battery_life,
             start_time: flight.start_time.as_deref()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -948,9 +1109,11 @@ mod tauri_app {
             home_lat: flight.home_lat,
             home_lon: flight.home_lon,
             point_count: flight.point_count.unwrap_or(0),
+            photo_count: flight.photo_count.unwrap_or(0),
+            video_count: flight.video_count.unwrap_or(0),
         };
 
-        match state.db.get_flight_telemetry(flight_id, Some(50000), None) {
+        match db.get_flight_telemetry(flight_id, Some(50000), None) {
             Ok(records) if !records.is_empty() => {
                 let stats = calculate_stats_from_records(&records);
                 let mut tags = LogParser::generate_smart_tags(&metadata, &stats);
@@ -958,11 +1121,11 @@ mod tauri_app {
                 if let Some(ref types) = enabled_tag_types {
                     tags = LogParser::filter_smart_tags(tags, types);
                 }
-                state.db.replace_auto_tags(flight_id, &tags)
+                db.replace_auto_tags(flight_id, &tags)
                     .map_err(|e| format!("Failed to replace tags for flight {}: {}", flight_id, e))?;
             }
             Ok(_) => {
-                let _ = state.db.replace_auto_tags(flight_id, &[]);
+                let _ = db.replace_auto_tags(flight_id, &[]);
             }
             Err(e) => {
                 return Err(format!("Failed to get telemetry for flight {}: {}", flight_id, e));
@@ -979,7 +1142,8 @@ mod tauri_app {
         log::info!("Starting smart tag regeneration for all flights");
         let start = std::time::Instant::now();
 
-        let flight_ids = state.db.get_all_flight_ids()
+        let db = state.db_authenticated()?;
+        let flight_ids = db.get_all_flight_ids()
             .map_err(|e| format!("Failed to get flight IDs: {}", e))?;
 
         let _total = flight_ids.len();
@@ -987,7 +1151,7 @@ mod tauri_app {
         let mut errors = 0usize;
 
         for flight_id in &flight_ids {
-            match state.db.get_flight_by_id(*flight_id) {
+            match db.get_flight_by_id(*flight_id) {
                 Ok(flight) => {
                     // Build FlightMetadata from the Flight record
                     let metadata = crate::models::FlightMetadata {
@@ -999,6 +1163,9 @@ mod tauri_app {
                         drone_serial: flight.drone_serial.clone(),
                         aircraft_name: flight.aircraft_name.clone(),
                         battery_serial: flight.battery_serial.clone(),
+                        cycle_count: flight.cycle_count,
+                        rc_serial: flight.rc_serial.clone(),
+                        battery_life: flight.battery_life,
                         start_time: flight.start_time.as_deref()
                             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                             .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -1014,21 +1181,23 @@ mod tauri_app {
                         home_lat: flight.home_lat,
                         home_lon: flight.home_lon,
                         point_count: flight.point_count.unwrap_or(0),
+                        photo_count: flight.photo_count.unwrap_or(0),
+                        video_count: flight.video_count.unwrap_or(0),
                     };
 
                     // Get raw telemetry to compute stats
-                    match state.db.get_flight_telemetry(*flight_id, Some(50000), None) {
+                    match db.get_flight_telemetry(*flight_id, Some(50000), None) {
                         Ok(records) if !records.is_empty() => {
                             let stats = calculate_stats_from_records(&records);
                             let tags = LogParser::generate_smart_tags(&metadata, &stats);
-                            if let Err(e) = state.db.replace_auto_tags(*flight_id, &tags) {
+                            if let Err(e) = db.replace_auto_tags(*flight_id, &tags) {
                                 log::warn!("Failed to replace tags for flight {}: {}", flight_id, e);
                                 errors += 1;
                             }
                         }
                         Ok(_) => {
                             // No telemetry — just clear auto tags
-                            let _ = state.db.replace_auto_tags(*flight_id, &[]);
+                            let _ = db.replace_auto_tags(*flight_id, &[]);
                         }
                         Err(e) => {
                             log::warn!("Failed to get telemetry for flight {}: {}", flight_id, e);
@@ -1051,6 +1220,272 @@ mod tauri_app {
         );
         log::info!("{}", msg);
         Ok(msg)
+    }
+
+    // ========================================================================
+    // PROFILE MANAGEMENT COMMANDS
+    // ========================================================================
+
+    #[derive(serde::Serialize)]
+    pub struct ProfileInfo {
+        name: String,
+        #[serde(rename = "hasPassword")]
+        has_password: bool,
+    }
+
+    #[tauri::command]
+    pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileInfo>, String> {
+        let names = database::list_profiles(&state.data_dir);
+        Ok(names.into_iter().map(|name| {
+            let has_pw = profile_auth::has_password(&state.data_dir, &name);
+            ProfileInfo { name, has_password: has_pw }
+        }).collect())
+    }
+
+    #[tauri::command]
+    pub async fn get_active_profile(state: State<'_, AppState>) -> Result<String, String> {
+        Ok(database::get_active_profile(&state.data_dir))
+    }
+
+    /// Check whether the app is currently locked (requires authentication).
+    #[tauri::command]
+    pub async fn is_app_locked(state: State<'_, AppState>) -> Result<bool, String> {
+        Ok(*state.locked.read().unwrap())
+    }
+
+    /// Authenticate the current profile to unlock the app.
+    /// This does NOT switch profiles — it only verifies the password and lifts the lock.
+    #[tauri::command]
+    pub async fn unlock_profile(password: String, state: State<'_, AppState>) -> Result<bool, String> {
+        let profile = database::get_active_profile(&state.data_dir);
+        if !profile_auth::profile_is_protected(&state.data_dir, &profile) {
+            // Not protected — just unlock
+            state.unlock();
+            return Ok(true);
+        }
+        profile_auth::verify_profile_password(&state.data_dir, &profile, &password)?;
+        state.unlock();
+        log::info!("Profile '{}' unlocked via password", profile);
+        Ok(true)
+    }
+
+    #[tauri::command]
+    pub async fn switch_profile(
+        name: String,
+        create: bool,
+        password: Option<String>,
+        new_password: Option<String>,
+        state: State<'_, AppState>,
+    ) -> Result<String, String> {
+        let profile = name.trim().to_string();
+
+        // Validate (unless default)
+        if profile != "default" {
+            database::validate_profile_name(&profile)?;
+        }
+
+        // If this is a create request, reject if profile already exists
+        if create && database::profile_exists(&state.data_dir, &profile) {
+            return Err(format!("Profile '{}' already exists", profile));
+        }
+
+        // Password verification for existing protected profiles
+        if !create && profile_auth::profile_is_protected(&state.data_dir, &profile) {
+            match &password {
+                Some(pw) => {
+                    profile_auth::verify_profile_password(&state.data_dir, &profile, pw)?;
+                }
+                None => {
+                    return Err("Password is required for this profile".to_string());
+                }
+            }
+        }
+
+        let current = database::get_active_profile(&state.data_dir);
+        if current == profile {
+            // Same profile — password was already verified above, just unlock and return
+            state.unlock();
+            return Ok(profile);
+        }
+
+        log::info!("Switching profile from '{}' to '{}'", current, profile);
+
+        // Checkpoint current database before switching
+        if let Err(e) = state.db().checkpoint() {
+            log::warn!("Checkpoint before profile switch failed (non-fatal): {}", e);
+        }
+
+        // Create / open the target database
+        let new_db = Database::new(state.data_dir.clone(), &profile)
+            .map_err(|e| format!("Failed to open profile '{}': {}", profile, e))?;
+
+        // Swap the active database
+        state.swap_db(new_db);
+
+        // Unlock — the user has authenticated or the profile is unprotected
+        state.unlock();
+
+        // Persist the active profile
+        database::set_active_profile(&state.data_dir, &profile)
+            .map_err(|e| format!("Failed to persist profile: {}", e))?;
+
+        // Set password on newly created profile (if provided)
+        if create {
+            if let Some(ref new_pw) = new_password {
+                if !new_pw.is_empty() {
+                    profile_auth::set_password(&state.data_dir, &profile, new_pw, None)?;
+                }
+            }
+        }
+
+        log::info!("Switched to profile '{}'", profile);
+        Ok(profile)
+    }
+
+    #[tauri::command]
+    pub async fn delete_profile(name: String, password: Option<String>, state: State<'_, AppState>) -> Result<bool, String> {
+        let profile = name.trim().to_string();
+
+        if profile == "default" {
+            return Err("Cannot delete the default profile".to_string());
+        }
+
+        // Password verification for protected profiles
+        if profile_auth::profile_is_protected(&state.data_dir, &profile) {
+            match &password {
+                Some(pw) => {
+                    profile_auth::verify_profile_password(&state.data_dir, &profile, pw)?;
+                }
+                None => {
+                    return Err("Password is required to delete this profile".to_string());
+                }
+            }
+        }
+
+        let active = database::get_active_profile(&state.data_dir);
+        if active == profile {
+            return Err("Cannot delete the currently active profile. Switch to a different profile first.".to_string());
+        }
+
+        // Remove auth entry
+        profile_auth::remove_auth_entry(&state.data_dir, &profile);
+
+        database::delete_profile(&state.data_dir, &profile)?;
+        Ok(true)
+    }
+
+    #[tauri::command]
+    pub async fn set_profile_password(
+        profile: String,
+        new_password: String,
+        current_password: Option<String>,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        profile_auth::set_password(
+            &state.data_dir,
+            &profile,
+            &new_password,
+            current_password.as_deref(),
+        )?;
+        Ok(true)
+    }
+
+    #[tauri::command]
+    pub async fn remove_profile_password(
+        profile: String,
+        current_password: String,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        profile_auth::remove_password(&state.data_dir, &profile, &current_password)?;
+        Ok(true)
+    }
+
+    // ========================================================================
+    // Supporter Badge (server-side verification)
+    // ========================================================================
+
+    /// The SHA-256 hash of the valid supporter code.
+    const SUPPORTER_HASH: &str =
+        "5978f3e898c83b40c90017c88b8048f80a5acfd020bbd073af794e710603067d";
+
+    /// Verify a plaintext supporter code.
+    /// On success the verified state is persisted in the database.
+    #[tauri::command]
+    pub async fn verify_supporter_code(
+        code: String,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        use sha2::{Sha256, Digest};
+
+        let trimmed = code.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("Code must not be empty".to_string());
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(trimmed.as_bytes());
+        let hash_bytes = hasher.finalize();
+        let hash_hex: String = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+
+        if hash_hex != SUPPORTER_HASH {
+            return Ok(false);
+        }
+
+        // Persist verified state in the database
+        let db = state.db_authenticated()?;
+        db.set_setting("supporter_badge_active", "true")
+            .map_err(|e| format!("Failed to save supporter state: {}", e))?;
+        db.set_setting("donation_acknowledged", "true")
+            .map_err(|e| format!("Failed to save donation state: {}", e))?;
+
+        Ok(true)
+    }
+
+    /// Read the supporter badge state from the database.
+    #[tauri::command]
+    pub async fn get_supporter_status(
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let db = state.db_authenticated()?;
+        let val = db
+            .get_setting("supporter_badge_active")
+            .map_err(|e| format!("Failed to read supporter state: {}", e))?;
+        Ok(val.as_deref() == Some("true"))
+    }
+
+    /// Remove the supporter badge.
+    #[tauri::command]
+    pub async fn remove_supporter_badge(
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let db = state.db_authenticated()?;
+        db.set_setting("supporter_badge_active", "false")
+            .map_err(|e| format!("Failed to remove supporter state: {}", e))?;
+        Ok(true)
+    }
+
+    /// Read the donation-acknowledged flag from the database.
+    #[tauri::command]
+    pub async fn get_donation_acknowledged(
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let db = state.db_authenticated()?;
+        let val = db
+            .get_setting("donation_acknowledged")
+            .map_err(|e| format!("Failed to read donation state: {}", e))?;
+        Ok(val.as_deref() == Some("true"))
+    }
+
+    /// Persist the donation-acknowledged flag in the database.
+    #[tauri::command]
+    pub async fn set_donation_acknowledged(
+        acknowledged: bool,
+        state: State<'_, AppState>,
+    ) -> Result<bool, String> {
+        let db = state.db_authenticated()?;
+        db.set_setting("donation_acknowledged", if acknowledged { "true" } else { "false" })
+            .map_err(|e| format!("Failed to save donation state: {}", e))?;
+        Ok(acknowledged)
     }
 
     pub fn run() {
@@ -1078,10 +1513,73 @@ mod tauri_app {
             .plugin(tauri_plugin_http::init())
             .plugin(tauri_plugin_window_state::Builder::new().build())
             .setup(|app| {
+                let data_dir = app_data_dir_path(app.handle())?;
                 let db = init_database(app.handle())?;
-                app.manage(AppState { db: Arc::new(db) });
-                log::info!("Drone Logbook initialized successfully");
+
+                // Determine if the app should start locked.
+                // Lock when the active profile has a password AND auto_logout is enabled.
+                let profile = database::get_active_profile(&data_dir);
+                let has_password = profile_auth::has_password(&data_dir, &profile);
+                let auto_logout = if has_password {
+                    let config_path = database::config_path_for_profile(&data_dir, &profile);
+                    if config_path.exists() {
+                        std::fs::read_to_string(&config_path)
+                            .ok()
+                            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                            .and_then(|v| v.get("auto_logout").and_then(|b| b.as_bool()))
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                let start_locked = has_password && auto_logout;
+                if start_locked {
+                    log::info!("Profile '{}' is password-protected with auto-logout — starting locked", profile);
+                }
+
+                app.manage(AppState {
+                    active_db: RwLock::new(Arc::new(db)),
+                    data_dir,
+                    locked: RwLock::new(start_locked),
+                });
+                log::info!("Open DroneLog initialized successfully");
                 Ok(())
+            })
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    log::info!("Window close requested. Intercepting to cleanly teardown database...");
+                    
+                    // Prevent immediate close
+                    api.prevent_close();
+                    
+                    // Hide window to give immediate feedback to user
+                    let _ = window.hide();
+                    
+                    let app_handle = window.app_handle().clone();
+                    
+                    // Spawn task to handle the actual teardown
+                    tauri::async_runtime::spawn(async move {
+                        // Extract state and drop the DB explicitly
+                        if let Some(state) = app_handle.try_state::<AppState>() {
+                            log::info!("Forcing explicit drop of AppState DB connection...");
+                            
+                            // To actually drop the inner value from the Arc, we'd need strong count=1.
+                            // But since the process is shutting down anyway, we can just execute CHECKPOINT directly.
+                            if let Err(e) = state.db().checkpoint() {
+                                log::warn!("Final shutdown WAL checkpoint failed: {}", e);
+                            } else {
+                                log::info!("Final shutdown WAL checkpoint completed successfully.");
+                            }
+                        }
+                        
+                        // We give DuckDB a tiny grace period to flush file handlers
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        log::info!("Safe to exit process now.");
+                        app_handle.exit(0);
+                    });
+                }
             })
             .invoke_handler(tauri::generate_handler![
                 import_log,
@@ -1090,11 +1588,13 @@ mod tauri_app {
                 get_flights,
                 get_flight_data,
                 get_overview_stats,
+                get_battery_full_capacity_history,
                 delete_flight,
                 delete_all_flights,
                 deduplicate_flights,
                 update_flight_name,
                 update_flight_notes,
+                update_flight_color,
                 has_api_key,
                 get_api_key_type,
                 set_api_key,
@@ -1115,11 +1615,26 @@ mod tauri_app {
                 set_enabled_tag_types,
                 get_keep_upload_settings,
                 set_keep_upload_settings,
+                get_auto_logout,
+                set_auto_logout,
+                unlock_profile,
+                is_app_locked,
                 regenerate_flight_smart_tags,
                 regenerate_all_smart_tags,
+                list_profiles,
+                get_active_profile,
+                switch_profile,
+                delete_profile,
+                set_profile_password,
+                remove_profile_password,
+                verify_supporter_code,
+                get_supporter_status,
+                remove_supporter_badge,
+                get_donation_acknowledged,
+                set_donation_acknowledged,
             ])
             .run(tauri::generate_context!())
-            .expect("Failed to run Drone Logbook");
+            .expect("Failed to run Open DroneLog");
     }
 }
 

@@ -22,7 +22,7 @@
 <p align="center">A high-performance application for analyzing drone flight logs (DJI and Litchi CSV formats). Available as a Tauri v2 desktop app or a Docker-deployable web app. Built with DuckDB and React.</p>
 
 > [!IMPORTANT]
-> *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., or their affiliates.*
+> *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. Airdata or Airdata UAV is a trademark of Airdata UAV, Inc. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., Airdata UAV, Inc., or their affiliates.*
 
 <p align="center">
     <img src="screenshots/Comparison.png" alt="Comparison chart" width="900" />
@@ -49,22 +49,16 @@
     <img src="screenshots/telemetry_2.png" alt="Telemetry charts 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/overall_stats_dark.png" alt="Overall stats (dark)" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/overall_stats.png" alt="Overall stats" width="900" />
-</p>
-<p align="center">
     <img src="screenshots/map_dark.png" alt="Flight map replay (dark)" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/map_light.png" alt="Flight map replay (light)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map.png" alt="Flight map" width="900" />
+    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
+    <img src="screenshots/flight_report.png" alt="Flight report" width="900" />
 </p>
 
 ## Contents
@@ -79,11 +73,14 @@
 - [Usage](#usage)
 - [Building from source (Linux users)](#building-from-source-linux-users)
 - [Docker deployment (Self-hosted Web)](#docker-deployment-self-hosted-web)
+- [Profiles and Password Protection](#profiles-and-password-protection)
+- [Security Warning (Web/Docker)](#security-warning-webdocker)
 - [Configuration](#configuration)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [How to obtain your own DJI Developer API key](#how-to-obtain-your-own-dji-developer-api-key)
 - [Contribution Guidelines](#contribution-guidelines)
+- [Socials and Support](#socials-and-support)
 - [Love this project?](#love-this-project)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -91,19 +88,23 @@
 ## Features
 
 - **High-Performance Analytics**: DuckDB-powered queries with automatic downsampling for large datasets. Free, open source, no subscription required.
-- **Multi-Format Support**: Import DJI logs (.txt) and Litchi CSV exports with automatic unit detection. Third-party apps (Dronelink, DroneDeploy) supported.
+- **Multi-Format Support**: Import DJI logs (.txt), Litchi CSV, and Airdata CSV exports with automatic unit detection. Third-party apps (Dronelink, DroneDeploy) supported.
 - **Smart Deduplication**: Prevents duplicate imports based on drone serial, battery serial, and start time.
-- **Interactive Flight Maps**: 3D terrain, satellite toggle, flight replay with speed control (0.5x-16x), live telemetry overlay, and RC stick input visualization.
-- **Telemetry Charts**: Height, speed, battery, cell voltages, attitude, RC signal, GPS, distance-to-home, and velocity with synchronized drag-to-zoom.
+- **Interactive Flight Maps**: 3D terrain, map-type selection (Satellite, Topographic, OpenStreetMap), flight replay with speed control (0.5x-16x), live telemetry overlay, and RC joystick visualization.
+- **Telemetry Charts**: Height, speed, battery, cell voltages, attitude, RC signal, GPS, distance-to-home, velocity, battery full capacity, and battery remained capacity with synchronized drag-to-zoom.
 - **Local-First Storage**: All data in a local DuckDB database. No cloud upload required (except DJI key fetch during first import).
-- **Smart Tags**: Auto-tagging (Night Flight, High Speed, Low Battery, etc.) and offline reverse geocoding for location tags. Manual tags and bulk operations supported.
-- **Filters & Search**: Date range, drone/battery filters, duration/altitude/distance sliders, tag filter, map area filter, and filter inversion.
-- **Overview Dashboard**: Aggregate stats, activity heatmap, pie charts by drone/battery/duration, cluster map, and top-flight highlights.
-- **Battery Health**: Per-battery health bars, serial renaming, and per-minute usage history with zoom.
+- **Smart Tags**: Auto-tagging (Night Flight, High Speed, Low Battery, etc.) and offline reverse geocoding for location tags. Manual tags and bulk operations supported.on.
+- **Filters & Search**: Date range, drone/battery/controller/color filters, duration/altitude/distance sliders, tag filter, map area filter, and filter inversion.
+- **Overview Dashboard**: Aggregate stats, activity heatmap, pie charts by drone/battery/duration, time-of-day radial chart, cluster map with optional heatmap layer, and top-flight highlights.
+- **Battery Health**: Per-battery health bars with cycle count tracking, serial renaming, per-minute usage history with zoom, and battery capacity history chart with multi-select battery dropdown showing full-charge capacity trends over time.
 - **Maintenance Tracking**: Configurable thresholds with color-coded progress bars and date-based maintenance recording.
-- **Exports**: CSV, JSON, GPX, and KML export. FlyCard generator for shareable 1080x1080 social media images.
+- **Exports**: CSV, JSON, GPX, KML, and Summary CSV export. FlyCard generator for shareable 1080x1080 social media images.
+- **HTML Report**: Generate a configurable, print-ready flight regulation report (A4 layout) with selectable field groups, weather data, and day-by-day grouping. Can be printed as PDF via Ctrl+P. Pilot name and field preferences can be customized and will persist across sessions.
 - **Manual Flight Entry**: Record flights without log files with optional coordinates and metadata.
+- **Multi-Language Support**: Full internationalization with 11 language locales (English, German, Spanish, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, Chinese) and locale-aware number and date formatting.
+- **Progressive Web App (PWA)**: Optionally install the application directly from the browser for a native-like experience on desktop and mobile.
 - **Backup & Restore**: Export/import full database across desktop and Docker instances.
+- **Profile System**: Create multiple profiles to separate flight data by pilot, drone fleet, or purpose. Each profile has its own database, config, uploads, and sync folder.Optionally lock any profile (including the default) with a password.
 
 ## Accessing flight log files
 
@@ -115,8 +116,19 @@ You can find more details resources from this simple [google search](https://www
 
 ### Litchi CSV Exports
 
-Litchi flight logs can be exported as CSV files from the Litchi app. The parser automatically detects whether the export uses metric or imperial units based on the column headers (e.g., `altitude(feet)` vs `altitude(m)`) and converts everything to metric internally. Litchi-imported flights are automatically tagged with "Litchi" for easy filtering.
+Litchi flight logs can be exported as CSV files from the Litchi app.  Litchi-imported flights are automatically tagged with "Litchi" for easy filtering.
 
+### Airdata Exports
+
+If you use Airdata to sync your flight logs, you can export the original DJI log files directly from the Airdata website:
+
+1. Go to your [Airdata flight logs](https://app.airdata.com/) and click on `my account`
+2. In the left sidebar, under `My Data` secction, pick `Download my data`
+3. Click **Request Export** and wait for their email with zip containing the `.txt` files
+
+![Airdata Export Guide](screenshots/Airdata_Export_Guide.png)
+
+These exported log files can then be imported directly into Open DroneLog.
 ## Setup and installation (Windows/MacOS)
 
 There is no installation step if you want to use the standalone binary builds, just visit the latest [release page](https://github.com/arpanghosh8453/open-dronelog/releases), and download the appropriate binary for Windows or MacOS and run them.
@@ -128,7 +140,27 @@ There is no installation step if you want to use the standalone binary builds, j
 > When you are copying from RC or mobile device, you can NOT directly drag and drop the files to the interface. This is because these external devices are mounted differently and only accessible to the file manager. Please copy the files to a local folder or the device sync folder before trying to upload or sync. 
 
 > [!TIP]
-> Explore the [full manual](/docs/manual.md) if you want to have a comprehensive overview of all the available options and features inside the app. 
+> Explore the [full manual](/docs/manual.md) if you want to have a comprehensive overview of all the available options and features inside the app.
+
+###  Windows (64-bit)
+* **`Open.DroneLog_(version)_x64-setup.exe`**: Standard installer. **Best for most users.**
+* **`open-dronelog_windows_x64.exe`**: Portable version. Runs instantly without installing.
+* **`Open.DroneLog_(version)_x64_en-US.msi`**: Enterprise installer. For IT admins deploying to multiple PCs.
+
+###  macOS
+*(Files available for both `aarch64` / Apple Silicon and `x64` / Intel)*
+* **`...dmg`**: Standard disk image. **Best for most users** (drag and drop to Applications).
+* **`...app.tar.gz`**: Compressed app bundle. A quick, alternative way to download the app without mounting a drive.
+* **`open-dronelog_darwin_...`**: Command-line binary. For advanced terminal users only.
+
+###  Linux (64-bit)
+* **`Open.DroneLog_(version)_amd64.deb`**: Package for **Ubuntu, Mint, and Debian** systems.
+* **`Open.DroneLog-(version).x86_64.rpm`**: Package for **Fedora, CentOS, and Red Hat** systems.
+* **`Open.DroneLog_(version)_amd64.AppImage`**: Universal portable app. Runs on any Linux distro without installing.
+* **`open-dronelog_linux_x86_64`**: Command-line binary. For advanced terminal users only.
+
+###  General / Verification
+* **`checksums.txt`**: Security file. Use to verify your downloaded files aren't corrupted or tampered with.
 
 ### Try the Webapp First (No Installation Required)
 
@@ -263,9 +295,12 @@ When `KEEP_UPLOADED_FILES=true` is set, original log files are preserved in an `
 |-----------------|------------------------|-----------------------------------------------------------------------------|
 | `DATA_DIR`      | `/data/drone-logbook`  | Database and config storage                                                 |
 | `RUST_LOG`      | `info`                 | Log level (debug, info, warn)                                               |
-| `SYNC_LOGS_PATH`| (not set)              | Path to internal folder for automatic log import (e.g., `/sync-logs`)        |
+| `DJI_API_KEY`   | (bundled default)      | Set your own for better rate limits. See [How to obtain your own DJI Developer API key](#how-to-obtain-your-own-dji-developer-api-key). |
+| `SYNC_LOGS_PATH`| (not set)              | Path to internal folder for automatic log import (e.g., `/sync-logs`)       |
 | `SYNC_INTERVAL` | (not set)              | Cron expression for scheduled sync (e.g., `0 0 */8 * * *` for every 8 hours)|
 | `KEEP_UPLOADED_FILES` | `true`      | When `true`, keeps copies of uploaded log files in the `uploaded` folder    |
+| `PROFILE_CREATION_PASS` | (not set) | Master password required for creating or deleting profiles in web/Docker mode. When unset, anyone can create and delete profiles. |
+| `SESSION_TTL_HOURS` | `24`           | Session token lifetime in hours. After expiry the user must re-authenticate. |
 
 ### Automatic log sync (Docker)
 
@@ -310,6 +345,58 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 > You can set the external host path same for both `/sync-logs` and `/data/drone-logbook/uploaded` to unify the log file collection. Make sure to remove the `:ro` part from the `/sync-logs` mount. I do it myself for convinience, but we recommend our users to keep them separate to make sure you accidentally don't lose any log files from the sync folder due to overwrite or any issue with the application. 
 
 
+## Profiles and Password Protection
+
+Open DroneLog supports multiple named profiles. Each profile is a fully isolated environment with its own database, config, uploads, and sync folder. Profiles are managed from the **profile selector** dropdown in the header.
+
+### Creating and switching profiles
+
+- Click the profile selector (top-left, next to the logo) and choose **New Profile**
+- Enter a name and, optionally, a password to protect it
+- Switch between profiles by selecting them from the dropdown
+- Each browser tab can be on a different profile (uses `sessionStorage` for isolation)
+
+### Password protection
+
+- Set, change, or remove a profile password from **Settings → Profile Password**
+- Protected profiles display a lock icon and prompt for a password when switching to them
+- Passwords are hashed with **argon2id** and verified server-side
+- In web/Docker mode, a session token is issued after successful authentication and sent via the `X-Session` header
+- **Lockout policy**: 5 consecutive failed attempts lock the profile for 60 seconds
+
+### Master password (web/Docker only)
+
+Set the `PROFILE_CREATION_PASS` environment variable to require a master password for creating and deleting profiles. This is useful for shared or publicly exposed instances.
+
+```yaml
+environment:
+  - PROFILE_CREATION_PASS=your-secret-master-password
+```
+
+When set, any create or delete operation must include the matching master password.
+
+## Security Warning (Web/Docker)
+
+> [!WARNING]
+> **Open DroneLog is designed as a local-first application and does NOT include TLS/HTTPS.** If you expose your instance to the internet, passwords and session tokens are transmitted in **plaintext** over HTTP.
+
+**Strongly recommended for internet-facing deployments:**
+
+1. **Use a reverse proxy** (e.g., Nginx, Caddy, Traefik) with TLS termination in front of the container
+2. **Do not expose port 80 directly** to the public internet without encryption
+3. Set `PROFILE_CREATION_PASS` to prevent unauthorized profile creation
+
+### Security limitations
+
+| Area | Limitation |
+|------|------------|
+| **Transport** | No built-in TLS - passwords and tokens sent in plaintext over HTTP |
+| **Session storage** | Sessions are in-memory only; a server restart invalidates all sessions |
+| **CSRF** | No CSRF token; relies on same-origin policy and the `X-Session` / `X-Profile` custom headers |
+| **Brute force** | Argon2id provides strong hashing, but without TLS an attacker on the network can intercept tokens via MITM|
+
+For production deployments, a reverse proxy with TLS is essential.
+
 ## Configuration
 
 - **DJI API Key**: Stored locally in `config.json`. You can also provide it via `.env` or via the `settings` menu inside the application. The standalone app ships with a default key, but users should enter their own to avoid rate limits for log file decryption key fetching.
@@ -346,7 +433,9 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 │   │   ├── database.rs      # DuckDB connection & schema
 │   │   ├── parser.rs        # dji-log-parser wrapper
 │   │   ├── models.rs        # Data structures
-│   │   └── api.rs           # DJI API key fetching (if present)
+│   │   ├── api.rs           # DJI API key fetching (if present)
+│   │   ├── profile_auth.rs  # Per-profile password hashing (argon2id)
+│   │   └── session_store.rs # Session token management (web only)
 │   ├── Cargo.toml           # Rust dependencies + feature flags
 │   └── tauri.conf.json      # App configuration
 │
@@ -378,6 +467,9 @@ Uploaded files are stored in `/data/drone-logbook/uploaded` inside the container
 
 ## How to obtain your own DJI Developer API key
 
+> [!NOTE]
+> Unless you set up your own API key, the import process will be rate limited because you are using a shared key (provided by me) for the project alongside other users. You may see a 5 second `cooling down...` message during each new log file import when the default key is in use. 
+
 I have shipped this project with my own API key to save you from some extra painful steps. If you are tech savvy please read the following guide to generate and use your own API key for this project. To acquire an apiKey, follow these steps:
 
 1. Visit [DJI Developer Technologies](https://developer.dji.com/user) and log in. Create an account if you don't have one, this is different registration than your existing DJI account, but you can login with your existing account as well. 
@@ -398,6 +490,18 @@ For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 Looking to extend functionality without waiting for official features? Check out the **[Discussions](https://github.com/arpanghosh8453/open-dronelog/discussions)** channel with the `User-Script` tag, where community members share custom scripts, collaborate with developers, and find useful enhancements for custom workflow.
 
 
+## Socials and Support
+
+<p align="center">
+    <a href="https://discord.gg/YKgKTmSm7B">
+        <img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=for-the-badge&logo=discord" alt="Discord" height="48"/>
+    </a>
+    &nbsp;&nbsp;
+    <a href="https://www.reddit.com/r/opendronelog/">
+        <img src="https://img.shields.io/badge/Reddit-r%2Fopendronelog-FF4500?style=for-the-badge&logo=reddit" alt="Reddit" height="48"/>
+    </a>
+</p>
+
 ## Love this project?
 
 I'm thrilled that you're using this dashboard. Your interest and engagement mean a lot to me! You can view and analyze more detailed DJI flight statistics with this setup than paying for any commertial solution.
@@ -410,7 +514,7 @@ If you find this project helpful, please consider:
 
 ☕ Buying me a coffee if you'd like to contribute to its maintenance and future development.
 
-<img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi">
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/arpandesign)
 
 ## License
 
@@ -418,7 +522,7 @@ AGPL-3.0 - see [LICENSE](LICENSE) for details.
 
 ## Declaration
 
-While some parts of this codebase were written with AI assistance (Claude Opus) for convinience, the entirety of OpenDroneLog is thoughtfully architected, manually tested before every release, and managed by the me in my free time. Long-term maintenance remain my priority with this project as it grows. The `context.json` file provides a machine parsable high quality summary of the project overview, which is updated alongside the project for future references.  
+While some parts of this codebase were written with AI assistance (Claude Opus) for convinience, the entirety of OpenDroneLog is thoughtfully architected, manually tested before every release, and managed by me in my free time. Long-term maintenance remain my priority with this project as it grows. The `context.json` file provides a machine parsable high quality summary of the project overview, which is updated alongside the project for future references.  
 
 ## Acknowledgments
 
