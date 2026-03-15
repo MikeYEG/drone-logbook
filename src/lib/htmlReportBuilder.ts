@@ -388,6 +388,7 @@ export interface FlightReportData {
   weather?: WeatherData | null;
   getDroneDisplayName?: (serial: string, fallback: string) => string;
   getBatteryDisplayName?: (serial: string) => string;
+  getDisplaySerial?: (serial: string) => string;
 }
 
 export interface ReportOptions {
@@ -450,9 +451,15 @@ function buildFlightColumns(
     equipItems.push({ label: tr('report.aircraft', 'Aircraft'), value: esc(name || '—') });
   }
   if (fc.droneModel) equipItems.push({ label: tr('report.droneModel', 'Drone Model'), value: esc(fd.flight.droneModel || '—') });
-  if (fc.droneSerial) equipItems.push({ label: tr('report.droneSN', 'Drone SN'), value: esc(fd.flight.droneSerial || '—') });
+  if (fc.droneSerial) {
+    const serial = fd.flight.droneSerial;
+    const displaySerial = serial ? (fd.getDisplaySerial ? fd.getDisplaySerial(serial) : serial) : '—';
+    equipItems.push({ label: tr('report.droneSN', 'Drone SN'), value: esc(displaySerial) });
+  }
   if (fc.batterySerial) {
-    equipItems.push({ label: tr('report.batterySN', 'Battery SN'), value: esc(fd.flight.batterySerial || '—') });
+    const serial = fd.flight.batterySerial;
+    const displaySerial = serial ? (fd.getDisplaySerial ? fd.getDisplaySerial(serial) : serial) : '—';
+    equipItems.push({ label: tr('report.batterySN', 'Battery SN'), value: esc(displaySerial) });
   }
   if (equipItems.length > 0) columns.push({ isStacked: false, groups: [{ group: tr('report.equipment', 'Equipment'), items: equipItems }] });
 

@@ -625,7 +625,7 @@ export function FlightList({
 
   // Helper: filtered & sorted controller list for multi-select dropdown
   const getControllerSorted = useCallback(() => {
-    const all = controllerOptions.map((serial) => ({ value: serial, label: serial }));
+    const all = controllerOptions.map((serial) => ({ value: serial, label: getDisplaySerial(serial) }));
     const filtered = all.filter((c) => c.label.toLowerCase().includes(controllerSearch.toLowerCase()));
     return [...filtered].sort((a, b) => {
       const aSelected = selectedControllers.includes(a.value);
@@ -638,7 +638,7 @@ export function FlightList({
       if (!aAvail && bAvail) return 1;
       return a.label.localeCompare(b.label);
     });
-  }, [controllerOptions, controllerSearch, selectedControllers, availableControllerSerials]);
+  }, [controllerOptions, controllerSearch, selectedControllers, availableControllerSerials, getDisplaySerial]);
 
   const durationRange = useMemo(() => {
     const durations = crossFiltered.forDuration
@@ -1392,6 +1392,7 @@ export function FlightList({
             weather,
             getDroneDisplayName,
             getBatteryDisplayName,
+            getDisplaySerial,
           });
         } catch (err) {
           console.error(`Failed to fetch flight ${flight.id} for HTML report:`, err);
@@ -2207,7 +2208,7 @@ export function FlightList({
                           >
                             <span className={`truncate ${selectedControllers.length > 0 ? 'text-gray-100' : 'text-gray-400'}`}>
                               {selectedControllers.length > 0
-                                ? selectedControllers.join(', ')
+                                ? selectedControllers.map((s) => getDisplaySerial(s)).join(', ')
                                 : t('flightList.allControllers')}
                             </span>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="6 9 12 15 18 9" /></svg>

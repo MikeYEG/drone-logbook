@@ -208,7 +208,7 @@ export function FlightStats({ data }: FlightStatsProps) {
             )}
             {flight.rcSerial && (
               <span className="px-2 py-0.5 rounded-full text-xs border border-purple-500/40 text-purple-400 bg-purple-500/10">
-                {t('flightStats.controller')} {flight.rcSerial}
+                {t('flightStats.controller')} {getDisplaySerial(flight.rcSerial)}
               </span>
             )}
             {/* Flight Tags */}

@@ -243,7 +243,7 @@ export function Overview({ stats, flights, unitPrefs, onSelectFlight }: Overview
       flightsByDate,
       topFlights,
     };
-  }, [filteredFlights, stats.maxDistanceFromHomeM, stats.topDistanceFlights, getDroneDisplayName, droneNameMap, getBatteryDisplayName, batteryNameMap]);
+  }, [filteredFlights, stats.maxDistanceFromHomeM, stats.topDistanceFlights, getDroneDisplayName, droneNameMap, getBatteryDisplayName, batteryNameMap, getDisplaySerial, hideSerialNumbers]);
 
   const filteredTopDistanceFlights = useMemo(() => {
     if (!stats.topDistanceFlights?.length) return [] as typeof stats.topDistanceFlights;
@@ -323,7 +323,11 @@ export function Overview({ stats, flights, unitPrefs, onSelectFlight }: Overview
           <h3 className="text-sm font-semibold text-white mb-3">{t('overview.flightsByDrone')}</h3>
           <DonutChart
             data={filteredStats.dronesUsed.map((d) => ({
-              name: d.displayLabel,
+              // Keep a unique internal key so masked labels do not collapse into one segment.
+              name: d.droneSerial
+                ? `drone:${d.droneSerial}`
+                : `drone-model:${d.droneModel}:${d.displayLabel}`,
+              displayName: d.displayLabel,
               value: d.flightCount,
               decommissioned: isDecommissioned(d.displayLabel),
             }))}
@@ -336,7 +340,9 @@ export function Overview({ stats, flights, unitPrefs, onSelectFlight }: Overview
           <h3 className="text-sm font-semibold text-white mb-3">{t('overview.flightsByBattery')}</h3>
           <DonutChart
             data={filteredStats.batteriesUsed.map((b) => ({
-              name: getBatteryDisplayName(b.batterySerial),
+              // Keep a unique internal key so masked labels do not collapse into one segment.
+              name: `battery:${b.batterySerial}`,
+              displayName: getBatteryDisplayName(b.batterySerial),
               value: b.flightCount,
               decommissioned: isDecommissioned(getBatteryDisplayName(b.batterySerial)),
             }))}
@@ -1356,7 +1362,7 @@ function DonutChart({
   data,
   emptyMessage,
 }: {
-  data: { name: string; value: number; decommissioned?: boolean }[];
+  data: { name: string; displayName?: string; value: number; decommissioned?: boolean }[];
   emptyMessage: string;
 }) {
   const { t } = useTranslation();
@@ -1404,6 +1410,8 @@ function DonutChart({
   const legendWidth = Math.max(60, remainingSpace - 12); // 12px right padding
   // Position legend after pie + gap
   const legendLeft = pieSquareSize + pieToLegendGap;
+  const labelByName = new Map(data.map((item) => [item.name, item.displayName ?? item.name]));
+  const decommissionedByName = new Map(data.map((item) => [item.name, !!item.decommissioned]));
 
   const option = {
     tooltip: {
@@ -1412,7 +1420,8 @@ function DonutChart({
       borderColor: '#374151',
       textStyle: { color: '#e5e7eb' },
       formatter: (params: { name: string; value: number; percent: number }) => {
-        return `<strong>${params.name}</strong><br/>${t('overview.donutTooltip', { value: params.value, percent: params.percent.toFixed(1) })}`;
+        const label = labelByName.get(params.name) || params.name;
+        return `<strong>${label}</strong><br/>${t('overview.donutTooltip', { value: params.value, percent: params.percent.toFixed(1) })}`;
       },
     },
     legend: {
@@ -1424,11 +1433,11 @@ function DonutChart({
       pageTextStyle: { color: '#9ca3af' },
       tooltip: { show: true },
       formatter: (name: string) => {
-        const item = data.find((d) => d.name === name);
-        if (item?.decommissioned) {
-          return `{decom|${name}}`;
+        const label = labelByName.get(name) || name;
+        if (decommissionedByName.get(name)) {
+          return `{decom|${label}}`;
         }
-        return name;
+        return label;
       },
       textStyle: {
         color: '#9ca3af',
