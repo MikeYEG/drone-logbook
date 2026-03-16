@@ -21,7 +21,7 @@
     "wrongPassword": "Contraseña incorrecta. Inténtelo de nuevo."
   },
   "dashboard": {
-    "flights": "Vuelos",
+    "individual": "Individual",
     "overview": "Resumen",
     "import": "Importar",
     "importExpand": "Importar — clic para expandir",

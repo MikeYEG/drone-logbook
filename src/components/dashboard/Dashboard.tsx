@@ -245,7 +245,7 @@ export function Dashboard() {
                   : 'border-gray-700 text-gray-400 hover:text-white'
                   }`}
               >
-                {t('dashboard.flights')}
+                {t('dashboard.individual')}
               </button>
               <button
                 onClick={() => setActiveView('overview')}

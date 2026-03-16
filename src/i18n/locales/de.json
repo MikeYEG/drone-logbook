@@ -21,7 +21,7 @@
     "wrongPassword": "Falsches Passwort. Bitte versuchen Sie es erneut."
   },
   "dashboard": {
-    "flights": "Flüge",
+    "individual": "Einzeln",
     "overview": "Übersicht",
     "import": "Importieren",
     "importExpand": "Importieren — zum Erweitern klicken",

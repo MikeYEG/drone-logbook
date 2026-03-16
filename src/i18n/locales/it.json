@@ -21,7 +21,7 @@
     "wrongPassword": "Password errata. Riprova."
   },
   "dashboard": {
-    "flights": "Voli",
+    "individual": "Individuale",
     "overview": "Panoramica",
     "import": "Importa",
     "importExpand": "Importa — clicca per espandere",

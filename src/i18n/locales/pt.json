@@ -21,7 +21,7 @@
     "wrongPassword": "Senha incorreta. Tente novamente."
   },
   "dashboard": {
-    "flights": "Voos",
+    "individual": "Individual",
     "overview": "Visão Geral",
     "import": "Importar",
     "importExpand": "Importar — clique para expandir",
