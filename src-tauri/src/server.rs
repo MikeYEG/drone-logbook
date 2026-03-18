@@ -180,6 +180,17 @@ fn compute_file_hash(path: &std::path::Path) -> Result<String, String> {
         .map_err(|e| format!("Failed to compute hash: {}", e))
 }
 
+fn has_allowed_extension(file_name: &str, allowed_extensions: &std::collections::HashSet<String>) -> bool {
+    let ext = file_name
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase());
+    match ext {
+        Some(e) if e != file_name.to_ascii_lowercase() => allowed_extensions.contains(&e),
+        _ => false,
+    }
+}
+
 /// Copy uploaded file to the keep folder with hash-based deduplication (web mode)
 fn copy_uploaded_file_web(src_path: &std::path::PathBuf, dest_folder: &std::path::PathBuf, file_hash: Option<&str>) -> Result<(), String> {
     // Create the destination folder if it doesn't exist
@@ -1269,6 +1280,12 @@ struct SyncBlacklistResponse {
     hashes: Vec<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AllowedExtensionsResponse {
+    extensions: Vec<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncBlacklistPayload {
@@ -1292,6 +1309,15 @@ async fn get_sync_config() -> Json<SyncResponse> {
         sync_path,
         auto_sync,
     })
+}
+
+/// GET /api/allowed_log_extensions — Get built-in + custom parser extensions
+async fn get_allowed_log_extensions(
+    pdb: ProfileDb,
+) -> Json<AllowedExtensionsResponse> {
+    let mut extensions = crate::plugins::get_allowed_extensions(&pdb.data_dir);
+    extensions.sort();
+    Json(AllowedExtensionsResponse { extensions })
 }
 
 /// GET /api/sync/blacklist — List blacklisted file hashes
@@ -1389,13 +1415,17 @@ async fn get_sync_files(
         .into_iter()
         .collect();
 
+    let allowed_extensions: std::collections::HashSet<String> = crate::plugins::get_allowed_extensions(&pdb.data_dir)
+        .into_iter()
+        .collect();
+
     let files: Vec<String> = entries
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
             if let Ok(file_type) = entry.file_type() {
                 if file_type.is_file() {
                     let name = entry.file_name().to_string_lossy().to_lowercase();
-                    return name.ends_with(".txt") || name.ends_with(".csv");
+                    return has_allowed_extension(&name, &allowed_extensions);
                 }
             }
             false
@@ -1648,13 +1678,17 @@ async fn sync_from_folder(
         }
     };
 
+    let allowed_extensions: std::collections::HashSet<String> = crate::plugins::get_allowed_extensions(&pdb.data_dir)
+        .into_iter()
+        .collect();
+
     let log_files: Vec<PathBuf> = entries
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
             if let Ok(file_type) = entry.file_type() {
                 if file_type.is_file() {
                     let name = entry.file_name().to_string_lossy().to_lowercase();
-                    return name.ends_with(".txt") || name.ends_with(".csv");
+                    return has_allowed_extension(&name, &allowed_extensions);
                 }
             }
             false
@@ -2281,6 +2315,7 @@ pub fn build_router(state: WebAppState) -> Router {
         .route("/api/remove_api_key", delete(remove_api_key))
         .route("/api/app_data_dir", get(get_app_data_dir))
         .route("/api/app_log_dir", get(get_app_log_dir))
+        .route("/api/allowed_log_extensions", get(get_allowed_log_extensions))
         .route("/api/backup", get(export_backup))
         .route("/api/backup/restore", post(import_backup))
         .route("/api/sync/config", get(get_sync_config))
@@ -2315,6 +2350,11 @@ pub async fn start_server(data_dir: PathBuf) -> Result<(), Box<dyn std::error::E
     log::info!("Active profile: {}", profile);
 
     let db = Database::new(data_dir.clone(), &profile)?;
+
+    crate::plugins::log_plugin_registration(&data_dir);
+    let allowed_extensions = crate::plugins::get_allowed_extensions(&data_dir);
+    log::info!("Allowed import extensions at startup: {:?}", allowed_extensions);
+
     let mut initial_pool = HashMap::new();
     initial_pool.insert(profile, Arc::new(db));
     // ── Hash the master password at startup, then clear the env var ──
@@ -2419,6 +2459,9 @@ async fn run_scheduled_sync(state: &WebAppState) -> Result<(usize, usize, usize)
         .map_err(|_| "SYNC_LOGS_PATH not configured".to_string())?;
 
     let profiles = database::list_profiles(&state.data_dir);
+    let allowed_extensions: std::collections::HashSet<String> = crate::plugins::get_allowed_extensions(&state.data_dir)
+        .into_iter()
+        .collect();
     let mut total_processed = 0usize;
     let mut total_skipped = 0usize;
     let mut total_errors = 0usize;
@@ -2449,7 +2492,7 @@ async fn run_scheduled_sync(state: &WebAppState) -> Result<(usize, usize, usize)
                 if let Ok(file_type) = entry.file_type() {
                     if file_type.is_file() {
                         let name = entry.file_name().to_string_lossy().to_lowercase();
-                        return name.ends_with(".txt") || name.ends_with(".csv");
+                        return has_allowed_extension(&name, &allowed_extensions);
                     }
                 }
                 false

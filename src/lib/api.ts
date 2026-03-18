@@ -16,6 +16,7 @@ const isWeb = import.meta.env.VITE_BACKEND === 'web';
 
 // Base URL for web mode API calls (relative in production, configurable in dev)
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const DEFAULT_ALLOWED_LOG_EXTENSIONS = ['txt', 'dat', 'log', 'csv'];
 
 // ============================================================================
 // Tauri invoke wrapper (lazy-loaded to avoid import errors in web mode)
@@ -263,6 +264,31 @@ export async function computeFileHash(filePath: string): Promise<string> {
   }
   const invoke = await getTauriInvoke();
   return invoke('compute_file_hash', { filePath }) as Promise<string>;
+}
+
+/**
+ * Get all allowed import extensions.
+ * - Tauri: built-in + parsers.json mappings from app data directory.
+ * - Web: fixed defaults (no local parsers.json support in browser mode).
+ */
+export async function getAllowedLogExtensions(): Promise<string[]> {
+  if (isWeb) {
+    try {
+      const result = await fetchJson<{ extensions: string[] }>('/allowed_log_extensions');
+      if (Array.isArray(result.extensions) && result.extensions.length > 0) {
+        return result.extensions;
+      }
+    } catch {
+      // Fall back to defaults when endpoint is unavailable.
+    }
+    return DEFAULT_ALLOWED_LOG_EXTENSIONS;
+  }
+  const invoke = await getTauriInvoke();
+  const extensions = await invoke('get_allowed_log_extensions') as string[];
+  if (!Array.isArray(extensions) || extensions.length === 0) {
+    return DEFAULT_ALLOWED_LOG_EXTENSIONS;
+  }
+  return extensions;
 }
 
 export async function deleteFlight(flightId: number): Promise<boolean> {

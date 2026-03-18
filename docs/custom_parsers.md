@@ -4,14 +4,25 @@ Open-DroneLog supports plugins for parsing custom and proprietary drone log form
 
 Open-DroneLog will execute your scripts automatically during the import process when it detects a matching file extension.
 
+The same custom parser engine is used by:
+- Desktop (Tauri)
+- Web/Docker API mode
+
 ---
 
 ## 1. How the Plugin System Works
 
 1. **Configuration (`parsers.json`)**: You define which file extensions should be handled by your custom scripts.
-2. **Execution**: When a user imports a file, Open-DroneLog first tries to parse it using built-in methods. If it fails (incompatible format) and matches a registered extension in your config, Open-DroneLog executes your script as a background process.
-3. **Arguments**: The app passes the **input log file path** and a **temporary output CSV path** to your script.
-4. **Ingestion**: Your script parses the custom log and writes a valid Drone Logbook CSV to the output path. When your script exits with code `0`, Open-DroneLog imports the resulting CSV.
+2. **Startup discovery + logging**: At startup, Open-DroneLog reads `parsers.json`, logs each discovered mapping, and logs the final allowed extension list.
+3. **Execution**: During import, Open-DroneLog first tries built-in parsers. If they fail (or are incompatible), it checks custom mappings by file extension and runs the mapped command.
+4. **Arguments**: The app replaces `$INPUT` and `$OUTPUT` in `args` before spawning your command.
+5. **Ingestion**: Your script must write a valid Drone Logbook CSV to `$OUTPUT`. If the process exits `0` and the output file exists, Open-DroneLog imports it.
+
+### Extension matching notes
+- Mapping keys are case-insensitive and normalized.
+- Both `"ulg"` and `".ulg"` are accepted as mapping keys.
+- Built-in defaults are: `txt`, `dat`, `log`, `csv`.
+- Mapped custom extensions are added dynamically to the allowed list used by browse, drag/drop, and sync scanning.
 
 ---
 
@@ -46,6 +57,8 @@ Create a `parsers.json` file in your application's data directory.
 
 * `$INPUT`: Will be replaced by Open-DroneLog with the absolute path of the uploaded file.
 * `$OUTPUT`: Will be replaced by Open-DroneLog with the absolute path where your script must save the CSV for the import.
+
+If your mapping uses `"ulg"`, files like `flight_001.ulg` are allowed automatically without editing frontend source code.
 
 ---
 
@@ -105,11 +118,16 @@ Similar to metadata, you can provide warnings or tips (like "Wind Warning") by a
 
 ## 4. Script Execution Guidelines
 
-1. **Exit Codes**: Open-DroneLog only ingests the `$OUTPUT` CSV if your script exits with status code `0`. If your parser encounters an error or an invalid file, it should exit with a non-zero status code (e.g. `1`) and print the error to standard error (`stderr`).
-2. **Performance**: Avoid heavy computations. If your script takes longer than 40 seconds, Open-DroneLog will timeout and cancel the import process.
-3. **Environment**: If running Open-DroneLog via Docker, remember that your scripts run inside the container. 
+1. **Exit Codes**: Open-DroneLog only ingests the `$OUTPUT` CSV if your script exits with status code `0`. If your parser encounters an error or an invalid file, it should exit with a non-zero status code (for example `1`) and print details to `stderr`.
+2. **Output path**: Always write the final CSV exactly to `$OUTPUT` (not to an adjacent file). Open-DroneLog validates that this file exists after your process exits.
+3. **Performance**: Avoid heavy computations. If parsing takes too long, import can fail.
+4. **Environment**: If running Open-DroneLog via Docker, your scripts run inside the container. 
    - **Python 3 and Node.js are bundled natively** in the Docker image. You can invoke them directly in your `parsers.json` `command` and mount your scripts via volumes.
    - For other languages, write a self-contained compiled binary (like Go or Rust) statically linked for Linux, or build a custom image extending the base Dockerfile.
+
+### Command portability tip
+- On Windows desktop, prefer `python` (or an absolute path to `python.exe`) if `python3` is not available on `PATH`.
+- On Linux/Docker, `python3` is typically available.
 
 ### Example Python Parser (`my_parser.py`)
 
@@ -180,3 +198,31 @@ And configure your `parsers.json` (placed in `/app/data/parsers.json`) to invoke
   }
 }
 ```
+
+---
+
+## 6. Troubleshooting
+
+If a custom parser is not being used, check logs in this order:
+
+1. **Startup registration logs**
+- `Custom parser mappings discovered: N`
+- `Registered custom parser: .ulg -> command='...' args=[...]`
+- `Allowed import extensions at startup: [...]`
+
+2. **Import fallback logs**
+- `Built-in parser failed or incompatible ... Trying custom plugins...`
+- `Custom plugin lookup for extension: '.ulg'`
+- `Found custom parser mapping for '.ulg' ...` or `No custom parser mapping matched ...`
+
+3. **Plugin execution logs**
+- `Executing custom parser plugin subprocess: ...`
+- `Custom parser output temp path: ...`
+- `Custom parser produced output CSV: ... (size: ... bytes)`
+
+If you see process success but no import, common causes are:
+- Script wrote CSV to the wrong path (not `$OUTPUT`).
+- CSV does not match Drone Logbook format.
+- Command is invalid in current runtime (`python3` not found, wrong executable path, missing script file).
+
+For web mode, extension allowing and parser mapping are also dynamic at startup and exposed via API, so the web file picker/drop and sync flows follow the same extension map from `parsers.json`.

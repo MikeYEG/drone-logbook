@@ -238,30 +238,86 @@ impl<'a> LogParser<'a> {
         // Custom Plugin Fallback
         let err = builtin_err;
         log::info!("Built-in parser failed or incompatible: {}. Trying custom plugins...", err);
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        log::debug!("Custom plugin lookup for extension: '.{}'", ext);
+
         if let Some(config) = crate::plugins::get_plugin_config(&self.db.data_dir) {
-            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if let Some(mapping) = config.mappings.get(&ext) {
+            let available_mappings: Vec<String> = config
+                .mappings
+                .keys()
+                .map(|k| k.trim().trim_start_matches('.').to_ascii_lowercase())
+                .collect();
+            log::debug!("Custom parser mappings available: {:?}", available_mappings);
+
+            let matched = config
+                .mappings
+                .iter()
+                .find(|(key, _)| key.trim().trim_start_matches('.').eq_ignore_ascii_case(&ext));
+
+            if let Some((matched_key, mapping)) = matched {
+                log::info!(
+                    "Found custom parser mapping for '.{}' (key '{}'): command='{}' args={:?}",
+                    ext,
+                    matched_key,
+                    mapping.command,
+                    mapping.args
+                );
+
                 let temp_dir = std::env::temp_dir();
                 let output_csv = temp_dir.join(format!("{}_plugin_out.csv", uuid::Uuid::new_v4()));
-                
+                log::debug!("Custom parser output temp path: {:?}", output_csv);
+
                 if let Err(plugin_err) = crate::plugins::run_plugin(mapping, file_path, &output_csv).await {
-                    log::error!("Custom plugin failed: {}", plugin_err);
+                    log::error!(
+                        "Custom parser subprocess failed for extension '.{}': {}",
+                        ext,
+                        plugin_err
+                    );
                     return Err(err); // Return original built-in error
                 }
+
+                if !output_csv.exists() {
+                    log::error!(
+                        "Custom parser reported success but no output CSV was found at {:?}",
+                        output_csv
+                    );
+                    return Err(err);
+                }
+
+                let output_size = fs::metadata(&output_csv).map(|m| m.len()).unwrap_or(0);
+                log::info!(
+                    "Custom parser produced output CSV: {:?} (size: {} bytes)",
+                    output_csv,
+                    output_size
+                );
 
                 // On success, parse the resulting CSV using DroneLogbookParser
                 let drone_parser = DroneLogbookParser::new(self.db);
                 let result = drone_parser.parse(&output_csv, &file_hash);
                 let _ = fs::remove_file(&output_csv); // Clean up temp file
-                
+
                 match result {
-                    Ok(res) => return Ok(res),
+                    Ok(res) => {
+                        log::info!("Custom parser fallback succeeded for '.{}'", ext);
+                        return Ok(res);
+                    }
                     Err(e) => {
                         log::error!("Failed to parse custom plugin output CSV: {}", e);
                         return Err(err); // Return original built-in error
                     }
                 }
+            } else {
+                log::info!(
+                    "No custom parser mapping matched extension '.{}' (available mappings: {:?})",
+                    ext,
+                    available_mappings
+                );
             }
+        } else {
+            log::info!(
+                "No valid custom parser config available while handling extension '.{}'",
+                ext
+            );
         }
         Err(err)
     }

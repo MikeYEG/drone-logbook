@@ -11,7 +11,7 @@
  * - Blacklist support for deleted files (skipped during sync)
  */
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
 import {
@@ -26,6 +26,7 @@ import {
   addToSyncBlacklist,
   removeFromSyncBlacklist,
   clearSyncBlacklist,
+  getAllowedLogExtensions,
 } from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
 import { ManualEntryModal } from './ManualEntryModal';
@@ -33,6 +34,17 @@ import { ManualEntryModal } from './ManualEntryModal';
 // Storage keys for sync folder and autoscan
 const SYNC_FOLDER_KEY = 'syncFolderPath';
 const AUTOSCAN_KEY = 'autoscanEnabled';
+const DEFAULT_ALLOWED_EXTENSIONS = ['txt', 'dat', 'log', 'csv'];
+
+function normalizeExtension(ext: string): string {
+  return ext.trim().replace(/^\./, '').toLowerCase();
+}
+
+function hasAllowedExtension(fileName: string, allowed: Set<string>): boolean {
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) return false;
+  return allowed.has(normalizeExtension(fileName.slice(dotIndex + 1)));
+}
 
 // Get autoscan enabled setting from localStorage
 export function getAutoscanEnabled(): boolean {
@@ -116,8 +128,21 @@ export function FlightImporter() {
   const [backgroundSyncResult, setBackgroundSyncResult] = useState<string | null>(null);
   const [autoscanEnabled, setAutoscanEnabledState] = useState(() => getAutoscanEnabled());
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+  const [allowedExtensions, setAllowedExtensions] = useState<string[]>(DEFAULT_ALLOWED_EXTENSIONS);
   const backgroundSyncTriggeredRef = useRef(false);
   const backgroundSyncAbortRef = useRef(false);
+  const allowedExtensionSet = useMemo(
+    () => new Set(allowedExtensions.map(normalizeExtension)),
+    [allowedExtensions]
+  );
+  const allowedExtensionsWithDot = useMemo(
+    () => allowedExtensions.map((ext) => `.${normalizeExtension(ext)}`),
+    [allowedExtensions]
+  );
+  const browseAcceptString = useMemo(
+    () => allowedExtensionsWithDot.join(','),
+    [allowedExtensionsWithDot]
+  );
 
   // Load sync folder path on mount and listen for changes from Dashboard
   useEffect(() => {
@@ -134,6 +159,28 @@ export function FlightImporter() {
   useEffect(() => {
     loadApiKeyType();
   }, [loadApiKeyType]);
+
+  // Load dynamic allowed extensions (built-in + parsers.json mappings)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const ext = await getAllowedLogExtensions();
+        if (cancelled || ext.length === 0) return;
+        const normalized = Array.from(new Set(ext.map(normalizeExtension)));
+        if (normalized.length > 0) {
+          setAllowedExtensions(normalized);
+        }
+      } catch (error) {
+        console.warn('Failed to load dynamic allowed log extensions, using defaults:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -354,7 +401,7 @@ export function FlightImporter() {
   const handleBrowse = async () => {
     if (isWebMode()) {
       // Web mode: use HTML file input
-      const files = await pickFiles('.txt,.dat,.log,.csv', true);
+      const files = await pickFiles(browseAcceptString, true);
       await processBatch(files);
     } else {
       // Tauri mode: use native dialog
@@ -364,7 +411,7 @@ export function FlightImporter() {
         filters: [
           {
             name: 'Drone Log Files',
-            extensions: ['txt', 'dat', 'log', 'csv'],
+            extensions: allowedExtensions,
           },
         ],
       });
@@ -393,8 +440,7 @@ export function FlightImporter() {
   const { getRootProps, getInputProps, isDragActive: webDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/plain': ['.txt', '.dat', '.log'],
-      'text/csv': ['.csv'],
+      'application/octet-stream': allowedExtensionsWithDot,
     },
     multiple: true,
     noClick: true,
@@ -430,9 +476,7 @@ export function FlightImporter() {
             setTauriDragActive(false);
             const paths = event.payload.paths;
             // Filter to supported extensions
-            const supported = paths.filter((p: string) =>
-              /\.(txt|dat|log|csv)$/i.test(p)
-            );
+            const supported = paths.filter((p: string) => hasAllowedExtension(p, allowedExtensionSet));
             if (supported.length > 0) {
               // Cancel background sync - user action takes priority
               cancelBackgroundSync();
@@ -450,7 +494,7 @@ export function FlightImporter() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [allowedExtensionSet]);
 
   // Background automatic sync on startup (lazy loaded, non-blocking)
   useEffect(() => {
@@ -600,12 +644,11 @@ export function FlightImporter() {
           return;
         }
         
-        // Filter for .txt and .csv files (DJI logs, Litchi, and Airdata exports)
+        // Filter only files with allowed log extensions
         const logFiles = entries
           .filter((entry) => {
             if (!entry.isFile || !entry.name) return false;
-            const name = entry.name.toLowerCase();
-            return name.endsWith('.txt') || name.endsWith('.csv');
+            return hasAllowedExtension(entry.name, allowedExtensionSet);
           })
           .map((entry) => `${folderPath}/${entry.name}`);
         
@@ -670,7 +713,7 @@ export function FlightImporter() {
     }, 3000); // 3 second delay for lazy loading
     
     return () => clearTimeout(timeoutId);
-  }, [autoscanEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoscanEnabled, allowedExtensionSet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDragActive = webDragActive || tauriDragActive;
 
@@ -798,12 +841,11 @@ export function FlightImporter() {
       const { readDir } = await import('@tauri-apps/plugin-fs');
       const entries = await readDir(folderPath);
       
-      // Filter for .txt and .csv files (DJI logs, Litchi, and Airdata exports)
+      // Filter only files with allowed log extensions
       const logFiles = entries
         .filter((entry) => {
           if (!entry.isFile || !entry.name) return false;
-          const name = entry.name.toLowerCase();
-          return name.endsWith('.txt') || name.endsWith('.csv');
+          return hasAllowedExtension(entry.name, allowedExtensionSet);
         })
         .map((entry) => `${folderPath}/${entry.name}`);
 

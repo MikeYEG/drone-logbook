@@ -560,6 +560,11 @@ mod tauri_app {
     }
 
     #[tauri::command]
+    pub async fn get_allowed_log_extensions(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+        Ok(crate::plugins::get_allowed_extensions(&state.data_dir))
+    }
+
+    #[tauri::command]
     pub async fn get_sync_blacklist(state: State<'_, AppState>) -> Result<Vec<String>, String> {
         state
             .db_authenticated()?
@@ -1579,6 +1584,13 @@ mod tauri_app {
                     data_dir,
                     locked: RwLock::new(start_locked),
                 });
+
+                if let Some(state) = app.try_state::<AppState>() {
+                    crate::plugins::log_plugin_registration(&state.data_dir);
+                    let allowed_extensions = crate::plugins::get_allowed_extensions(&state.data_dir);
+                    log::info!("Allowed import extensions at startup: {:?}", allowed_extensions);
+                }
+
                 log::info!("Open DroneLog initialized successfully");
                 Ok(())
             })
@@ -1620,6 +1632,7 @@ mod tauri_app {
                 import_log,
                 create_manual_flight,
                 compute_file_hash,
+                get_allowed_log_extensions,
                 get_sync_blacklist,
                 add_to_sync_blacklist,
                 remove_from_sync_blacklist,
