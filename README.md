@@ -502,6 +502,10 @@ Open DroneLog supports optional external parser plugins for bringing in logs fro
 
 See the guide: [custom parser documentation](/docs/custom_parsers.md).
 
+### Telemetry video overlay
+
+Check out the [Open Drone Log telemetry overlay poject](https://github.com/arpanghosh8453/opendronelog-overlay) for details on how to export overlay telemetry data on your videos.
+
 
 ## Socials and Support
 
