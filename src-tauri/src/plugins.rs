@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 pub const BUILTIN_ALLOWED_EXTENSIONS: [&str; 4] = ["txt", "dat", "log", "csv"];
@@ -29,20 +29,38 @@ fn normalize_extension(ext: &str) -> Option<String> {
 
 /// Helper to load the plugins config (`parsers.json`)
 pub fn get_plugin_config(data_dir: &Path) -> Option<PluginConfig> {
-    let config_path = data_dir.join("parsers.json");
-    log::debug!("Looking for custom parser config at {:?}", config_path);
-    if config_path.exists() {
-        if let Ok(content) = fs::read_to_string(&config_path) {
-            match serde_json::from_str::<PluginConfig>(&content) {
-                Ok(conf) => return Some(conf),
-                Err(e) => {
-                    log::warn!("Failed to parse parsers.json: {}", e);
+    let config_candidates: Vec<PathBuf> = {
+        #[cfg(all(feature = "web", not(feature = "tauri-app")))]
+        {
+            vec![
+                PathBuf::from("/app/plugins/parsers.json"),
+                // Backward-compatible fallback for older Docker setups.
+                data_dir.join("parsers.json"),
+            ]
+        }
+
+        #[cfg(not(all(feature = "web", not(feature = "tauri-app"))))]
+        {
+            vec![data_dir.join("parsers.json")]
+        }
+    };
+
+    for config_path in config_candidates {
+        log::debug!("Looking for custom parser config at {:?}", config_path);
+        if config_path.exists() {
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                match serde_json::from_str::<PluginConfig>(&content) {
+                    Ok(conf) => return Some(conf),
+                    Err(e) => {
+                        log::warn!("Failed to parse parsers.json at {:?}: {}", config_path, e);
+                    }
                 }
             }
+        } else {
+            log::debug!("No parsers.json found at {:?}", config_path);
         }
-    } else {
-        log::debug!("No parsers.json found at {:?}", config_path);
     }
+
     None
 }
 

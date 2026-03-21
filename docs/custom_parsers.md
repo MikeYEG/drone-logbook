@@ -28,7 +28,7 @@ The same custom parser engine is used by:
 
 ## 2. Configuration (`parsers.json`)
 
-Create a `parsers.json` file in your application's data directory.
+Create a `parsers.json` file in the location used by your runtime mode.
 
 **For the Desktop App:**
 - **Linux**: `~/.local/share/com.drone-logbook/parsers.json`
@@ -36,10 +36,8 @@ Create a `parsers.json` file in your application's data directory.
 - **macOS**: `~/Library/Application Support/com.drone-logbook/parsers.json`
 
 **For the Web/Docker App:**
-- **Linux/Docker**: place it at `<DATA_DIR>/parsers.json`.
-- The exact path is determined by the `DATA_DIR` environment variable in your compose file.
-- With the default compose setup (`DATA_DIR=/data/drone-logbook`), this resolves to `/data/drone-logbook/parsers.json` inside the container.
-- Example single-file bind mount: `./data/parsers.json:/data/drone-logbook/parsers.json:ro`
+- **Linux/Docker**: place it at the fixed path `/app/plugins/parsers.json` inside the container.
+- Example single-file bind mount: `./plugins/parsers.json:/app/plugins/parsers.json:ro`
 
 ### Example `parsers.json`
 
@@ -190,7 +188,7 @@ services:
       - ./plugins:/app/plugins  # Mount your custom scripts here
 ```
 
-And configure your `parsers.json` (placed in `/data/drone-logbook/parsers.json` with the default compose setup) to invoke your script using available tools in the container or standalone binaries:
+And configure your `parsers.json` (placed at `/app/plugins/parsers.json` in Docker/web mode) to invoke your script using available tools in the container or standalone binaries:
 ```json
 {
   "mappings": {
