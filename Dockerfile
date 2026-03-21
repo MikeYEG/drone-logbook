@@ -82,6 +82,11 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
+# Install optional Python dependencies for custom parser scripts.
+# Users can edit requirements.txt and rebuild the image.
+COPY requirements.txt /app/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
+
 # Copy backend binary
 COPY --from=backend-builder /build/src-tauri/target/release/open-dronelog /app/open-dronelog
 

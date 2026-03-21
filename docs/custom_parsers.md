@@ -202,6 +202,23 @@ And configure your `parsers.json` (placed in `/data/drone-logbook/parsers.json` 
 }
 ```
 
+### Installing Python parser dependencies in Docker builds
+
+If your custom parser script needs extra Python libraries (for example, `pandas`, `numpy`, `pyproj`), add them to the repository `requirements.txt` file and rebuild the image.
+
+1. Edit `requirements.txt` and add your packages.
+2. Rebuild the Docker image (for local source builds):
+  - `docker compose -f docker-compose-build.yml build --no-cache open-dronelog`
+3. Restart the container:
+  - `docker compose -f docker-compose-build.yml up -d`
+
+The Dockerfile installs this file during build with:
+- `python3 -m pip install --no-cache-dir -r /app/requirements.txt`
+
+Notes:
+- This applies to images you build from source (`docker-compose-build.yml`).
+- If you use the prebuilt image (`docker-compose.yml`), you must build your own derived image to add extra Python packages.
+
 ---
 
 ## 6. Troubleshooting
