@@ -120,6 +120,8 @@ interface SavedFilterSnapshot {
   selectedControllers: string[];
   selectedTags: string[];
   selectedColors: string[];
+  photoFilterMin: number;
+  videoFilterMin: number;
   durationFilterMin: number | null;
   durationFilterMax: number | null;
   altitudeFilterMin: number | null;
@@ -145,6 +147,11 @@ function asNumberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function asNonNegativeInteger(value: unknown, fallback: number = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.round(value));
+}
+
 function normalizeSavedFilterSnapshot(value: unknown): SavedFilterSnapshot | null {
   if (!value || typeof value !== 'object') return null;
   const obj = value as Record<string, unknown>;
@@ -154,6 +161,8 @@ function normalizeSavedFilterSnapshot(value: unknown): SavedFilterSnapshot | nul
     selectedControllers: asStringArray(obj.selectedControllers),
     selectedTags: asStringArray(obj.selectedTags),
     selectedColors: asStringArray(obj.selectedColors),
+    photoFilterMin: asNonNegativeInteger(obj.photoFilterMin),
+    videoFilterMin: asNonNegativeInteger(obj.videoFilterMin),
     durationFilterMin: asNumberOrNull(obj.durationFilterMin),
     durationFilterMax: asNumberOrNull(obj.durationFilterMax),
     altitudeFilterMin: asNumberOrNull(obj.altitudeFilterMin),
@@ -273,6 +282,8 @@ export function FlightList({
   const [altitudeFilterMax, setAltitudeFilterMax] = useState<number | null>(null);
   const [distanceFilterMin, setDistanceFilterMin] = useState<number | null>(null);
   const [distanceFilterMax, setDistanceFilterMax] = useState<number | null>(null);
+  const [photoFilterMin, setPhotoFilterMin] = useState(0);
+  const [videoFilterMin, setVideoFilterMin] = useState(0);
   const [savedFilterProfiles, setSavedFilterProfiles] = useState<SavedFilterProfile[]>([]);
   const [selectedFilterProfileName, setSelectedFilterProfileName] = useState('none');
   const [isFilterProfileDropdownOpen, setIsFilterProfileDropdownOpen] = useState(false);
@@ -383,8 +394,12 @@ export function FlightList({
     selectedBatteries.length > 0 ||
     selectedControllers.length > 0 ||
     selectedTags.length > 0 ||
-    selectedColors.length > 0
+    selectedColors.length > 0 ||
+    photoFilterMin > 0 ||
+    videoFilterMin > 0
   );
+
+  const hasAnySidebarFilter = hasScrollboxFilter || mapAreaFilterEnabled || searchQuery.trim().length > 0;
 
   const applySavedFilterSnapshot = useCallback((snapshot: SavedFilterSnapshot) => {
     isApplyingFilterProfileRef.current = true;
@@ -393,6 +408,8 @@ export function FlightList({
     setSelectedControllers(snapshot.selectedControllers);
     setSelectedTags(snapshot.selectedTags);
     setSelectedColors(snapshot.selectedColors);
+    setPhotoFilterMin(snapshot.photoFilterMin);
+    setVideoFilterMin(snapshot.videoFilterMin);
     setDurationFilterMin(snapshot.durationFilterMin);
     setDurationFilterMax(snapshot.durationFilterMax);
     setAltitudeFilterMin(snapshot.altitudeFilterMin);
@@ -417,6 +434,8 @@ export function FlightList({
     selectedControllers,
     selectedTags,
     selectedColors,
+    photoFilterMin,
+    videoFilterMin,
     durationFilterMin,
     durationFilterMax,
     altitudeFilterMin,
@@ -431,6 +450,8 @@ export function FlightList({
     selectedControllers,
     selectedTags,
     selectedColors,
+    photoFilterMin,
+    videoFilterMin,
     durationFilterMin,
     durationFilterMax,
     altitudeFilterMin,
@@ -569,6 +590,8 @@ export function FlightList({
     selectedControllers,
     selectedTags,
     selectedColors,
+    photoFilterMin,
+    videoFilterMin,
     durationFilterMin,
     durationFilterMax,
     altitudeFilterMin,
@@ -699,7 +722,7 @@ export function FlightList({
   // --- Cross-filter helper: apply all filters EXCEPT the excluded dimension ---
   // This lets each filter's available options reflect the other active filters.
   const crossFiltered = useMemo(() => {
-    type Dimension = 'drone' | 'battery' | 'controller' | 'duration' | 'altitude' | 'distance' | 'date' | 'tags' | 'color';
+    type Dimension = 'drone' | 'battery' | 'controller' | 'duration' | 'altitude' | 'distance' | 'date' | 'tags' | 'color' | 'photo' | 'video';
 
     const applyFilters = (exclude: Dimension) => {
       const start = dateRange?.from ?? null;
@@ -756,6 +779,16 @@ export function FlightList({
           const flightColor = (flight.color ?? '#7dd3fc').toLowerCase();
           if (!selectedColors.includes(flightColor)) return false;
         }
+        // Minimum photo count filter
+        if (exclude !== 'photo' && photoFilterMin > 0) {
+          const photos = Math.max(0, flight.photoCount ?? 0);
+          if (photos < photoFilterMin) return false;
+        }
+        // Minimum video count filter
+        if (exclude !== 'video' && videoFilterMin > 0) {
+          const videos = Math.max(0, flight.videoCount ?? 0);
+          if (videos < videoFilterMin) return false;
+        }
         // Map area filter (always applied, never excluded)
         if (mapAreaFilterEnabled && mapVisibleBounds) {
           if (flight.homeLat == null || flight.homeLon == null) return false;
@@ -776,8 +809,27 @@ export function FlightList({
       forDate: applyFilters('date'),
       forTags: applyFilters('tags'),
       forColor: applyFilters('color'),
+      forPhoto: applyFilters('photo'),
+      forVideo: applyFilters('video'),
     };
-  }, [flights, dateRange, selectedDrones, selectedBatteries, selectedControllers, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, selectedColors, mapAreaFilterEnabled, mapVisibleBounds]);
+  }, [flights, dateRange, selectedDrones, selectedBatteries, selectedControllers, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, selectedColors, photoFilterMin, videoFilterMin, mapAreaFilterEnabled, mapVisibleBounds]);
+
+  const mediaMaxima = useMemo(() => {
+    let maxPhotos = 0;
+    let maxVideos = 0;
+
+    for (const flight of crossFiltered.forPhoto) {
+      const photos = Math.max(0, flight.photoCount ?? 0);
+      if (photos > maxPhotos) maxPhotos = photos;
+    }
+
+    for (const flight of crossFiltered.forVideo) {
+      const videos = Math.max(0, flight.videoCount ?? 0);
+      if (videos > maxVideos) maxVideos = videos;
+    }
+
+    return { maxPhotos, maxVideos };
+  }, [crossFiltered.forPhoto, crossFiltered.forVideo]);
 
   const droneOptions = useMemo(() => {
     const entries = crossFiltered.forDrone
@@ -1008,6 +1060,14 @@ export function FlightList({
     if (distanceFilterMax !== null && distanceFilterMax >= distanceRange.max) setDistanceFilterMax(null);
   }, [distanceRange]);
 
+  useEffect(() => {
+    setPhotoFilterMin((prev) => Math.min(Math.max(0, prev), mediaMaxima.maxPhotos));
+  }, [mediaMaxima.maxPhotos]);
+
+  useEffect(() => {
+    setVideoFilterMin((prev) => Math.min(Math.max(0, prev), mediaMaxima.maxVideos));
+  }, [mediaMaxima.maxVideos]);
+
   // Prune stale dropdown selections when available options shrink (e.g. after flight deletion)
   useEffect(() => {
     const validKeys = new Set(droneOptions.map((d) => d.key));
@@ -1068,7 +1128,7 @@ export function FlightList({
     if (end) end.setHours(23, 59, 59, 999);
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
-    const hasAnyFilter = !!(start || end || selectedDrones.length > 0 || selectedBatteries.length > 0 || selectedControllers.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || selectedColors.length > 0 || (mapAreaFilterEnabled && mapVisibleBounds) || normalizedSearch);
+    const hasAnyFilter = !!(start || end || selectedDrones.length > 0 || selectedBatteries.length > 0 || selectedControllers.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || selectedColors.length > 0 || photoFilterMin > 0 || videoFilterMin > 0 || (mapAreaFilterEnabled && mapVisibleBounds) || normalizedSearch);
 
     return flights.filter((flight) => {
       // When no filters are active, show all
@@ -1146,6 +1206,18 @@ export function FlightList({
         if (isFilterInverted ? matchesColor : !matchesColor) return false;
       }
 
+      if (photoFilterMin > 0) {
+        const photoCount = Math.max(0, flight.photoCount ?? 0);
+        const matchesPhotos = photoCount >= photoFilterMin;
+        if (isFilterInverted ? matchesPhotos : !matchesPhotos) return false;
+      }
+
+      if (videoFilterMin > 0) {
+        const videoCount = Math.max(0, flight.videoCount ?? 0);
+        const matchesVideos = videoCount >= videoFilterMin;
+        if (isFilterInverted ? matchesVideos : !matchesVideos) return false;
+      }
+
       // Map area filter (not affected by inversion - always AND)
       if (mapAreaFilterEnabled && mapVisibleBounds) {
         if (flight.homeLat == null || flight.homeLon == null) return false;
@@ -1163,7 +1235,7 @@ export function FlightList({
 
       return true;
     });
-  }, [dateRange, flights, selectedBatteries, selectedControllers, selectedDrones, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, selectedColors, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds, searchQuery]);
+  }, [dateRange, flights, selectedBatteries, selectedControllers, selectedDrones, durationFilterMin, durationFilterMax, altitudeFilterMin, altitudeFilterMax, distanceFilterMin, distanceFilterMax, selectedTags, selectedColors, photoFilterMin, videoFilterMin, isFilterInverted, mapAreaFilterEnabled, mapVisibleBounds, searchQuery]);
 
   // Sync filtered flight IDs to the store so Overview can use them
   // Use useLayoutEffect to ensure sync happens synchronously before browser paint
@@ -1997,12 +2069,12 @@ export function FlightList({
           className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors"
         >
           <span className="flex items-center gap-1.5">
-            <span className={`font-medium ${(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || selectedControllers.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || selectedColors.length > 0 || mapAreaFilterEnabled || searchQuery.trim()) ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
-              {dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || selectedControllers.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || selectedColors.length > 0 || mapAreaFilterEnabled || searchQuery.trim()
+            <span className={`font-medium ${hasAnySidebarFilter ? (isFilterInverted ? 'text-red-400' : 'text-emerald-400') : ''}`}>
+              {hasAnySidebarFilter
                 ? isFilterInverted ? t('flightList.filtersActiveInverted') : t('flightList.filtersActive')
                 : isFiltersCollapsed ? t('flightList.filtersExpand') : t('flightList.filters')}
             </span>
-            {(dateRange?.from || dateRange?.to || selectedDrones.length > 0 || selectedBatteries.length > 0 || selectedControllers.length > 0 || durationFilterMin !== null || durationFilterMax !== null || altitudeFilterMin !== null || altitudeFilterMax !== null || distanceFilterMin !== null || distanceFilterMax !== null || selectedTags.length > 0 || selectedColors.length > 0 || mapAreaFilterEnabled || searchQuery.trim()) && (
+            {hasAnySidebarFilter && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -2901,6 +2973,46 @@ export function FlightList({
                       </div>
                     )}
 
+                    <div className="rounded-md border border-gray-700/70 bg-black/15 px-2 py-2 space-y-2">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-400">{t('flightList.mediaGroup', 'Media')}</p>
+                      <div className="grid grid-cols-[minmax(0,1fr)_82px_auto] items-center gap-2">
+                        <label className="text-xs text-gray-300" htmlFor="photo-filter-min">{t('flightList.photos', 'Photos')}</label>
+                        <input
+                          id="photo-filter-min"
+                          type="number"
+                          min={0}
+                          max={mediaMaxima.maxPhotos}
+                          step={1}
+                          value={photoFilterMin}
+                          onChange={(e) => {
+                            const raw = Number(e.target.value);
+                            const next = Number.isFinite(raw) ? Math.round(raw) : 0;
+                            setPhotoFilterMin(Math.min(mediaMaxima.maxPhotos, Math.max(0, next)));
+                          }}
+                          className="input text-xs h-7 px-2"
+                        />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{t('flightList.orMore', 'or more')}</span>
+                      </div>
+                      <div className="grid grid-cols-[minmax(0,1fr)_82px_auto] items-center gap-2">
+                        <label className="text-xs text-gray-300" htmlFor="video-filter-min">{t('flightList.videos', 'Videos')}</label>
+                        <input
+                          id="video-filter-min"
+                          type="number"
+                          min={0}
+                          max={mediaMaxima.maxVideos}
+                          step={1}
+                          value={videoFilterMin}
+                          onChange={(e) => {
+                            const raw = Number(e.target.value);
+                            const next = Number.isFinite(raw) ? Math.round(raw) : 0;
+                            setVideoFilterMin(Math.min(mediaMaxima.maxVideos, Math.max(0, next)));
+                          }}
+                          className="input text-xs h-7 px-2"
+                        />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{t('flightList.orMore', 'or more')}</span>
+                      </div>
+                    </div>
+
                     {/* Color filter */}
                     {allFlightColors.length > 1 && (
                       <div className="flex items-center gap-2">
@@ -3115,6 +3227,8 @@ export function FlightList({
                   setAltitudeFilterMax(null);
                   setDistanceFilterMin(null);
                   setDistanceFilterMax(null);
+                  setPhotoFilterMin(0);
+                  setVideoFilterMin(0);
                   setSelectedTags([]);
                   setSelectedColors([]);
                   setSelectedFilterProfileName('none');
