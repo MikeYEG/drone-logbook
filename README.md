@@ -564,6 +564,9 @@ While some parts of this codebase were written with AI assistance (Claude Opus 4
 - [dji-log-parser](https://github.com/lvauvillier/dji-log-parser) - DJI log parsing
 - [DuckDB](https://duckdb.org/) - Analytical database
 - [Tauri](https://tauri.app/) - Desktop app framework
+- [Esri World Imagery](https://www.esri.com/en-us/arcgis/products/arcgis-online/basemaps) - Satellite map tiles
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) - Base map data and contributors
+- [OpenTopoMap](https://opentopomap.org/about) - Topographic map tiles and style (CC-BY-SA)
 
 ## Sponsors
 

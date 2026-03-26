@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import Map, { Source, Layer, NavigationControl, Popup } from 'react-map-gl/maplibre';
+import Map, { Source, Layer, NavigationControl, AttributionControl, Popup } from 'react-map-gl/maplibre';
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Flight } from '@/types';
@@ -737,6 +737,7 @@ export function FlightClusterMap({
           onMouseLeave={handleMouseLeave}
         >
           <NavigationControl position="top-right" />
+          <AttributionControl position="bottom-left" compact={true} />
 
           {/* Map Controls */}
           <div className="absolute top-2 left-2 z-10 flex flex-col gap-2 w-44">

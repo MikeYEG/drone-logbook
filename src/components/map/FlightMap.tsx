@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import Map, { NavigationControl, Marker, Source, Layer, useControl } from 'react-map-gl/maplibre';
+import Map, { NavigationControl, AttributionControl, Marker, Source, Layer, useControl } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { PathLayer, ScatterplotLayer, TextLayer, IconLayer } from '@deck.gl/layers';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -1608,6 +1608,7 @@ export function FlightMap({ track, homeLat, homeLon, durationSecs, telemetry, th
         }}
       >
         <NavigationControl position="top-right" />
+        <AttributionControl position="bottom-left" compact={true} />
 
         {/* Map Controls */}
         <div className="map-overlay absolute top-2 left-2 z-10 bg-drone-dark/80 border border-gray-700 rounded-xl shadow-lg">

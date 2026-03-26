@@ -18,7 +18,7 @@ export const SATELLITE_STYLE: StyleSpecification = {
             ],
             tileSize: 256,
             maxzoom: 18,
-            attribution: 'Tiles © Esri',
+            attribution: '<a href="https://www.esri.com/en-us/arcgis/products/arcgis-online/basemaps" target="_blank" rel="noopener noreferrer">© Esri</a>',
         },
     },
     layers: [
@@ -40,7 +40,7 @@ export const TOPO_STYLE: StyleSpecification = {
             tiles: ['https://tile.opentopomap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
             maxzoom: 17,
-            attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+            attribution: '<a href="https://opentopomap.org/about" target="_blank" rel="noopener noreferrer">© OpenTopoMap</a> | <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>',
         },
     },
     layers: [
@@ -62,7 +62,7 @@ export const OSM_STYLE: StyleSpecification = {
             tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
             maxzoom: 19,
-            attribution: '© OpenStreetMap contributors',
+            attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>',
         },
     },
     layers: [
