@@ -219,6 +219,25 @@ const heatmapPointCoreLayer = {
   },
 };
 
+/** Invisible but larger hit target for heatmap points so yellow dots are easy to click */
+const heatmapPointHitboxLayer = {
+  id: 'heatmap-point-hitbox',
+  type: 'circle',
+  source: 'flights',
+  minzoom: 10,
+  paint: {
+    'circle-color': 'rgba(0, 0, 0, 0)',
+    'circle-radius': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      10, 8,
+      14, 11,
+      18, 13,
+    ],
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -415,12 +434,16 @@ export function FlightClusterMap({
   );
 
   const interactiveLayerIds = useMemo(() => {
-    const ids = ['clusters', 'unclustered-point'];
+    const ids: string[] = [];
+    if (showClusters) {
+      ids.push('clusters', 'unclustered-point');
+    }
     if (showHeatmap) {
       ids.push('heatmap-point-center');
+      ids.push('heatmap-point-hitbox');
     }
     return ids;
-  }, [showHeatmap]);
+  }, [showClusters, showHeatmap]);
 
   // Update visible bounds when map moves (only if filter is enabled)
   const updateBounds = useCallback(() => {
@@ -604,10 +627,11 @@ export function FlightClusterMap({
       const map = mapRef.current;
       if (!map) return;
 
-      // Check clusters first
-      const clusterFeatures = map.queryRenderedFeatures(e.point, {
-        layers: ['clusters'],
-      });
+      // Check clusters first (only when the cluster layer is currently rendered).
+      const clusterLayers = showClusters ? ['clusters'] : [];
+      const clusterFeatures = clusterLayers.length > 0
+        ? map.queryRenderedFeatures(e.point, { layers: clusterLayers })
+        : [];
       if (clusterFeatures.length > 0) {
         const feature = clusterFeatures[0];
         const clusterId = feature.properties?.cluster_id;
@@ -628,47 +652,54 @@ export function FlightClusterMap({
         return;
       }
 
-      // Check unclustered points
-      const pointFeatures = map.queryRenderedFeatures(e.point, {
-        layers: ['unclustered-point', 'heatmap-point-center'],
-      });
+      // Check interactive point layers that are actually visible.
+      const pointLayers: string[] = [];
+      if (showClusters) {
+        pointLayers.push('unclustered-point');
+      }
+      if (showHeatmap) {
+        pointLayers.push('heatmap-point-center', 'heatmap-point-hitbox');
+      }
+      const pointFeatures = pointLayers.length > 0
+        ? map.queryRenderedFeatures(e.point, { layers: pointLayers })
+        : [];
       if (pointFeatures.length > 0) {
         const feature = pointFeatures[0];
         const geom = feature.geometry as GeoJSON.Point;
         const props = feature.properties;
-        if (props) {
-          // When clicking heatmap center over a clustered feature, zoom in.
-          const clusterId = props.cluster_id;
-          if (clusterId != null) {
-            const source = map.getSource('flights') as any;
-            if (source) {
-              Promise.resolve(source.getClusterExpansionZoom(clusterId))
-                .then((zoom: number) => {
-                  map.easeTo({
-                    center: geom.coordinates as [number, number],
-                    zoom: Math.min(zoom, 18),
-                    duration: 500,
-                  });
-                })
-                .catch(() => { });
-            }
-            return;
-          }
+        if (!props) return;
 
-          // GeoJSON properties are serialized as strings by MapLibre
-          const flightId = typeof props.id === 'string' ? parseInt(props.id, 10) : props.id;
-          const flight = flights.find((f) => f.id === flightId);
-          if (flight) {
-            setPopupInfo({
-              longitude: geom.coordinates[0],
-              latitude: geom.coordinates[1],
-              flight,
-            });
+        // Match cluster-layer behavior: cluster click zooms in, single point click shows popup.
+        const clusterId = props.cluster_id;
+        if (clusterId != null) {
+          const source = map.getSource('flights') as any;
+          if (source) {
+            Promise.resolve(source.getClusterExpansionZoom(clusterId))
+              .then((zoom: number) => {
+                map.easeTo({
+                  center: geom.coordinates as [number, number],
+                  zoom: Math.min(zoom, 18),
+                  duration: 500,
+                });
+              })
+              .catch(() => { });
           }
+          return;
+        }
+
+        // GeoJSON properties are serialized as strings by MapLibre.
+        const flightId = typeof props.id === 'string' ? parseInt(props.id, 10) : props.id;
+        const flight = flights.find((f) => f.id === flightId);
+        if (flight) {
+          setPopupInfo({
+            longitude: geom.coordinates[0],
+            latitude: geom.coordinates[1],
+            flight,
+          });
         }
       }
     },
-    [flights],
+    [flights, showClusters, showHeatmap],
   );
 
   // Cursor pointer on interactive layers
@@ -813,6 +844,7 @@ export function FlightClusterMap({
             {showHeatmap && <Layer {...(heatmapPointGlowLayer as any)} />}
             {showHeatmap && <Layer {...(heatmapPointCenterLayer as any)} />}
             {showHeatmap && <Layer {...(heatmapPointCoreLayer as any)} />}
+            {showHeatmap && <Layer {...(heatmapPointHitboxLayer as any)} />}
           </Source>
 
           {/* Highlighted flight marker (shown above other markers) */}
