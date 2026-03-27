@@ -21,8 +21,35 @@
 
 <p align="center">A high-performance application for analyzing drone flight logs (DJI and Litchi CSV formats). Available as a Tauri v2 desktop app or a Docker-deployable web app. Built with DuckDB and React.</p>
 
+<video src="https://github.com/user-attachments/assets/50e9f58b-5e91-44c3-a053-2224a52dab76" width="100%" autoplay loop muted playsinline controls></video>
+
 > [!IMPORTANT]
 > *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. Airdata or Airdata UAV is a trademark of Airdata UAV, Inc. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., Airdata UAV, Inc., or their affiliates.*
+
+## Contents
+
+- [Features](#features)
+- [Accessing flight log files](#accessing-flight-log-files)
+  - [DJI Flight Logs](#dji-flight-logs)
+  - [Litchi CSV Exports](#litchi-csv-exports)
+- [Setup and installation (Windows/MacOS)](#setup-and-installation-windowsmacos)
+  - [Try the Webapp First](#try-the-webapp-first-no-installation-required)
+  - [macOS Users: "Damaged File" Error Fix](#macos-users-damaged-file-error-fix)
+- [Usage](#usage)
+- [Building from source (Linux users)](#building-from-source-linux-users)
+- [Docker deployment (Self-hosted Web)](#docker-deployment-self-hosted-web)
+- [Profiles and Password Protection](#profiles-and-password-protection)
+- [Security Warning (Web/Docker)](#security-warning-webdocker)
+- [Configuration](#configuration)
+- [Context Management](#context-management)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [How to obtain your own DJI Developer API key](#how-to-obtain-your-own-dji-developer-api-key)
+- [Contribution Guidelines](#contribution-guidelines)
+- [Socials and Support](#socials-and-support)
+- [Love this project?](#love-this-project)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 <p align="center">
     <img src="screenshots/Comparison.png" alt="Comparison chart" width="900" />
@@ -60,31 +87,6 @@
 <p align="center">
     <img src="screenshots/flight_report.png" alt="Flight report" width="900" />
 </p>
-
-## Contents
-
-- [Features](#features)
-- [Accessing flight log files](#accessing-flight-log-files)
-  - [DJI Flight Logs](#dji-flight-logs)
-  - [Litchi CSV Exports](#litchi-csv-exports)
-- [Setup and installation (Windows/MacOS)](#setup-and-installation-windowsmacos)
-  - [Try the Webapp First](#try-the-webapp-first-no-installation-required)
-  - [macOS Users: "Damaged File" Error Fix](#macos-users-damaged-file-error-fix)
-- [Usage](#usage)
-- [Building from source (Linux users)](#building-from-source-linux-users)
-- [Docker deployment (Self-hosted Web)](#docker-deployment-self-hosted-web)
-- [Profiles and Password Protection](#profiles-and-password-protection)
-- [Security Warning (Web/Docker)](#security-warning-webdocker)
-- [Configuration](#configuration)
-- [Context Management](#context-management)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [How to obtain your own DJI Developer API key](#how-to-obtain-your-own-dji-developer-api-key)
-- [Contribution Guidelines](#contribution-guidelines)
-- [Socials and Support](#socials-and-support)
-- [Love this project?](#love-this-project)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
 
 ## Features
 
