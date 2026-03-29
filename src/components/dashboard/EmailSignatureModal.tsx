@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isWebMode } from '@/lib/api';
+import { isWebMode, saveBlobWithDialog } from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
 import logoIcon from '@/assets/icon.png';
 
@@ -353,16 +353,9 @@ export function EmailSignatureModal({
         URL.revokeObjectURL(url);
       } else {
         try {
-          const { save } = await import('@tauri-apps/plugin-dialog');
-          const { writeFile } = await import('@tauri-apps/plugin-fs');
-          const filePath = await save({
-            defaultPath: fileName,
-            filters: [{ name: 'PNG Image', extensions: ['png'] }],
-          });
-          if (filePath) {
-            const arrayBuffer = await blob.arrayBuffer();
-            await writeFile(filePath, new Uint8Array(arrayBuffer));
-          }
+          await saveBlobWithDialog(fileName, blob, [
+            { name: 'PNG Image', extensions: ['png'] },
+          ]);
         } catch (err) {
           console.error('Desktop save failed:', err);
         }

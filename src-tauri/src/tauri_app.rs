@@ -919,6 +919,25 @@
     }
 
     #[tauri::command]
+    pub async fn export_backup_bytes(state: State<'_, AppState>) -> Result<Vec<u8>, String> {
+        let temp_path = std::env::temp_dir().join(format!(
+            "open-dronelog-backup-{}.backup",
+            uuid::Uuid::new_v4()
+        ));
+
+        state
+            .db_authenticated()?
+            .export_backup(&temp_path)
+            .map_err(|e| format!("Failed to export backup: {}", e))?;
+
+        let bytes = std::fs::read(&temp_path)
+            .map_err(|e| format!("Failed to read temporary backup file: {}", e))?;
+
+        let _ = std::fs::remove_file(&temp_path);
+        Ok(bytes)
+    }
+
+    #[tauri::command]
     pub async fn import_backup(src_path: String, state: State<'_, AppState>) -> Result<String, String> {
         let path = std::path::PathBuf::from(&src_path);
         log::info!("Importing database backup from: {}", src_path);
@@ -926,6 +945,25 @@
             .db_authenticated()?
             .import_backup(&path)
             .map_err(|e| format!("Failed to import backup: {}", e))
+    }
+
+    #[tauri::command]
+    pub async fn import_backup_bytes(data: Vec<u8>, state: State<'_, AppState>) -> Result<String, String> {
+        let temp_path = std::env::temp_dir().join(format!(
+            "open-dronelog-restore-{}.backup",
+            uuid::Uuid::new_v4()
+        ));
+
+        std::fs::write(&temp_path, data)
+            .map_err(|e| format!("Failed to write temporary restore file: {}", e))?;
+
+        let result = state
+            .db_authenticated()?
+            .import_backup(&temp_path)
+            .map_err(|e| format!("Failed to import backup: {}", e));
+
+        let _ = std::fs::remove_file(&temp_path);
+        result
     }
 
     #[tauri::command]
@@ -1767,7 +1805,9 @@
                 get_equipment_names,
                 set_equipment_name,
                 export_backup,
+                export_backup_bytes,
                 import_backup,
+                import_backup_bytes,
                 add_flight_tag,
                 remove_flight_tag,
                 get_all_tags,

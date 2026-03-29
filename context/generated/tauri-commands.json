@@ -1,5 +1,5 @@
 {
-  "sourceFingerprint": "6053fa6101940b0f51218999adcacd96ca093dd846cd61668a9a0496d5c409e8",
+  "sourceFingerprint": "08dfc71395fce1861f361c8c7ba9e857fb9561f2733ab1680cb0c646e812e116",
   "sourceFile": "src/lib/api.ts",
   "commands": [
     "add_flight_tag",
@@ -12,6 +12,7 @@
     "delete_flight",
     "delete_profile",
     "export_backup",
+    "export_backup_bytes",
     "get_active_profile",
     "get_all_tags",
     "get_allowed_log_extensions",
@@ -34,6 +35,7 @@
     "get_sync_blacklist",
     "has_api_key",
     "import_backup",
+    "import_backup_bytes",
     "import_log",
     "import_log_bytes",
     "is_app_locked",

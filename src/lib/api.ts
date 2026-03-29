@@ -903,6 +903,77 @@ function getBackupFilename(): string {
   return `${timestamp}_Open_Dronelog.db.backup`;
 }
 
+function isLikelyMobileTauriRuntime(): boolean {
+  if (isWeb || typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function resolveDialogPath(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (
+    value &&
+    typeof value === 'object' &&
+    'path' in value &&
+    typeof (value as { path?: unknown }).path === 'string'
+  ) {
+    return (value as { path: string }).path;
+  }
+  return null;
+}
+
+export interface SaveDialogFilter {
+  name: string;
+  extensions: string[];
+}
+
+/**
+ * Save plain text content through the native Tauri save dialog.
+ * Uses binary write under the hood for consistent behavior on desktop and mobile.
+ */
+export async function saveTextWithDialog(
+  defaultPath: string,
+  content: string,
+  filters: SaveDialogFilter[],
+): Promise<boolean> {
+  if (isWeb) {
+    throw new Error('saveTextWithDialog is only available in Tauri mode');
+  }
+
+  const { save } = await import('@tauri-apps/plugin-dialog');
+  const { writeFile } = await import('@tauri-apps/plugin-fs');
+  const saveResult = await save({ defaultPath, filters });
+  const filePath = resolveDialogPath(saveResult);
+  if (!filePath) return false;
+
+  const bytes = new TextEncoder().encode(content);
+  await writeFile(filePath, bytes);
+  return true;
+}
+
+/**
+ * Save blob content through the native Tauri save dialog.
+ * Works for PNG/ZIP and other binary exports.
+ */
+export async function saveBlobWithDialog(
+  defaultPath: string,
+  blob: Blob,
+  filters: SaveDialogFilter[],
+): Promise<boolean> {
+  if (isWeb) {
+    throw new Error('saveBlobWithDialog is only available in Tauri mode');
+  }
+
+  const { save } = await import('@tauri-apps/plugin-dialog');
+  const { writeFile } = await import('@tauri-apps/plugin-fs');
+  const saveResult = await save({ defaultPath, filters });
+  const filePath = resolveDialogPath(saveResult);
+  if (!filePath) return false;
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  await writeFile(filePath, bytes);
+  return true;
+}
+
 export async function backupDatabase(): Promise<boolean> {
   if (isWeb) {
     // Web mode: download via fetch
@@ -916,12 +987,30 @@ export async function backupDatabase(): Promise<boolean> {
     return true;
   }
 
+  if (isLikelyMobileTauriRuntime()) {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const saveResult = await save({
+      defaultPath: getBackupFilename(),
+      filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+    });
+    const destPath = resolveDialogPath(saveResult);
+    if (!destPath) return false;
+
+    const invoke = await getTauriInvoke();
+    const raw = await invoke('export_backup_bytes');
+    const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw as number[]);
+    await writeFile(destPath, bytes);
+    return true;
+  }
+
   // Tauri mode: use native save dialog
   const { save } = await import('@tauri-apps/plugin-dialog');
-  const destPath = await save({
+  const saveResult = await save({
     defaultPath: getBackupFilename(),
     filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
   });
+  const destPath = resolveDialogPath(saveResult);
   if (!destPath) return false; // user cancelled
   const invoke = await getTauriInvoke();
   await invoke('export_backup', { destPath });
@@ -951,16 +1040,31 @@ export async function restoreDatabase(file?: File): Promise<string> {
     return response.json();
   }
 
+  if (isLikelyMobileTauriRuntime()) {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const { readFile } = await import('@tauri-apps/plugin-fs');
+    const openResult = await open({
+      multiple: false,
+      filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+    });
+    const srcPath = resolveDialogPath(openResult);
+    if (!srcPath) return '';
+
+    const bytes = await readFile(srcPath);
+    const invoke = await getTauriInvoke();
+    return invoke('import_backup_bytes', { data: Array.from(bytes) }) as Promise<string>;
+  }
+
   // Tauri mode: use native open dialog
   const { open } = await import('@tauri-apps/plugin-dialog');
-  const srcPath = await open({
+  const openResult = await open({
     multiple: false,
     filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
   });
+  const srcPath = resolveDialogPath(openResult);
   if (!srcPath) return ''; // user cancelled
-  const filePath = typeof srcPath === 'string' ? srcPath : (srcPath as { path: string }).path;
   const invoke = await getTauriInvoke();
-  return invoke('import_backup', { srcPath: filePath }) as Promise<string>;
+  return invoke('import_backup', { srcPath }) as Promise<string>;
 }
 
 // ============================================================================

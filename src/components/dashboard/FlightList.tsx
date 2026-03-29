@@ -1787,20 +1787,6 @@ export function FlightList({
 
       const flightsData: { flight: Flight; data: FlightDataResponse }[] = [];
 
-      // In Tauri mode, pick a file location first
-      let filePath: string | null = null;
-      if (!isWebMode()) {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        filePath = await save({
-          defaultPath: 'filtered_flights_summary.csv',
-          filters: [{ name: 'CSV', extensions: ['csv'] }],
-        }) as string | null;
-        if (!filePath) {
-          setIsExporting(false);
-          return;
-        }
-      }
-
       for (let i = 0; i < filteredFlights.length; i++) {
         const flight = filteredFlights[i];
         const baseName = flight.displayName || flight.fileName || `flight`;
@@ -1820,8 +1806,13 @@ export function FlightList({
       if (isWebMode()) {
         downloadFile('filtered_flights_summary.csv', summaryCsv);
       } else {
-        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-        await writeTextFile(filePath!, summaryCsv);
+        const saved = await api.saveTextWithDialog('filtered_flights_summary.csv', summaryCsv, [
+          { name: 'CSV', extensions: ['csv'] },
+        ]);
+        if (!saved) {
+          setIsExporting(false);
+          return;
+        }
       }
 
       setExportProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: '' });
@@ -1843,22 +1834,6 @@ export function FlightList({
     const now = new Date();
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const defaultFileName = `Flight_Regulation_Report_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}.html`;
-
-    // For desktop (Tauri) mode, open the save dialog FIRST before starting the export
-    let filePath: string | null = null;
-    if (!isWebMode()) {
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        filePath = await save({
-          defaultPath: defaultFileName,
-          filters: [{ name: 'HTML', extensions: ['html'] }],
-        }) as string | null;
-        if (!filePath) return; // User cancelled
-      } catch (err) {
-        console.error('Save dialog failed:', err);
-        return;
-      }
-    }
 
     try {
       setIsExporting(true);
@@ -1924,9 +1899,14 @@ export function FlightList({
 
       if (isWebMode()) {
         downloadFile(defaultFileName, htmlContent, 'text/html');
-      } else if (filePath) {
-        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-        await writeTextFile(filePath, htmlContent);
+      } else {
+        const saved = await api.saveTextWithDialog(defaultFileName, htmlContent, [
+          { name: 'HTML', extensions: ['html'] },
+        ]);
+        if (!saved) {
+          setIsExporting(false);
+          return;
+        }
       }
 
       setExportProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: '' });
@@ -2096,14 +2076,10 @@ export function FlightList({
       if (isWebMode()) {
         downloadFile(filename, content);
       } else {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-        const filePath = await save({
-          defaultPath: filename,
-          filters: [{ name: format.toUpperCase(), extensions: [extension] }],
-        });
-        if (!filePath) return;
-        await writeTextFile(filePath, content);
+        const saved = await api.saveTextWithDialog(filename, content, [
+          { name: format.toUpperCase(), extensions: [extension] },
+        ]);
+        if (!saved) return;
       }
     } catch (err) {
       console.error('Export failed:', err);

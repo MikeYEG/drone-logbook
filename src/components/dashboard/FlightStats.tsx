@@ -5,7 +5,7 @@
 
 import type { FlightDataResponse } from '@/types';
 import { useTranslation } from 'react-i18next';
-import { isWebMode, downloadFile, getFlightData } from '@/lib/api';
+import { isWebMode, downloadFile, getFlightData, saveTextWithDialog } from '@/lib/api';
 import { buildCsv, buildJson, buildGpx, buildKml } from '@/lib/exportUtils';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { WeatherModal } from './WeatherModal';
@@ -145,14 +145,10 @@ export function FlightStats({ data }: FlightStatsProps) {
       if (isWebMode()) {
         downloadFile(filename, content);
       } else {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-        const filePath = await save({
-          defaultPath: filename,
-          filters: [{ name: format.toUpperCase(), extensions: [extension] }],
-        });
-        if (!filePath) return;
-        await writeTextFile(filePath, content);
+        const saved = await saveTextWithDialog(filename, content, [
+          { name: format.toUpperCase(), extensions: [extension] },
+        ]);
+        if (!saved) return;
       }
     } catch (error) {
       console.error('Export failed:', error);

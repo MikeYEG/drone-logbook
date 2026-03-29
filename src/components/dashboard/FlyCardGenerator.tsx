@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDuration, formatDistance, formatAltitude, formatSpeed, type UnitPreferences } from '@/lib/utils';
-import { isWebMode } from '@/lib/api';
+import { isWebMode, saveBlobWithDialog } from '@/lib/api';
 import type { Flight } from '@/types';
 import { useFlightStore } from '@/stores/flightStore';
 import logoIcon from '@/assets/icon.png';
@@ -106,19 +106,9 @@ function downloadBlobWeb(filename: string, blob: Blob) {
  */
 async function saveBlobDesktop(filename: string, blob: Blob): Promise<boolean> {
   try {
-    const { save } = await import('@tauri-apps/plugin-dialog');
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-
-    const filePath = await save({
-      defaultPath: filename,
-      filters: [{ name: 'PNG Image', extensions: ['png'] }],
-    });
-
-    if (!filePath) return false;
-
-    const arrayBuffer = await blob.arrayBuffer();
-    await writeFile(filePath, new Uint8Array(arrayBuffer));
-    return true;
+    return await saveBlobWithDialog(filename, blob, [
+      { name: 'PNG Image', extensions: ['png'] },
+    ]);
   } catch (err) {
     console.error('Failed to save file:', err);
     return false;
