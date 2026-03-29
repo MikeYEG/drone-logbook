@@ -1,6 +1,9 @@
-name: Android Release Artifacts (Manual)
+name: Android Release Artifacts
 
 on:
+  push:
+    tags:
+      - '*'
   workflow_dispatch:
     inputs:
       build_aab:
@@ -13,12 +16,38 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "Using pushed tag: ${{ github.ref_name }}"
+          else
+            TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q '.tagName')
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "Resolved latest release tag: $TAG"
+          fi
+
   android-build:
+    needs: resolve-tag
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -49,19 +78,152 @@ jobs:
       - name: Initialize Android project
         run: npm run mobile:android:init
 
-      - name: Build release APKs (split per ABI)
-        run: npm run mobile:android:build:release:apk:split
+      - name: Build release universal APK
+        id: build_universal_apk
+        run: |
+          set -euo pipefail
+          LOG_PATH="$RUNNER_TEMP/android-build.log"
+          echo "build_log=$LOG_PATH" >> "$GITHUB_OUTPUT"
+          npm run mobile:android:build:release 2>&1 | tee "$LOG_PATH"
+
+      - name: Summarize Android build warnings
+        if: always()
+        run: |
+          set -euo pipefail
+          LOG_PATH="${{ steps.build_universal_apk.outputs.build_log }}"
+          if [ -z "$LOG_PATH" ] || [ ! -f "$LOG_PATH" ]; then
+            echo "No Android build log found to summarize."
+            exit 0
+          fi
+
+          KNOWN_WARN_RE='RustWebView\.kt:26:18.*databaseEnabled|WryActivity\.kt:34:42.*onBackPressed\(\).*deprecated'
+
+          TOTAL_WARNINGS=$(grep -c '^w:' "$LOG_PATH" || true)
+          KNOWN_WARNINGS=$(grep -Ec "$KNOWN_WARN_RE" "$LOG_PATH" || true)
+          ERROR_LINES=$(grep -E '(^e:|^ERROR:|BUILD FAILED|\* What went wrong:|Execution failed for task)' "$LOG_PATH" || true)
+          UNKNOWN_WARNING_LINES=$(grep '^w:' "$LOG_PATH" | grep -Ev "$KNOWN_WARN_RE" || true)
+
+          echo "Android build warning summary"
+          echo "- total Kotlin warnings: $TOTAL_WARNINGS"
+          echo "- known generated warnings: $KNOWN_WARNINGS"
+          echo "- unknown warnings: $((TOTAL_WARNINGS - KNOWN_WARNINGS))"
+
+          if [ -n "$ERROR_LINES" ]; then
+            echo "::group::Android build error highlights"
+            echo "$ERROR_LINES"
+            echo "::endgroup::"
+          fi
+
+          if [ -n "$UNKNOWN_WARNING_LINES" ]; then
+            echo "::group::Unknown Kotlin warnings"
+            echo "$UNKNOWN_WARNING_LINES"
+            echo "::endgroup::"
+          fi
 
       - name: Build release AABs (split per ABI)
         if: ${{ inputs.build_aab }}
         run: npm run mobile:android:build:release:aab:split
 
-      - name: Upload release APK artifacts
+      - name: Sign release universal APK
+        id: sign_apk
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+            echo "Missing one or more required signing secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEY_ALIAS, ANDROID_KEYSTORE_PASSWORD"
+            exit 1
+          fi
+
+          KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          TAG="${{ needs.resolve-tag.outputs.tag }}"
+          KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+          SIGNED_DIR="$RUNNER_TEMP/signed-apk"
+          APK_OUTPUT_DIR="src-tauri/gen/android/app/build/outputs/apk"
+
+          mkdir -p "$SIGNED_DIR"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+
+          mapfile -t UNIVERSAL_UNSIGNED_APKS < <(find "$APK_OUTPUT_DIR" -type f -name '*universal*release-unsigned.apk' | sort)
+
+          if [ "${#UNIVERSAL_UNSIGNED_APKS[@]}" -eq 0 ]; then
+            mapfile -t UNIVERSAL_UNSIGNED_APKS < <(find "$APK_OUTPUT_DIR" -type f -name '*universal*-unsigned.apk' | sort)
+          fi
+
+          if [ "${#UNIVERSAL_UNSIGNED_APKS[@]}" -eq 0 ]; then
+            mapfile -t UNIVERSAL_UNSIGNED_APKS < <(find "$APK_OUTPUT_DIR" -type f -name '*-unsigned.apk' | sort)
+          fi
+
+          if [ "${#UNIVERSAL_UNSIGNED_APKS[@]}" -eq 0 ]; then
+            echo "No unsigned APKs were found in $APK_OUTPUT_DIR"
+            exit 1
+          fi
+
+          if [ "${#UNIVERSAL_UNSIGNED_APKS[@]}" -gt 1 ]; then
+            echo "Expected a single universal unsigned APK, found ${#UNIVERSAL_UNSIGNED_APKS[@]}"
+            printf '%s\n' "${UNIVERSAL_UNSIGNED_APKS[@]}"
+            exit 1
+          fi
+
+          UNSIGNED_APK="${UNIVERSAL_UNSIGNED_APKS[0]}"
+          BASE_NAME=$(basename "$UNSIGNED_APK")
+          ALIGNED_APK="$RUNNER_TEMP/aligned-${BASE_NAME/-unsigned.apk/.apk}"
+          OUTPUT_NAME="open-dronelog_${TAG}_android-universal.apk"
+          OUTPUT_APK="$SIGNED_DIR/$OUTPUT_NAME"
+
+          zipalign -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+
+          apksigner sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --out "$OUTPUT_APK" \
+            "$ALIGNED_APK"
+
+          apksigner verify --verbose "$OUTPUT_APK"
+
+          echo "signed_apk=$OUTPUT_APK" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed universal APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-release-split
+          name: android-apk-release-universal-signed
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            ${{ steps.sign_apk.outputs.signed_apk }}
+
+      - name: Ensure release exists for tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release for tag $TAG already exists"
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --verify-tag \
+              --title "$TAG" \
+              --notes "Automated Android release assets for $TAG"
+          fi
+
+      - name: Upload signed universal APK to release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$TAG" \
+            "${{ steps.sign_apk.outputs.signed_apk }}" \
+            --repo "${{ github.repository }}" \
+            --clobber
 
       - name: Upload release AAB artifacts
         if: ${{ inputs.build_aab }}
