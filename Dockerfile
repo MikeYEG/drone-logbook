@@ -1,5 +1,5 @@
 # =============================================================================
-# Drone Logbook — Docker multi-stage build
+# Open Drone Log — Docker multi-stage build
 #
 # Stage 1: Build Rust backend (Axum web server)
 # Stage 2: Build React frontend (Vite)
@@ -32,7 +32,9 @@ RUN mkdir -p src-tauri/src && \
     echo '' > src-tauri/src/database.rs && \
     echo '' > src-tauri/src/models.rs && \
     echo '' > src-tauri/src/parser.rs && \
-    echo '' > src-tauri/src/server.rs
+    echo '' > src-tauri/src/server.rs && \
+    echo '' > src-tauri/src/dronelogbook_parser.rs && \
+    echo '' > src-tauri/src/litchi_parser.rs
 
 # Build dependencies only (cached layer)
 WORKDIR /build/src-tauri
@@ -72,8 +74,27 @@ RUN npx vite build
 # ---------------------------------------------------------------------------
 FROM nginx:stable-bookworm AS runtime
 
+# Install Python and Node.js for custom parsers
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install optional Python dependencies for custom parser scripts.
+# Users can edit requirements.txt and rebuild the image.
+COPY requirements.txt /app/requirements.txt
+RUN python3 -m venv /opt/parser-venv && \
+    /opt/parser-venv/bin/python -m pip install --no-cache-dir -U pip && \
+    /opt/parser-venv/bin/python -m pip install --no-cache-dir -r /app/requirements.txt
+
+# Ensure parser commands like "python3" use the venv interpreter by default.
+ENV PATH="/opt/parser-venv/bin:${PATH}"
+
 # Copy backend binary
-COPY --from=backend-builder /build/src-tauri/target/release/drone-logbook /app/drone-logbook
+COPY --from=backend-builder /build/src-tauri/target/release/open-dronelog /app/open-dronelog
 
 # Copy frontend build
 COPY --from=frontend-builder /build/dist /usr/share/nginx/html
@@ -92,7 +113,7 @@ RUN mkdir -p /data/drone-logbook
 ENV DATA_DIR=/data/drone-logbook
 ENV PORT=3001
 ENV HOST=127.0.0.1
-ENV RUST_LOG=info
+ENV RUST_LOG=DEBUG
 
 # Expose HTTP port
 EXPOSE 80

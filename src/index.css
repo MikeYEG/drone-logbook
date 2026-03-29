@@ -10,14 +10,6 @@
   --drone-surface: 22 33 62;
   --drone-muted: 74 78 105;
 
-  /* RC stick overlay — dark mode defaults */
-  --stick-idle: rgba(148, 163, 184, 0.35);
-  --stick-track: rgba(148, 163, 184, 0.18);
-  --stick-center: rgba(180, 190, 200, 0.5);
-  --stick-bg: rgba(15, 15, 26, 0.38);
-  --stick-border: rgba(100, 116, 139, 0.25);
-  --stick-bar-active: rgba(56, 200, 255, 0.95);
-  --stick-bar-glow: rgba(56, 200, 255, 0.35);
 }
 
 body.theme-light {
@@ -66,10 +58,67 @@ body.theme-light .border-gray-700 {
   border-color: #e2e8f0 !important;
 }
 
+/* Light mode: form inputs with dark hardcoded classes */
+body.theme-light .bg-gray-900 {
+  background-color: #ffffff !important;
+}
+
+body.theme-light .bg-gray-800 {
+  background-color: #f8fafc !important;
+}
+
+body.theme-light .border-gray-600 {
+  border-color: #cbd5e1 !important;
+}
+
+body.theme-light .text-gray-200 {
+  color: #1e293b !important;
+}
+
+body.theme-light .placeholder-gray-500::placeholder {
+  color: #94a3b8 !important;
+}
+
+body.theme-light .hover\:text-gray-300:hover {
+  color: #334155 !important;
+}
+
+body.theme-light .hover\:bg-gray-700\/50:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+body.theme-light .bg-gray-700 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Sort dropdown in overview panels */
+.sort-select {
+  background-color: rgb(var(--drone-dark)) !important;
+  border-color: rgb(var(--drone-muted) / 0.5) !important;
+  color: #9ca3af !important;
+  color-scheme: dark;
+}
+.sort-select option {
+  background-color: rgb(var(--drone-dark)) !important;
+  color: #9ca3af !important;
+}
+body.theme-light .sort-select {
+  background-color: rgb(var(--drone-dark)) !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  color-scheme: light;
+}
+body.theme-light .sort-select option {
+  background-color: rgb(var(--drone-surface)) !important;
+  color: #475569 !important;
+}
+
 /* Light mode: toggle switch off state - darker gray background */
 body.theme-light .toggle-track-off {
-  background-color: rgb(203, 213, 225) !important; /* slate-300 */
-  border-color: rgb(148, 163, 184) !important; /* slate-400 */
+  background-color: rgb(203, 213, 225) !important;
+  /* slate-300 */
+  border-color: rgb(148, 163, 184) !important;
+  /* slate-400 */
 }
 
 /* Light mode hover overrides */
@@ -122,30 +171,86 @@ body.theme-light .map-overlay {
   border-color: #e2e8f0 !important;
 }
 
-/* RC stick overlay — base */
-.rc-stick-overlay {
-  background: var(--stick-bg);
-  border: 1px solid var(--stick-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.stick-center-dot {
-  background: var(--stick-center);
-}
-.stick-bar-track {
-  background: var(--stick-track);
+/* Light mode: RC stick joystick pads */
+body.theme-light .rc-stick-pad {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+  border-color: rgba(203, 213, 225, 0.7) !important;
 }
 
-/* Light mode: RC stick overlay */
-body.theme-light {
-  --stick-idle: rgba(100, 116, 139, 0.5);
-  --stick-track: rgba(100, 116, 139, 0.2);
-  --stick-center: rgba(71, 85, 105, 0.55);
-  --stick-bg: rgba(255, 255, 255, 0.42);
-  --stick-border: rgba(203, 213, 225, 0.5);
-  --stick-bar-active: rgba(30, 41, 59, 0.9);
-  --stick-bar-glow: rgba(30, 41, 59, 0.15);
+/* RC stick crosshair lines */
+.rc-stick-crosshair {
+  background-color: rgba(148, 163, 184, 0.25);
 }
+
+body.theme-light .rc-stick-crosshair {
+  background-color: rgba(100, 116, 139, 0.3);
+}
+
+/* RC stick L/R labels */
+.rc-stick-label {
+  color: rgba(209, 213, 219, 0.7);
+}
+
+body.theme-light .rc-stick-label {
+  color: rgba(51, 65, 85, 0.7);
+}
+
+/* Message count badge — always white text */
+body.theme-light .msg-badge-count {
+  color: #ffffff !important;
+}
+
+/* ─── Flight Messages Modal — light mode ─────────────────────────── */
+body.theme-light .flight-messages-modal {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light .flight-messages-modal .border-gray-700,
+body.theme-light .flight-messages-modal .border-gray-700\/50 {
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light .flight-messages-modal .divide-gray-700\/40>*+* {
+  border-color: rgba(226, 232, 240, 0.7) !important;
+}
+
+body.theme-light .flight-messages-modal .msg-col-label {
+  color: #94a3b8 !important;
+}
+
+body.theme-light .flight-messages-modal .msg-time {
+  color: #1e293b !important;
+}
+
+body.theme-light .flight-messages-modal .msg-flight-time {
+  color: #64748b !important;
+}
+
+body.theme-light .flight-messages-modal .msg-text-caution {
+  color: #dc2626 !important;
+}
+
+body.theme-light .flight-messages-modal .msg-text-warn {
+  color: #b45309 !important;
+}
+
+body.theme-light .flight-messages-modal .msg-text-tip {
+  color: #1d4ed8 !important;
+}
+
+body.theme-light .flight-messages-modal .hover\:bg-red-900\/10:hover {
+  background-color: rgba(239, 68, 68, 0.06) !important;
+}
+
+body.theme-light .flight-messages-modal .hover\:bg-amber-900\/10:hover {
+  background-color: rgba(245, 158, 11, 0.06) !important;
+}
+
+body.theme-light .flight-messages-modal .hover\:bg-blue-900\/10:hover {
+  background-color: rgba(59, 130, 246, 0.06) !important;
+}
+
 
 /* Light mode: flight tags */
 body.theme-light .text-teal-300 {
@@ -266,6 +371,12 @@ body.modal-open .overflow-y-auto {
   overflow: hidden !important;
 }
 
+/* Allow scrolling inside the settings modal content */
+body.modal-open .settings-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
 body.overlay-active {
   overflow: hidden !important;
 }
@@ -336,13 +447,27 @@ body.theme-light .api-key-badge-personal:hover {
 }
 
 @keyframes badgeFadeIn {
-  from { opacity: 0; transform: translateY(-8px) scale(0.9); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes starPulse {
-  0%, 100% { filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.5)); }
-  50%      { filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.8)); }
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.5));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.8));
+  }
 }
 
 body.theme-light .supporter-badge svg {
@@ -415,40 +540,33 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
 /* Component layer */
 @layer components {
   .btn-primary {
-    @apply bg-drone-primary hover:bg-blue-500 text-white font-medium 
-           py-2 px-4 rounded-lg transition-colors duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-drone-primary hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply bg-drone-surface hover:bg-gray-700 text-white font-medium 
-           py-2 px-4 rounded-lg transition-colors duration-200
-           border border-gray-600;
+    @apply bg-drone-surface hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 border border-gray-600;
   }
 
   .card {
-    @apply bg-drone-surface rounded-xl border border-gray-700/50 
-           shadow-lg shadow-black/20;
+    @apply bg-drone-surface rounded-xl border border-gray-700/50 shadow-lg shadow-black/20;
   }
 
   /* Resizable container styling */
   .resize-y {
     resize: vertical;
   }
-  
+
   .resize-y::-webkit-resizer {
     background: linear-gradient(135deg, transparent 68%, rgba(156, 163, 175, 0.35) 68%);
   }
-  
+
   body.theme-light .resize-y::-webkit-resizer {
     background: linear-gradient(135deg, transparent 68%, rgba(100, 116, 139, 0.45) 68%);
   }
 
   .input {
-    @apply bg-drone-dark border border-gray-600 rounded-lg px-4 py-2
-           text-gray-100 placeholder-gray-500
-           focus:outline-none focus:ring-2 focus:ring-drone-primary/50 
-           focus:border-drone-primary transition-all;
+    @apply bg-drone-dark border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-drone-primary/50 focus:border-drone-primary;
+    transition: border-color 0.15s, box-shadow 0.15s;
     color-scheme: dark;
   }
 
@@ -474,9 +592,9 @@ body.theme-light ::-webkit-scrollbar-thumb:hover {
   background-color: rgb(var(--drone-dark));
   border: 1px solid #4b5563;
   border-radius: 0.5rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.25rem 0.5rem;
   color: #e2e8f0;
-  font-size: inherit;
+  font-size: 0.75rem;
   line-height: inherit;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -558,11 +676,109 @@ body.theme-light .maplibregl-ctrl-group {
   background-color: #2a2a4e !important;
 }
 
-.maplibregl-ctrl-group button + button {
+.maplibregl-ctrl-group button+button {
   border-top: 1px solid #4a4e69 !important;
 }
 
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  font-size: 10px;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.78);
+  color: #e2e8f0;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  display: flex;
+  align-items: center;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner {
+  display: inline-flex;
+  align-items: center;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.maplibregl-ctrl-attrib a:hover {
+  text-decoration: underline;
+}
+
+body.theme-light .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  border-color: rgba(148, 163, 184, 0.55);
+  background: rgba(248, 250, 252, 0.92);
+  color: #0f172a;
+}
+
+body.theme-light .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button {
+  color: #0f172a;
+}
+
+body.theme-dark .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.78);
+  color: #e2e8f0;
+}
+
+body.theme-dark .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button {
+  color: #cbd5e1;
+  /* MapLibre compact info icon is a black SVG background image; tint it for dark mode. */
+  filter: invert(85%) sepia(10%) saturate(260%) hue-rotate(175deg) brightness(95%) contrast(90%);
+}
+
 /* Dual-range duration slider */
+
+/* Scrollbar for filter scroll area */
+.filter-scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.filter-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+
+.filter-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.filter-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.filter-scroll-area {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+/* Light theme override */
+body.theme-light .filter-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+body.theme-light .filter-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+body.theme-light .filter-scroll-area {
+  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+}
+
 .dual-range-wrap {
   position: relative;
   height: 20px;
@@ -900,6 +1116,7 @@ body.theme-light .spinner.border-drone-primary {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -907,8 +1124,7 @@ body.theme-light .spinner.border-drone-primary {
 
 /* Drag and drop zone */
 .drop-zone {
-  @apply border-2 border-dashed border-gray-600 rounded-xl 
-         transition-all duration-200 cursor-pointer;
+  @apply border-2 border-dashed border-gray-600 rounded-xl transition-all duration-200 cursor-pointer;
 }
 
 .drop-zone:hover,
@@ -1019,9 +1235,12 @@ body.theme-light .milestone-timeline {
 
 /* Pulse animation for current milestone node */
 @keyframes milestonePulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 12px var(--milestone-node-glow), 0 0 24px var(--milestone-node-glow);
   }
+
   50% {
     box-shadow: 0 0 18px var(--milestone-node-glow), 0 0 36px var(--milestone-node-glow);
   }
@@ -1029,4 +1248,98 @@ body.theme-light .milestone-timeline {
 
 .milestone-node.active {
   animation: milestonePulse 2s ease-in-out infinite;
+}
+
+/* =====================================================
+   Initialization Loading Overlay
+   ===================================================== */
+@keyframes initProgress {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.init-progress-bar {
+  animation: initProgress 1.5s ease-in-out infinite;
+}
+
+/* ─── Donation banner marquee (mobile) ─────────────────────────── */
+@keyframes marqueeScroll {
+  0% {
+    transform: translateX(100%);
+  }
+
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.marquee-container {
+  position: relative;
+}
+
+/* Settings modal scrollbar — always visible on mobile */
+.settings-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.settings-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+/* Mobile sidebar buttons (settings & close) */
+.sidebar-mobile-btn {
+  background-color: #1f2937; /* gray-800 */
+  border-color: #374151; /* gray-700 */
+  color: #d1d5db; /* gray-300 */
+}
+
+.sidebar-mobile-btn:hover {
+  color: #ffffff;
+}
+
+body.theme-light .sidebar-mobile-btn {
+  background-color: #ffffff;
+  border-color: #d1d5db; /* gray-300 */
+  color: #4b5563; /* gray-600 */
+}
+
+body.theme-light .sidebar-mobile-btn:hover {
+  color: #111827; /* gray-900 */
+}
+
+.marquee-content {
+  animation: marqueeScroll 25s linear infinite;
+}
+
+/* On md+ screens, stop the marquee and center the text */
+@media (min-width: 768px) {
+  .marquee-content {
+    animation: none;
+    transform: none;
+  }
+
+  .md\:marquee-paused {
+    animation: none !important;
+    transform: none !important;
+  }
 }
