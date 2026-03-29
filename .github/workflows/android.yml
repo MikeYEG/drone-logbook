@@ -124,6 +124,23 @@ jobs:
         if: ${{ inputs.build_aab }}
         run: npm run mobile:android:build:release:aab:split
 
+      - name: Ensure Android signing tools
+        run: |
+          set -euo pipefail
+
+          # zipalign and apksigner come from Android build-tools and are not always on PATH.
+          sdkmanager --install "build-tools;35.0.0"
+
+          BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          if [ -z "${BUILD_TOOLS_DIR:-}" ]; then
+            echo "Unable to locate Android build-tools directory under $ANDROID_HOME/build-tools"
+            exit 1
+          fi
+
+          echo "$BUILD_TOOLS_DIR" >> "$GITHUB_PATH"
+          "$BUILD_TOOLS_DIR/zipalign" -h >/dev/null
+          "$BUILD_TOOLS_DIR/apksigner" --version >/dev/null
+
       - name: Sign release universal APK
         id: sign_apk
         env:
@@ -144,6 +161,19 @@ jobs:
           KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
           SIGNED_DIR="$RUNNER_TEMP/signed-apk"
           APK_OUTPUT_DIR="src-tauri/gen/android/app/build/outputs/apk"
+
+          ZIPALIGN_BIN=$(command -v zipalign || true)
+          APKSIGNER_BIN=$(command -v apksigner || true)
+          if [ -z "$ZIPALIGN_BIN" ] || [ -z "$APKSIGNER_BIN" ]; then
+            BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+            ZIPALIGN_BIN="$BUILD_TOOLS_DIR/zipalign"
+            APKSIGNER_BIN="$BUILD_TOOLS_DIR/apksigner"
+          fi
+
+          if [ ! -x "$ZIPALIGN_BIN" ] || [ ! -x "$APKSIGNER_BIN" ]; then
+            echo "Could not resolve zipalign/apksigner binaries"
+            exit 1
+          fi
 
           mkdir -p "$SIGNED_DIR"
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
@@ -175,9 +205,9 @@ jobs:
           OUTPUT_NAME="open-dronelog_${TAG}_android-universal.apk"
           OUTPUT_APK="$SIGNED_DIR/$OUTPUT_NAME"
 
-          zipalign -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$ZIPALIGN_BIN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
 
-          apksigner sign \
+          "$APKSIGNER_BIN" sign \
             --ks "$KEYSTORE_PATH" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
@@ -185,7 +215,7 @@ jobs:
             --out "$OUTPUT_APK" \
             "$ALIGNED_APK"
 
-          apksigner verify --verbose "$OUTPUT_APK"
+          "$APKSIGNER_BIN" verify --verbose "$OUTPUT_APK"
 
           echo "signed_apk=$OUTPUT_APK" >> "$GITHUB_OUTPUT"
 
