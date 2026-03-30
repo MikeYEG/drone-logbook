@@ -260,6 +260,9 @@ npm run tauri
 
 The app can also be deployed as a self-hosted web application using Docker. This uses an Axum REST backend instead of Tauri IPC, with Nginx serving the frontend and proxying API requests.
 
+> [!TIP]
+> For hosted/server deployments where you want a dedicated desktop/mobile uploader that watches a local folder and syncs logs to your server profile automatically, use the companion utility: [opendronelog-sync](https://github.com/arpanghosh8453/opendronelog-sync).
+
 > [!IMPORTANT]
 > This Web interface is primarily designed for Desktop or larger screen viewing. Basic mobile responsiveness is available but the full experience is best on larger screens.
 
