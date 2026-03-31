@@ -58,31 +58,16 @@
     <img src="screenshots/interface_dark.png" alt="Interface (dark)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/interface_light.png" alt="Interface (light)" width="900" />
-</p>
-<p align="center">
     <img src="screenshots/individual_stats.png" alt="Individual stats" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/individual_stats_light.png" alt="Individual stats (light)" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/weather_preview.png" alt="Weather preview" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/telemetry_1.png" alt="Telemetry charts" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/telemetry_2.png" alt="Telemetry charts 2" width="900" />
-</p>
-<p align="center">
     <img src="screenshots/map_dark.png" alt="Flight map replay (dark)" width="900" />
 </p>
 <p align="center">
-    <img src="screenshots/map_light.png" alt="Flight map replay (light)" width="900" />
-</p>
-<p align="center">
-    <img src="screenshots/flight_map_2.png" alt="Flight map 2" width="900" />
+    <img src="screenshots/mobile-interface.png" alt="Mobile app interface" width="900" />
 </p>
 <p align="center">
     <img src="screenshots/flight_report.png" alt="Flight report" width="900" />
@@ -261,7 +246,11 @@ npm run tauri
 The app can also be deployed as a self-hosted web application using Docker. This uses an Axum REST backend instead of Tauri IPC, with Nginx serving the frontend and proxying API requests.
 
 > [!TIP]
-> For hosted/server deployments where you want a dedicated desktop/mobile uploader that watches a local folder and syncs logs to your server profile automatically, use the companion utility: [opendronelog-sync](https://github.com/arpanghosh8453/opendronelog-sync).
+> For hosted/server deployments where you want a dedicated desktop/mobile uploader that watches a local folder and syncs logs to your hosted ODL server automatically, use the companion utility: [opendronelog-sync](https://github.com/arpanghosh8453/opendronelog-sync).
+
+<p align="center">
+    <img src="screenshots/ODL-sync-interface-dark.png" alt="ODL Sync utility" width="900" />
+</p>
 
 > [!IMPORTANT]
 > This Web interface is primarily designed for Desktop or larger screen viewing. Basic mobile responsiveness is available but the full experience is best on larger screens.
