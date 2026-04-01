@@ -181,6 +181,9 @@ export function Dashboard() {
   const shouldStackPanels = isDesktopLayout && mainPanelsWidth > 0
     ? mainPanelsWidth < SIDE_BY_SIDE_MIN_WIDTH
     : !isDesktopLayout;
+  const splitCardsViewportHeight = isDesktopLayout && !shouldStackPanels
+    ? 'calc(100dvh - 200px)'
+    : undefined;
 
   // Apply theme class on mount and listen for system preference changes.
   // The store's setThemeMode already applies classes synchronously for instant switching;
@@ -676,12 +679,14 @@ export function Dashboard() {
                 <div id="main-panels" className={`flex-1 md:min-h-[620px] flex flex-col ${shouldStackPanels ? '' : 'md:flex-row'} gap-4 p-4 overflow-visible ${shouldStackPanels ? '' : 'md:overflow-hidden'}`}>
                   {/* Telemetry Charts - when collapsed, content clips instead of squeezing */}
                   <div
-                    className={`card flex flex-col min-h-[400px] md:min-h-[520px] ${isDesktopLayout && !shouldStackPanels ? 'md:h-full' : 'md:max-h-[720px]'} relative ${isTelemetryCollapsed ? 'overflow-hidden' : 'overflow-hidden'}`}
+                    className={`card flex flex-col min-h-[400px] md:min-h-[520px] relative ${isTelemetryCollapsed ? 'overflow-hidden' : 'overflow-hidden'}`}
                     style={{
                       flexBasis: isDesktopLayout && !shouldStackPanels ? `${mainSplit}%` : 'auto',
                       flexGrow: isDesktopLayout && !shouldStackPanels ? 0 : 1,
                       minWidth: isDesktopLayout && !shouldStackPanels ? (isTelemetryCollapsed ? TELEMETRY_MIN_VISIBLE_WIDTH : TELEMETRY_CARD_MIN_WIDTH) : '100%',
                       flexShrink: 0,
+                      height: splitCardsViewportHeight,
+                      maxHeight: splitCardsViewportHeight ?? '720px',
                     }}
                   >
                     <div className={`border-b border-gray-700 flex items-center ${isTelemetryCollapsed ? 'justify-center p-2' : 'justify-between p-3'}`}>
@@ -760,12 +765,14 @@ export function Dashboard() {
 
                   {/* Flight Map */}
                   <div
-                    className={`card flex flex-col ${isDesktopLayout && !shouldStackPanels ? 'md:h-full' : 'h-[648px]'} md:min-h-[520px] ${isDesktopLayout && !shouldStackPanels ? '' : 'md:max-h-[720px]'} overflow-hidden`}
+                    className={`card flex flex-col ${isDesktopLayout && !shouldStackPanels ? '' : 'h-[648px]'} md:min-h-[520px] overflow-hidden`}
                     style={{
                       flexBasis: isDesktopLayout && !shouldStackPanels ? 'auto' : 'auto',
                       flexGrow: isDesktopLayout && !shouldStackPanels ? 1 : 0,
                       minWidth: isDesktopLayout && !shouldStackPanels ? MAP_MIN_WIDTH : '100%',
                       flexShrink: isDesktopLayout && !shouldStackPanels ? 1 : 0,
+                      height: splitCardsViewportHeight,
+                      maxHeight: splitCardsViewportHeight ?? '720px',
                     }}
                   >
                     <div className="px-3 py-2.5 border-b border-gray-700 flex items-center justify-between">
