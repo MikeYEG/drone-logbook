@@ -259,6 +259,11 @@ export function Dashboard() {
         className={`bg-drone-secondary md:border-r border-gray-700 flex flex-col z-50 fixed inset-0 md:relative md:inset-auto mobile-safe-container h-full overflow-y-auto overflow-x-hidden transition-[width,min-width,opacity,transform] duration-300 ease-in-out ${isSidebarHidden ? 'opacity-0 pointer-events-none md:overflow-hidden' : 'opacity-100'
           }`}
         style={{
+          // In desktop layout, avoid safe-area padding so width:0 truly collapses.
+          paddingTop: isDesktopLayout ? 0 : undefined,
+          paddingRight: isDesktopLayout ? 0 : undefined,
+          paddingBottom: isDesktopLayout ? 0 : undefined,
+          paddingLeft: isDesktopLayout ? 0 : undefined,
           width: typeof window !== 'undefined' && window.innerWidth < 768
             ? '100%'
             : (isSidebarHidden ? 0 : sidebarWidth),
@@ -592,13 +597,13 @@ export function Dashboard() {
         </aside>
 
       <aside
-        className={`bg-drone-secondary border-r border-gray-700 items-start justify-center relative hidden md:flex md:transition-[width,min-width,opacity] md:duration-250 md:ease-in-out ${isSidebarHidden ? 'md:opacity-100 md:pointer-events-auto' : 'md:opacity-0 md:pointer-events-none'
+        className={`bg-drone-secondary border-r border-gray-700 items-start justify-center relative z-40 overflow-visible hidden md:flex md:transition-[width,min-width,opacity] md:duration-250 md:ease-in-out ${isSidebarHidden ? 'md:opacity-100 md:pointer-events-auto' : 'md:opacity-0 md:pointer-events-none'
           }`}
         style={{ width: isSidebarHidden ? '1.8rem' : 0, minWidth: isSidebarHidden ? '1.8rem' : 0 }}
       >
         <button
           onClick={() => setIsSidebarHidden(false)}
-          className="sidebar-collapsed-toggle-btn mt-4 translate-x-1/2 border rounded-full w-[4rem] h-[3rem] text-lg leading-none flex items-center justify-center"
+          className="sidebar-collapsed-toggle-btn relative z-50 mt-4 translate-x-1/2 border rounded-full w-[4rem] h-[3rem] text-lg leading-none flex items-center justify-center"
           title={t('dashboard.showSidebar')}
         >
           ›
