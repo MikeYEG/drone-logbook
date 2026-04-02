@@ -131,6 +131,22 @@ The application is divided into three main areas:
 | **Multiple Files** | Select multiple files at once for batch import |
 | **Folder Sync** | Configure automatic import from a mounted folder |
 
+### Sync Blacklist Behavior
+
+When a file is deleted from a sync-imported workflow, its content hash is added to the sync blacklist so scheduled folder sync will skip that file in future runs.
+
+You can manage these entries from **Settings → Data Management → Manage blacklisted logs (count)**:
+
+- View blacklisted entries with filename/presence status (when resolvable from the sync folder)
+- Select one or more entries and clear only the selected items
+
+You can also use manual import as an alternative removal path for specific files:
+
+- Import the file via **Browse Files** or **Drag and Drop**
+- The app imports it and automatically removes that file hash from the sync blacklist in the same flow
+
+This is useful when you want to re-allow and import a specific file immediately, without opening the blacklist manager.
+
 ### Duplicate Detection
 
 The app automatically detects and prevents duplicate imports based on:
@@ -970,7 +986,7 @@ Required for decrypting V13+ DJI flight logs.
 | **Import Backup** | Restore from a previously exported backup file (replaces current database) |
 | **Delete All Logs** | Remove all flight data (requires confirmation). Custom names, notes, colors, and manual tags are preserved for re-import. |
 | **Remove Duplicate Flights** | Scan and remove any duplicate entries |
-| **Clear Sync Blacklist** | (Docker only) Reset the list of files excluded from auto-sync |
+| **Manage blacklisted logs (count)** | Open the blacklist manager for sync-imported files, review entries, and clear selected items from the sync blacklist |
 
 > [!IMPORTANT]
 > Backup files are portable and can be restored on any instance, whether desktop or Docker.
