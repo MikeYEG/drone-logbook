@@ -250,8 +250,6 @@ export function FlightList({
     getDisplaySerial,
     overviewHighlightedFlightId,
     setOverviewHighlightedFlightId,
-    addTag,
-    removeTag,
     loadAllTags,
     clearFlightDataCache,
     activeProfile,
@@ -1938,11 +1936,17 @@ export function FlightList({
           await addToBlacklist(flight.fileHash);
         }
 
-        await deleteFlight(flight.id);
+        await api.deleteFlight(flight.id);
       }
 
       setDeleteProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: '' });
-      setTimeout(() => setIsDeleting(false), 1000);
+
+      clearSelection();
+      clearFlightDataCache();
+      await useFlightStore.getState().loadFlights();
+      await useFlightStore.getState().loadOverview();
+      await loadAllTags();
+      setIsDeleting(false);
     } catch (err) {
       console.error('Delete failed:', err);
       setIsDeleting(false);
@@ -1975,7 +1979,7 @@ export function FlightList({
         // Remove each selected tag from this flight
         for (const tag of tagsToRemove) {
           if (flight.tags?.some(t => t.tag === tag)) {
-            await removeTag(flight.id, tag);
+            await api.removeFlightTag(flight.id, tag);
           }
         }
       }
@@ -1983,10 +1987,11 @@ export function FlightList({
       setUntagProgress({ done: flightsToProcess.length, total: flightsToProcess.length });
       // Clear the tag filter since those tags may no longer exist
       setSelectedTags([]);
-      // Refresh all tags list and clear cache so UI reflects changes
+      // Refresh once at the end so the UI updates in one step.
+      await useFlightStore.getState().loadFlights();
       await loadAllTags();
       clearFlightDataCache();
-      setTimeout(() => setIsUntagging(false), 500);
+      setIsUntagging(false);
     } catch (err) {
       console.error('Untag failed:', err);
       setIsUntagging(false);
@@ -2013,16 +2018,17 @@ export function FlightList({
 
         // Only add if flight doesn't already have this tag
         if (!flight.tags?.some(t => t.tag === tagToAdd)) {
-          await addTag(flight.id, tagToAdd);
+          await api.addFlightTag(flight.id, tagToAdd);
         }
       }
 
       setBulkTagProgress({ done: filteredFlights.length, total: filteredFlights.length });
       setBulkTagInput('');
-      // Refresh all tags list and clear cache so UI reflects changes
+      // Refresh once at the end so the UI updates in one step.
+      await useFlightStore.getState().loadFlights();
       await loadAllTags();
       clearFlightDataCache();
-      setTimeout(() => setIsBulkTagging(false), 500);
+      setIsBulkTagging(false);
     } catch (err) {
       console.error('Bulk tag failed:', err);
       setIsBulkTagging(false);
