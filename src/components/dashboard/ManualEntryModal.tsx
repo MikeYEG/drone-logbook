@@ -4,10 +4,12 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { DayPicker } from 'react-day-picker';
+import { useTranslation } from 'react-i18next';
 import 'react-day-picker/dist/style.css';
 import { createManualFlight } from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
+import { formatDateDisplay as fmtDateDisplay } from '@/lib/utils';
+import { DatePickerPopover } from '@/components/ui/DatePickerPopover';
 
 function resolveThemeMode(mode: 'system' | 'dark' | 'light'): 'dark' | 'light' {
   if (mode === 'system') {
@@ -75,7 +77,8 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
 
-  const { unitSystem, loadFlights, loadOverview, loadAllTags, themeMode } = useFlightStore();
+  const { t } = useTranslation();
+  const { unitPrefs, dateLocale, appLanguage, loadFlights, loadOverview, loadAllTags, themeMode } = useFlightStore();
   const isLight = resolveThemeMode(themeMode) === 'light';
 
   // Reset form when modal opens
@@ -113,33 +116,33 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
     const newErrors: FormErrors = {};
 
     if (!formData.aircraftName.trim()) {
-      newErrors.aircraftName = 'Required';
+      newErrors.aircraftName = t('manual.required');
     }
     if (!formData.droneSerial.trim()) {
-      newErrors.droneSerial = 'Required';
+      newErrors.droneSerial = t('manual.required');
     }
     if (!formData.batterySerial.trim()) {
-      newErrors.batterySerial = 'Required';
+      newErrors.batterySerial = t('manual.required');
     }
     if (!formData.date) {
-      newErrors.date = 'Required';
+      newErrors.date = t('manual.required');
     }
     if (!formData.time) {
-      newErrors.time = 'Required';
+      newErrors.time = t('manual.required');
     } else if (!/^\d{2}:\d{2}:\d{2}$/.test(formData.time)) {
-      newErrors.time = 'Use HH:MM:SS format';
+      newErrors.time = t('manual.hhmmssFormat');
     }
-    
+
     const duration = parseFloat(formData.durationSecs);
     if (!formData.durationSecs || isNaN(duration) || duration <= 0) {
-      newErrors.durationSecs = 'Required (positive number)';
+      newErrors.durationSecs = t('manual.requiredPositive');
     }
 
     // Validate distance if provided
     if (formData.totalDistance) {
       const distance = parseFloat(formData.totalDistance);
       if (isNaN(distance) || distance < 0) {
-        newErrors.totalDistance = 'Must be a positive number';
+        newErrors.totalDistance = t('manual.mustBePositive');
       }
     }
 
@@ -147,22 +150,22 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
     if (formData.maxAltitude) {
       const altitude = parseFloat(formData.maxAltitude);
       if (isNaN(altitude) || altitude < 0) {
-        newErrors.maxAltitude = 'Must be a positive number';
+        newErrors.maxAltitude = t('manual.mustBePositive');
       }
     }
 
     const lat = parseFloat(formData.homeLat);
     if (!formData.homeLat || isNaN(lat)) {
-      newErrors.homeLat = 'Required';
+      newErrors.homeLat = t('manual.required');
     } else if (lat < -90 || lat > 90) {
-      newErrors.homeLat = 'Must be -90 to 90';
+      newErrors.homeLat = t('manual.latRange');
     }
 
     const lon = parseFloat(formData.homeLon);
     if (!formData.homeLon || isNaN(lon)) {
-      newErrors.homeLon = 'Required';
+      newErrors.homeLon = t('manual.required');
     } else if (lon < -180 || lon > 180) {
-      newErrors.homeLon = 'Must be -180 to 180';
+      newErrors.homeLon = t('manual.lonRange');
     }
 
     setErrors(newErrors);
@@ -184,7 +187,7 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
         const distance = parseFloat(formData.totalDistance);
         if (!isNaN(distance)) {
           // If imperial, convert from feet to meters
-          totalDistanceMeters = unitSystem === 'imperial' ? distance * 0.3048 : distance;
+          totalDistanceMeters = unitPrefs.distance === 'imperial' ? distance * 0.3048 : distance;
         }
       }
 
@@ -192,7 +195,7 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
         const altitude = parseFloat(formData.maxAltitude);
         if (!isNaN(altitude)) {
           // If imperial, convert from feet to meters
-          maxAltitudeMeters = unitSystem === 'imperial' ? altitude * 0.3048 : altitude;
+          maxAltitudeMeters = unitPrefs.altitude === 'imperial' ? altitude * 0.3048 : altitude;
         }
       }
 
@@ -217,7 +220,7 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
       });
 
       if (result.success) {
-        setMessage({ type: 'success', text: 'Flight entry created successfully!' });
+        setMessage({ type: 'success', text: t('manual.successToast') });
         // Refresh flight list
         await Promise.all([loadFlights(), loadOverview(), loadAllTags()]);
         // Close after brief delay
@@ -225,10 +228,10 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
           onClose();
         }, 1000);
       } else {
-        setMessage({ type: 'error', text: result.message || 'Failed to create flight entry' });
+        setMessage({ type: 'error', text: result.message || t('manual.errorToast') });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to create flight entry' });
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : t('manual.errorToast') });
     } finally {
       setIsSubmitting(false);
     }
@@ -243,21 +246,17 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
   };
 
   const formatDateDisplay = (date: Date | undefined): string => {
-    if (!date) return 'Select date';
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    if (!date) return t('manual.selectDate');
+    return fmtDateDisplay(date, dateLocale, appLanguage);
   };
 
   if (!isOpen) return null;
 
-  const distanceUnit = unitSystem === 'imperial' ? 'ft' : 'm';
-  const altitudeUnit = unitSystem === 'imperial' ? 'ft' : 'm';
+  const distanceUnit = unitPrefs.distance === 'imperial' ? 'ft' : 'm';
+  const altitudeUnit = unitPrefs.altitude === 'imperial' ? 'ft' : 'm';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 overflow-hidden mobile-safe-container">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -265,10 +264,10 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-2xl max-h-full grid grid-rows-[auto_1fr_auto]">
+      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] modal-mobile-max grid grid-rows-[auto_1fr_auto]">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Manual Flight Entry</h2>
+          <h2 className="text-lg font-semibold text-white">{t('manual.title')}</h2>
           <button
             onClick={onClose}
             disabled={isSubmitting}
@@ -285,11 +284,10 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
           {/* Message */}
           {message && (
             <div
-              className={`p-3 rounded-lg text-sm ${
-                message.type === 'success'
+              className={`p-3 rounded-lg text-sm ${message.type === 'success'
                   ? 'bg-green-900/50 text-green-300 border border-green-700'
                   : 'bg-red-900/50 text-red-300 border border-red-700'
-              }`}
+                }`}
             >
               {message.text}
             </div>
@@ -300,13 +298,13 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Flight Title */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Flight Title
+                {t('manual.flightTitle')}
               </label>
               <input
                 type="text"
                 value={formData.flightTitle}
                 onChange={(e) => handleFieldChange('flightTitle', e.target.value)}
-                placeholder="Optional - defaults to Aircraft Name"
+                placeholder={t('manual.placeholderTitle')}
                 className="w-full px-3 py-2 bg-drone-dark border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary"
               />
             </div>
@@ -314,16 +312,15 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Aircraft Name */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Aircraft Name <span className="text-red-400">*</span>
+                {t('manual.aircraftName')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.aircraftName}
                 onChange={(e) => handleFieldChange('aircraftName', e.target.value)}
-                placeholder="e.g., DJI Mini 3 Pro"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.aircraftName ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderAircraft')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.aircraftName ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.aircraftName && <p className="mt-1 text-xs text-red-400">{errors.aircraftName}</p>}
             </div>
@@ -334,16 +331,15 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Drone Serial */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Aircraft SN <span className="text-red-400">*</span>
+                {t('manual.aircraftSN')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.droneSerial}
                 onChange={(e) => handleFieldChange('droneSerial', e.target.value)}
-                placeholder="e.g., 3NZCH..."
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.droneSerial ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderAircraftSN')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.droneSerial ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.droneSerial && <p className="mt-1 text-xs text-red-400">{errors.droneSerial}</p>}
             </div>
@@ -351,16 +347,15 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Battery Serial */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Battery SN <span className="text-red-400">*</span>
+                {t('manual.batterySN')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.batterySerial}
                 onChange={(e) => handleFieldChange('batterySerial', e.target.value)}
-                placeholder="e.g., 5QBH..."
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.batterySerial ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderBatterySN')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.batterySerial ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.batterySerial && <p className="mt-1 text-xs text-red-400">{errors.batterySerial}</p>}
             </div>
@@ -371,60 +366,51 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Date */}
             <div className="relative" ref={datePickerRef}>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Date <span className="text-red-400">*</span>
+                {t('manual.date')} <span className="text-red-400">*</span>
               </label>
               <button
                 type="button"
                 onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white text-left focus:outline-none focus:ring-1 focus:ring-drone-primary flex items-center justify-between ${
-                  errors.date ? 'border-red-500' : 'border-gray-600'
-                }`}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white text-left focus:outline-none focus:ring-1 focus:ring-drone-primary flex items-center justify-between ${errors.date ? 'border-red-500' : 'border-gray-600'
+                  }`}
               >
                 <span className={formData.date ? '' : 'text-gray-500'}>
                   {formatDateDisplay(formData.date)}
                 </span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                  <line x1="16" y1="2" x2="16" y2="6"/>
-                  <line x1="8" y1="2" x2="8" y2="6"/>
-                  <line x1="3" y1="10" x2="21" y2="10"/>
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
               </button>
-              {isDatePickerOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setIsDatePickerOpen(false)}
-                  />
-                  <div
-                    className={`absolute left-0 top-full mt-1 z-50 rounded-xl border p-3 shadow-xl ${
-                      isLight
-                        ? 'bg-white border-gray-200'
-                        : 'bg-drone-surface border-gray-700'
-                    }`}
-                  >
-                    <DayPicker
-                      mode="single"
-                      selected={formData.date}
-                      onSelect={(date) => {
-                        handleFieldChange('date', date);
-                        setIsDatePickerOpen(false);
-                      }}
-                      disabled={{ after: new Date() }}
-                      defaultMonth={formData.date}
-                      weekStartsOn={1}
-                      className={`rdp-theme ${isLight ? 'rdp-light' : 'rdp-dark'}`}
-                    />
-                  </div>
-                </>
-              )}
+              <DatePickerPopover
+                isOpen={isDatePickerOpen}
+                onClose={() => setIsDatePickerOpen(false)}
+                isLight={isLight}
+                mode="single"
+                selected={formData.date}
+                onSelect={(date) => {
+                  handleFieldChange('date', date);
+                  setIsDatePickerOpen(false);
+                }}
+                disabled={{ after: new Date() }}
+                defaultMonth={formData.date}
+                jumpMaxDate={new Date()}
+                onJumpDate={(date) => {
+                  handleFieldChange('date', date);
+                  setIsDatePickerOpen(false);
+                }}
+                position="absolute"
+                popoverClassName="left-0 top-full mt-1"
+              />
               {errors.date && <p className="mt-1 text-xs text-red-400">{errors.date}</p>}
             </div>
 
             {/* Time */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Takeoff Time <span className="text-red-400">*</span>
+                {t('manual.takeoffTime')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="time"
@@ -439,12 +425,11 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
                     handleFieldChange('time', val);
                   }
                 }}
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.time ? 'border-red-500' : 'border-gray-600'
-                }`}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.time ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.time && <p className="mt-1 text-xs text-red-400">{errors.time}</p>}
-              <p className="mt-1 text-xs text-gray-500">24h format (local time)</p>
+              <p className="mt-1 text-xs text-gray-500">{t('manual.hint24h')}</p>
             </div>
           </div>
 
@@ -453,17 +438,16 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Total Distance */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Travelled Distance ({distanceUnit})
+                {t('manual.travelledDistance', { unit: distanceUnit })}
               </label>
               <input
                 type="text"
                 inputMode="decimal"
                 value={formData.totalDistance}
                 onChange={(e) => handleFieldChange('totalDistance', filterNumericInput(e.target.value, false))}
-                placeholder="Optional"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.totalDistance ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderOptional', { defaultValue: 'Optional' })}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.totalDistance ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.totalDistance && <p className="mt-1 text-xs text-red-400">{errors.totalDistance}</p>}
             </div>
@@ -471,17 +455,16 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Max Altitude */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Max Altitude ({altitudeUnit})
+                {t('manual.maxAltitude', { unit: altitudeUnit })}
               </label>
               <input
                 type="text"
                 inputMode="decimal"
                 value={formData.maxAltitude}
                 onChange={(e) => handleFieldChange('maxAltitude', filterNumericInput(e.target.value, false))}
-                placeholder="Optional"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.maxAltitude ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderOptional', { defaultValue: 'Optional' })}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.maxAltitude ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.maxAltitude && <p className="mt-1 text-xs text-red-400">{errors.maxAltitude}</p>}
             </div>
@@ -492,17 +475,16 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Latitude */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Takeoff Latitude <span className="text-red-400">*</span>
+                {t('manual.takeoffLatitude')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 inputMode="decimal"
                 value={formData.homeLat}
                 onChange={(e) => handleFieldChange('homeLat', filterNumericInput(e.target.value, true))}
-                placeholder="e.g., 37.7749"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.homeLat ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderLat')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.homeLat ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.homeLat && <p className="mt-1 text-xs text-red-400">{errors.homeLat}</p>}
               <p className="mt-1 text-xs text-gray-500">-90 to 90</p>
@@ -511,17 +493,16 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Longitude */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Takeoff Longitude <span className="text-red-400">*</span>
+                {t('manual.takeoffLongitude')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 inputMode="decimal"
                 value={formData.homeLon}
                 onChange={(e) => handleFieldChange('homeLon', filterNumericInput(e.target.value, true))}
-                placeholder="e.g., -122.4194"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.homeLon ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderLon')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.homeLon ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.homeLon && <p className="mt-1 text-xs text-red-400">{errors.homeLon}</p>}
               <p className="mt-1 text-xs text-gray-500">-180 to 180</p>
@@ -533,33 +514,32 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             {/* Duration */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Duration (seconds) <span className="text-red-400">*</span>
+                {t('manual.durationSeconds')} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 inputMode="numeric"
                 value={formData.durationSecs}
                 onChange={(e) => handleFieldChange('durationSecs', filterNumericInput(e.target.value, false))}
-                placeholder="e.g., 600"
-                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${
-                  errors.durationSecs ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder={t('manual.placeholderDuration')}
+                className={`w-full px-3 py-2 bg-drone-dark border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary ${errors.durationSecs ? 'border-red-500' : 'border-gray-600'
+                  }`}
               />
               {errors.durationSecs && <p className="mt-1 text-xs text-red-400">{errors.durationSecs}</p>}
             </div>
 
             {/* Notes */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">{t('manual.notes')}</label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => handleFieldChange('notes', e.target.value)}
-                placeholder="Optional notes about this flight..."
+                placeholder={t('manual.placeholderNotes')}
                 rows={2}
                 maxLength={500}
                 className="w-full px-3 py-2 bg-drone-dark border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-drone-primary resize-none"
               />
-              <p className="mt-1 text-xs text-gray-500">{formData.notes.length}/500</p>
+              <p className="mt-1 text-xs text-gray-500">{t('manual.charCount', { n: formData.notes.length })}</p>
             </div>
           </div>
         </div>
@@ -571,7 +551,7 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
             disabled={isSubmitting}
             className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
           >
-            Cancel
+            {t('manual.cancel')}
           </button>
           <button
             onClick={handleSubmit}
@@ -584,7 +564,7 @@ export function ManualEntryModal({ isOpen, onClose }: ManualEntryModalProps) {
                 <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
               </svg>
             )}
-            Create Flight
+            {t('manual.createFlight')}
           </button>
         </div>
       </div>

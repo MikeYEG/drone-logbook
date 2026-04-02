@@ -6,6 +6,16 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://*" },
+        { "url": "mailto:*" },
+        { "url": "tel:*" }
+      ]
+    },
+    "android-fs:default",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",

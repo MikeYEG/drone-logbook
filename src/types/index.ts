@@ -19,6 +19,7 @@ export interface Flight {
   droneSerial: string | null;
   aircraftName: string | null;
   batterySerial: string | null;
+  cycleCount: number | null;
   startTime: string | null;
   durationSecs: number | null;
   totalDistance: number | null;
@@ -27,8 +28,13 @@ export interface Flight {
   homeLat?: number | null;
   homeLon?: number | null;
   pointCount: number | null;
+  photoCount: number | null;
+  videoCount: number | null;
   tags?: FlightTag[];
   notes?: string | null;
+  color?: string | null;
+  rcSerial?: string | null;
+  batteryLife?: number | null;
 }
 
 /** Telemetry data formatted for ECharts */
@@ -56,6 +62,9 @@ export interface TelemetryData {
   pitch: (number | null)[];
   roll: (number | null)[];
   yaw: (number | null)[];
+  gimbalPitch?: (number | null)[];
+  gimbalRoll?: (number | null)[];
+  gimbalYaw?: (number | null)[];
   rcAileron?: (number | null)[];
   rcElevator?: (number | null)[];
   rcThrottle?: (number | null)[];
@@ -66,12 +75,18 @@ export interface TelemetryData {
   isVideo?: (boolean | null)[];
   /** Flight mode (e.g., "GPS", "ATTI", "Sport") */
   flightMode?: (string | null)[];
+  /** Battery current draw in mA */
+  batteryCurrent?: (number | null)[];
+  /** Battery design / full charge capacity in mAh */
+  batteryFullCapacity?: (number | null)[];
+  /** Battery remaining capacity in mAh */
+  batteryRemainedCapacity?: (number | null)[];
 }
 
-/** App tip/warning message from DJI flight log */
+/** App tip/warning/caution message from DJI flight log */
 export interface FlightMessage {
   timestampMs: number;
-  messageType: 'tip' | 'warn';
+  messageType: 'tip' | 'warn' | 'caution';
   message: string;
 }
 
@@ -89,6 +104,7 @@ export interface BatteryUsage {
   batterySerial: string;
   flightCount: number;
   totalDurationSecs: number;
+  maxCycleCount: number | null;
 }
 
 export interface DroneUsage {
@@ -131,6 +147,8 @@ export interface OverviewStats {
   totalDistanceM: number;
   totalDurationSecs: number;
   totalPoints: number;
+  totalPhotos: number;
+  totalVideos: number;
   maxAltitudeM: number;
   maxDistanceFromHomeM: number;
   batteriesUsed: BatteryUsage[];
