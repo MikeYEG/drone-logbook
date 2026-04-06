@@ -146,15 +146,12 @@ jobs:
             echo "Scanning $BASE for Windows artifacts"
 
             # NSIS installer(s) and related files
-            find "$BASE" -type f -path '*/bundle/nsis/*.exe' -exec cp -v {} unsigned/exe/ \;
-            find "$BASE" -type f -path '*/bundle/nsis/*.nsis.zip' -exec cp -v {} unsigned/other/ \;
-            find "$BASE" -type f -path '*/bundle/nsis/*.sig' -exec cp -v {} unsigned/other/ \;
+            find "$BASE" -type f -path '*/bundle/nsis/*.exe' -iname '*dronelog*' -exec cp -v {} unsigned/exe/ \;
+            find "$BASE" -type f -path '*/bundle/nsis/*.nsis.zip' -iname '*dronelog*' -exec cp -v {} unsigned/other/ \;
+            find "$BASE" -type f -path '*/bundle/nsis/*.sig' -iname '*dronelog*' -exec cp -v {} unsigned/other/ \;
 
             # MSI installer(s)
-            find "$BASE" -type f -path '*/bundle/msi/*.msi' -exec cp -v {} unsigned/msi/ \;
-
-            # Plain Windows executable from Cargo release output, excluding bundle artifacts.
-            find "$BASE" -type f -path '*/release/*.exe' ! -path '*/bundle/*' -exec cp -v {} unsigned/exe/ \;
+            find "$BASE" -type f -path '*/bundle/msi/*.msi' -iname '*dronelog*' -exec cp -v {} unsigned/msi/ \;
           done
 
           if [ "$FOUND_ANY_ROOT" != "true" ]; then
