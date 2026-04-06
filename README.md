@@ -148,7 +148,6 @@ There is no installation step if you want to use the standalone binary builds, j
 
 ###  Windows (64-bit)
 * **`Open.DroneLog_(version)_x64-setup.exe`**: Standard installer. **Best for most users.**
-* **`open-dronelog_windows_x64.exe`**: Portable version. Runs instantly without installing.
 * **`Open.DroneLog_(version)_x64_en-US.msi`**: Enterprise installer. For IT admins deploying to multiple PCs.
 
 ###  macOS

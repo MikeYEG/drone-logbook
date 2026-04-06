@@ -146,7 +146,7 @@ jobs:
             echo "Scanning $BASE for Windows artifacts"
 
             # NSIS installer(s) and related files
-            find "$BASE" -type f -path '*/bundle/nsis/*.exe' -iname '*dronelog*' -exec cp -v {} unsigned/exe/ \;
+            find "$BASE" -type f -path '*/bundle/nsis/*.exe' -iname '*setup.exe' -exec cp -v {} unsigned/exe/ \;
             find "$BASE" -type f -path '*/bundle/nsis/*.nsis.zip' -iname '*dronelog*' -exec cp -v {} unsigned/other/ \;
             find "$BASE" -type f -path '*/bundle/nsis/*.sig' -iname '*dronelog*' -exec cp -v {} unsigned/other/ \;
 
