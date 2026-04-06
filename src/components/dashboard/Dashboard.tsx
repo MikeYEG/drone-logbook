@@ -670,8 +670,8 @@ export function Dashboard() {
           </div>
         ) : currentFlightData ? (
           <>
-            <div className="w-full h-full min-h-0 overflow-y-auto overflow-x-hidden">
-              <div className={`w-full min-w-0 md:min-w-[700px] ${shouldStackPanels ? '' : 'lg:min-w-[1100px]'} min-h-full md:min-h-[780px] flex flex-col`}>
+              <div className="w-full h-full min-h-0 overflow-auto">
+                <div className={`w-full min-w-[980px] ${shouldStackPanels ? '' : 'lg:min-w-[1100px]'} min-h-full md:min-h-[780px] flex flex-col`}>
                 {/* Stats Bar */}
                 <FlightStats data={currentFlightData} />
 

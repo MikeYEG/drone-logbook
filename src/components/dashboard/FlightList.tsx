@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import * as api from '@/lib/api';
 import { isWebMode, downloadFile, downloadBlob } from '@/lib/api';
 import { buildCsv, buildJson, buildGpx, buildKml } from '@/lib/exportUtils';
@@ -223,6 +224,11 @@ export function FlightList({
   activeView?: 'flights' | 'overview';
   onFiltersExpanded?: () => void;
 } = {}) {
+  const renderGlobalOverlay = (content: React.ReactNode) => {
+    if (typeof document === 'undefined') return null;
+    return createPortal(content, document.body);
+  };
+
   const isMobileRuntime = useIsMobileRuntime();
   const {
     flights,
@@ -4090,7 +4096,7 @@ export function FlightList({
       )}
 
       {/* Export Progress Overlay */}
-      {isExporting && (
+      {isExporting && renderGlobalOverlay(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">{t('flightList.exportingFlights')}</h3>
@@ -4116,7 +4122,7 @@ export function FlightList({
       )}
 
       {/* Delete Progress Overlay */}
-      {isDeleting && (
+      {isDeleting && renderGlobalOverlay(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">{t('flightList.deletingFlights')}</h3>
@@ -4137,7 +4143,7 @@ export function FlightList({
       )}
 
       {/* Untag Progress Overlay */}
-      {isUntagging && (
+      {isUntagging && renderGlobalOverlay(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">{t('flightList.removingTags')}</h3>
@@ -4158,7 +4164,7 @@ export function FlightList({
       )}
 
       {/* Bulk Tag Progress Overlay */}
-      {isBulkTagging && (
+      {isBulkTagging && renderGlobalOverlay(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-drone-surface border border-gray-700 rounded-xl p-6 min-w-[320px] shadow-2xl">
             <h3 className="text-lg font-semibold mb-4">{t('flightList.addingTags')}</h3>
