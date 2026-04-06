@@ -767,9 +767,8 @@ export function TelemetryCharts({ data, unitPrefs, startTime }: TelemetryChartsP
   }, [resolvedTheme]);
 
   const isMobileRuntime = useIsMobileRuntime();
-  const isMobileCharts = typeof window !== 'undefined' && window.innerWidth < 768;
-  const dragZoomAllowed = !isMobileRuntime && !isMobileCharts;
-  const [dragZoomActive, setDragZoomActive] = useState(dragZoomAllowed);
+  const dragZoomAllowed = !isMobileRuntime;
+  const [dragZoomActive, setDragZoomActive] = useState(false);
 
   useEffect(() => {
     if (dragZoomAllowed) return;
@@ -847,22 +846,21 @@ export function TelemetryCharts({ data, unitPrefs, startTime }: TelemetryChartsP
         syncZoom(chart);
       });
 
-      // Activate drag-to-zoom by default on desktop only.
+      // Keep drag-to-zoom disabled by default; only enable after explicit toggle.
       // A deferred dispatch is required because onChartReady fires synchronously
       // after setOption, before the toolbox dataZoom feature is ready to handle
       // the takeGlobalCursor action.
-      // On mobile, drag-to-zoom interferes with normal touch scrolling.
       if (dragZoomAllowed) {
         requestAnimationFrame(() => {
           chart.dispatchAction({
             type: 'takeGlobalCursor',
             key: 'dataZoomSelect',
-            dataZoomSelectActive: true,
+            dataZoomSelectActive: dragZoomActive,
           });
         });
       }
     },
-    [dragZoomAllowed, syncZoom]
+    [dragZoomActive, dragZoomAllowed, syncZoom]
   );
 
   // Show vertical line indicator when map replay progress changes
@@ -1124,7 +1122,7 @@ export function TelemetryCharts({ data, unitPrefs, startTime }: TelemetryChartsP
         </button>
         <button
           onClick={toggleDragZoom}
-          className={`${dragZoomAllowed ? 'hidden md:inline-block' : 'hidden'} text-xs border rounded px-2 py-1 transition-colors ${dragZoomActive
+          className={`${dragZoomAllowed ? 'inline-block' : 'hidden'} text-xs border rounded px-2 py-1 transition-colors ${dragZoomActive
             ? 'text-drone-primary border-drone-primary/50 bg-drone-primary/10'
             : 'text-gray-400 hover:text-white border-gray-700'
             }`}
