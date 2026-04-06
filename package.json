@@ -32,16 +32,14 @@
     "context:install-hooks": "node scripts/context/install-hooks.mjs"
   },
   "dependencies": {
-    "@deck.gl/layers": "^9.1.0",
-    "@deck.gl/mapbox": "^9.1.0",
-    "@deck.gl/react": "^9.2.8",
+    "@deck.gl/layers": "^9.2.8",
+    "@deck.gl/mapbox": "^9.2.8",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
     "@tauri-apps/plugin-log": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@tauri-apps/plugin-shell": "^2.0.0",
-    "deck.gl": "^8.9.15",
     "echarts": "^5.5.0",
     "echarts-for-react": "^3.0.2",
     "html2canvas": "^1.4.1",
