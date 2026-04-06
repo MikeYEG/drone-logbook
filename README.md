@@ -103,7 +103,9 @@ You first need to collect the supported flight log files that you can import to 
 
 You can sync your DJI flight logs directly from the mobile (Android/iPhone) or RC/RC-2/RC-Pro directly and seamlessly using the `Litchi Hub Bridge` companion app on your Windows/Mac desktop or laptop. This is a free application that lets you sync your flight logs from the phone's DJI Fly app or the RC devices directly to a local folder. 
 
-<img width="200" height="68" alt="image" src="https://github.com/user-attachments/assets/1e1d9235-881a-434a-86b1-03a437c7d8ed" />
+<a href="https://flylitchi.com/hub-bridge" target="_blank" rel="noopener noreferrer">
+    <img width="200" height="68" alt="image" src="https://github.com/user-attachments/assets/1e1d9235-881a-434a-86b1-03a437c7d8ed" />
+</a>
 
 #### Download Here - [Windows](https://apps.microsoft.com/detail/9mz7gp4zqlhj) | [MacOS](https://litchi-apks.s3.us-east-1.amazonaws.com/Litchi-Hub-Bridge-mac.dmg)
 
