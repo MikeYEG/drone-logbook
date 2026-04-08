@@ -368,7 +368,13 @@ export function FlightList({
   const [isBulkTagging, setIsBulkTagging] = useState(false);
   const [bulkTagProgress, setBulkTagProgress] = useState({ done: 0, total: 0 });
   // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; flightId: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    flightId: number;
+    boundsLeft: number;
+    boundsRight: number;
+  } | null>(null);
   const [contextExportSubmenuOpen, setContextExportSubmenuOpen] = useState(false);
   const [isRegeneratingTags, setIsRegeneratingTags] = useState(false);
   // Color picker state
@@ -2074,12 +2080,21 @@ export function FlightList({
     const leftReserve = 8 + safeLeft;
     const rightReserve = 8 + safeRight;
 
-    const maxX = Math.max(leftReserve, window.innerWidth - menuWidth - rightReserve);
-    const maxY = Math.max(topReserve, window.innerHeight - menuHeight - bottomReserve);
-    const x = Math.min(Math.max(e.clientX, leftReserve), maxX);
-    const y = Math.min(Math.max(e.clientY, topReserve), maxY);
+    // Constrain menu to the sidebar area to avoid clipping under transformed/overflowed containers.
+    const sidebarRect = (e.currentTarget as HTMLElement).closest('aside')?.getBoundingClientRect();
+    const boundsLeft = sidebarRect?.left ?? 0;
+    const boundsRight = sidebarRect?.right ?? window.innerWidth;
+    const boundsTop = sidebarRect?.top ?? 0;
+    const boundsBottom = sidebarRect?.bottom ?? window.innerHeight;
 
-    setContextMenu({ x, y, flightId });
+    const minX = boundsLeft + leftReserve;
+    const maxX = Math.max(minX, boundsRight - menuWidth - rightReserve);
+    const minY = boundsTop + topReserve;
+    const maxY = Math.max(minY, boundsBottom - menuHeight - bottomReserve);
+    const x = Math.min(Math.max(e.clientX, minX), maxX);
+    const y = Math.min(Math.max(e.clientY, minY), maxY);
+
+    setContextMenu({ x, y, flightId, boundsLeft, boundsRight });
     setContextExportSubmenuOpen(false);
   };
 
@@ -4046,7 +4061,7 @@ export function FlightList({
                 className="absolute left-full bottom-0 ml-1 min-w-[120px] py-1 rounded-lg border border-gray-700 bg-drone-surface shadow-xl"
                 style={{
                   // Flip to left side if not enough space on right
-                  ...(contextMenu.x > window.innerWidth - 320 ? { left: 'auto', right: '100%', marginLeft: 0, marginRight: '4px' } : {}),
+                  ...(contextMenu.x + 320 > contextMenu.boundsRight ? { left: 'auto', right: '100%', marginLeft: 0, marginRight: '4px' } : {}),
                 }}
               >
                 <button
