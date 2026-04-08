@@ -265,7 +265,7 @@ export function buildCsv(data: FlightDataResponse, unitPrefs?: UnitPreferences):
     const track = trackAligned ? data.track[index] : null;
     const lat = track ? track[1] : latSeries[index];
     const lng = track ? track[0] : lngSeries[index];
-    const alt = track ? track[2] : null;
+    const alt = telemetry.altitude?.[index] ?? null;
     // telemetry.time is in seconds (converted from ms in backend)
     // Preserve sub-second resolution: 0.0, 0.1, 0.2... for 10Hz data
     const values = [
