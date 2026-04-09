@@ -1594,8 +1594,7 @@ export function FlightList({
   };
 
 
-  const buildSummaryCsv = (flightsData: { flight: Flight; data: FlightDataResponse }[], getDroneDisplayNameFn: (serial: string, fallbackName: string) => string): string => {
-    const headers = [
+  const summaryCsvHeaders = () => [
       t('flightList.csvHeaderAircraftName'),
       t('flightList.csvHeaderAircraftSN'),
       t('flightList.csvHeaderBatterySN'),
@@ -1613,115 +1612,118 @@ export function FlightList({
       t('flightList.csvHeaderNotes'),
     ];
 
-    const escapeCsv = (value: string) => {
-      if (value.includes('"')) value = value.replace(/"/g, '""');
-      if (value.includes(',') || value.includes('\n') || value.includes('\r')) {
-        return `"${value}"`;
-      }
-      return value;
-    };
-
-    const formatDuration = (seconds: number | null): string => {
-      if (!seconds) return '';
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins}m ${secs}s`;
-    };
-
-    const formatTime = (isoString: string | null): string => {
-      if (!isoString) return '';
-      const date = new Date(isoString);
-      return date.toTimeString().slice(0, 5); // HH:MM
-    };
-
-    const formatDate = (isoString: string | null): string => {
-      if (!isoString) return '';
-      const date = new Date(isoString);
-      return date.toISOString().split('T')[0]; // YYYY-MM-DD
-    };
-
-    const calculateLandingTime = (takeoffTime: string | null, durationSecs: number | null): string => {
-      if (!takeoffTime || !durationSecs) return '';
-      const takeoff = new Date(takeoffTime);
-      const landing = new Date(takeoff.getTime() + durationSecs * 1000);
-      return landing.toTimeString().slice(0, 5); // HH:MM
-    };
-
-    const calculateMaxDistanceFromHome = (telemetry: TelemetryData): number | null => {
-      const lats = telemetry.latitude ?? [];
-      const lngs = telemetry.longitude ?? [];
-
-      let homeLat: number | null = null;
-      let homeLng: number | null = null;
-      for (let i = 0; i < lats.length; i++) {
-        const lat = lats[i];
-        const lng = lngs[i];
-        if (typeof lat === 'number' && typeof lng === 'number') {
-          homeLat = lat;
-          homeLng = lng;
-          break;
-        }
-      }
-
-      if (homeLat === null || homeLng === null) return null;
-
-      let maxDistance = 0;
-      for (let i = 0; i < lats.length; i++) {
-        const lat = lats[i];
-        const lng = lngs[i];
-        if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-
-        const toRad = (value: number) => (value * Math.PI) / 180;
-        const r = 6371000;
-        const dLat = toRad(lat - homeLat);
-        const dLon = toRad(lng - homeLng);
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(toRad(homeLat)) * Math.cos(toRad(lat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = r * c;
-
-        if (distance > maxDistance) maxDistance = distance;
-      }
-
-      return maxDistance;
-    };
-
-    const rows = flightsData.map(({ flight, data }) => {
-      const maxDistanceFromHome = calculateMaxDistanceFromHome(data.telemetry);
-      const takeoffLat = flight.homeLat ?? (data.telemetry.latitude?.[0] || null);
-      const takeoffLon = flight.homeLon ?? (data.telemetry.longitude?.[0] || null);
-
-      // Get aircraft name - use edited name if available, otherwise fall back to aircraftName or droneModel
-      const fallbackName = flight.aircraftName || flight.droneModel || '';
-      const aircraftName = flight.droneSerial
-        ? getDroneDisplayNameFn(flight.droneSerial, fallbackName)
-        : fallbackName;
-
-      // Format tags as semicolon-separated string
-      const tagsStr = flight.tags?.map(t => t.tag).join('; ') || '';
-
-      return [
-        escapeCsv(aircraftName),
-        escapeCsv(flight.droneSerial || ''),
-        escapeCsv(flight.batterySerial || ''),
-        escapeCsv(formatDate(flight.startTime)),
-        escapeCsv(formatTime(flight.startTime)),
-        escapeCsv(formatDuration(flight.durationSecs)),
-        escapeCsv(calculateLandingTime(flight.startTime, flight.durationSecs)),
-        escapeCsv(flight.totalDistance != null ? flight.totalDistance.toFixed(2) : ''),
-        escapeCsv(flight.maxAltitude != null ? flight.maxAltitude.toFixed(2) : ''),
-        escapeCsv(maxDistanceFromHome != null ? maxDistanceFromHome.toFixed(2) : ''),
-        escapeCsv(flight.maxSpeed != null ? flight.maxSpeed.toFixed(2) : ''),
-        escapeCsv(takeoffLat != null ? takeoffLat.toFixed(7) : ''),
-        escapeCsv(takeoffLon != null ? takeoffLon.toFixed(7) : ''),
-        escapeCsv(tagsStr),
-        escapeCsv(flight.notes || ''),
-      ].join(',');
-    });
-
-    return [headers.join(','), ...rows].join('\n');
+  const summaryEscapeCsv = (value: string) => {
+    if (value.includes('"')) value = value.replace(/"/g, '""');
+    if (value.includes(',') || value.includes('\n') || value.includes('\r')) {
+      return `"${value}"`;
+    }
+    return value;
   };
+
+  const summaryFormatDuration = (seconds: number | null): string => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}m ${secs}s`;
+  };
+
+  const summaryFormatTime = (isoString: string | null): string => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toTimeString().slice(0, 5); // HH:MM
+  };
+
+  const summaryFormatDate = (isoString: string | null): string => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+  };
+
+  const summaryCalculateLandingTime = (takeoffTime: string | null, durationSecs: number | null): string => {
+    if (!takeoffTime || !durationSecs) return '';
+    const takeoff = new Date(takeoffTime);
+    const landing = new Date(takeoff.getTime() + durationSecs * 1000);
+    return landing.toTimeString().slice(0, 5); // HH:MM
+  };
+
+  const summaryCalculateMaxDistanceFromHome = (telemetry: TelemetryData): number | null => {
+    const lats = telemetry.latitude ?? [];
+    const lngs = telemetry.longitude ?? [];
+
+    let homeLat: number | null = null;
+    let homeLng: number | null = null;
+    for (let i = 0; i < lats.length; i++) {
+      const lat = lats[i];
+      const lng = lngs[i];
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        homeLat = lat;
+        homeLng = lng;
+        break;
+      }
+    }
+
+    if (homeLat === null || homeLng === null) return null;
+
+    let maxDistance = 0;
+    for (let i = 0; i < lats.length; i++) {
+      const lat = lats[i];
+      const lng = lngs[i];
+      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+
+      const toRad = (value: number) => (value * Math.PI) / 180;
+      const r = 6371000;
+      const dLat = toRad(lat - homeLat);
+      const dLon = toRad(lng - homeLng);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(homeLat)) * Math.cos(toRad(lat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = r * c;
+
+      if (distance > maxDistance) maxDistance = distance;
+    }
+
+    return maxDistance;
+  };
+
+  const buildSummaryCsvRow = (
+    flight: Flight,
+    data: FlightDataResponse,
+    getDroneDisplayNameFn: (serial: string, fallbackName: string) => string,
+  ): string => {
+    const maxDistanceFromHome = summaryCalculateMaxDistanceFromHome(data.telemetry);
+    const takeoffLat = flight.homeLat ?? (data.telemetry.latitude?.[0] || null);
+    const takeoffLon = flight.homeLon ?? (data.telemetry.longitude?.[0] || null);
+
+    // Get aircraft name - use edited name if available, otherwise fall back to aircraftName or droneModel
+    const fallbackName = flight.aircraftName || flight.droneModel || '';
+    const aircraftName = flight.droneSerial
+      ? getDroneDisplayNameFn(flight.droneSerial, fallbackName)
+      : fallbackName;
+
+    // Format tags as semicolon-separated string
+    const tagsStr = flight.tags?.map(t => t.tag).join('; ') || '';
+
+    return [
+      summaryEscapeCsv(aircraftName),
+      summaryEscapeCsv(flight.droneSerial || ''),
+      summaryEscapeCsv(flight.batterySerial || ''),
+      summaryEscapeCsv(summaryFormatDate(flight.startTime)),
+      summaryEscapeCsv(summaryFormatTime(flight.startTime)),
+      summaryEscapeCsv(summaryFormatDuration(flight.durationSecs)),
+      summaryEscapeCsv(summaryCalculateLandingTime(flight.startTime, flight.durationSecs)),
+      summaryEscapeCsv(flight.totalDistance != null ? flight.totalDistance.toFixed(2) : ''),
+      summaryEscapeCsv(flight.maxAltitude != null ? flight.maxAltitude.toFixed(2) : ''),
+      summaryEscapeCsv(maxDistanceFromHome != null ? maxDistanceFromHome.toFixed(2) : ''),
+      summaryEscapeCsv(flight.maxSpeed != null ? flight.maxSpeed.toFixed(2) : ''),
+      summaryEscapeCsv(takeoffLat != null ? takeoffLat.toFixed(7) : ''),
+      summaryEscapeCsv(takeoffLon != null ? takeoffLon.toFixed(7) : ''),
+      summaryEscapeCsv(tagsStr),
+      summaryEscapeCsv(flight.notes || ''),
+    ].join(',');
+  };
+
+  const buildSummaryCsvHeader = (): string => summaryCsvHeaders().join(',');
 
   const handleBulkExport = async (format: string, extension: string) => {
     try {
@@ -1729,8 +1731,6 @@ export function FlightList({
       setExportProgress({ done: 0, total: filteredFlights.length, currentFile: '' });
 
       const shouldBundleZip = isWebMode() || isMobileRuntime;
-
-      const flightsData: { flight: Flight; data: FlightDataResponse }[] = [];
 
       // In desktop Tauri mode, pick a directory first.
       let dirPath: string | null = null;
@@ -1755,9 +1755,6 @@ export function FlightList({
         try {
           const data: FlightDataResponse = await api.getFlightData(flight.id, 999999999);
 
-          // Store for summary
-          flightsData.push({ flight, data });
-
           let content = '';
           if (format === 'csv') content = buildCsv(data, unitPrefs);
           else if (format === 'json') content = buildJson(data, unitPrefs);
@@ -1779,12 +1776,46 @@ export function FlightList({
       // For web/mobile, generate ZIP and save/download it.
       if (shouldBundleZip && zip) {
         setExportProgress({ done: filteredFlights.length, total: filteredFlights.length, currentFile: 'Creating ZIP...' });
-        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const timestamp = new Date().toISOString().slice(0, 10);
-        const zipName = `drone_flights_${timestamp}_${format}.zip`;
+        const zipBlob = await zip.generateAsync({
+          type: 'blob',
+          streamFiles: true,
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 },
+        });
+        const now = new Date();
+        const pad2 = (n: number) => String(n).padStart(2, '0');
+        const timestamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`;
+        const zipName = `drone_flights_${format}_${timestamp}.zip`;
 
         if (isWebMode()) {
-          downloadBlob(zipName, zipBlob);
+          const webWindow = window as Window & {
+            showSaveFilePicker?: (options?: unknown) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }>;
+          };
+
+          if (typeof webWindow.showSaveFilePicker === 'function') {
+            try {
+              const fileHandle = await webWindow.showSaveFilePicker({
+                suggestedName: zipName,
+                types: [{
+                  description: 'ZIP',
+                  accept: { 'application/zip': ['.zip'] },
+                }],
+              });
+              const writable = await fileHandle.createWritable();
+              await writable.write(zipBlob);
+              await writable.close();
+            } catch (err) {
+              const name = (err as { name?: string } | null)?.name;
+              if (name === 'AbortError') {
+                setIsExporting(false);
+                return;
+              }
+              throw err;
+            }
+          } else {
+            // Fallback for browsers without save picker support.
+            downloadBlob(zipName, zipBlob);
+          }
         } else {
           const { save } = await import('@tauri-apps/plugin-dialog');
           const { writeFile } = await import('@tauri-apps/plugin-fs');
@@ -1818,33 +1849,108 @@ export function FlightList({
       setIsExporting(true);
       setExportProgress({ done: 0, total: filteredFlights.length, currentFile: 'Building summary...' });
 
-      const flightsData: { flight: Flight; data: FlightDataResponse }[] = [];
-
-      for (let i = 0; i < filteredFlights.length; i++) {
-        const flight = filteredFlights[i];
-        const baseName = flight.displayName || flight.fileName || `flight`;
-        const safeName = sanitizeFileName(`${baseName}_${flight.id}`);
-        setExportProgress({ done: i, total: filteredFlights.length, currentFile: safeName });
-
-        try {
-          const data: FlightDataResponse = await api.getFlightData(flight.id, 999999999);
-          flightsData.push({ flight, data });
-        } catch (err) {
-          console.error(`Failed to fetch flight ${flight.id} for summary:`, err);
-        }
-      }
-
-      const summaryCsv = buildSummaryCsv(flightsData, getDroneDisplayName);
+      const headerLine = buildSummaryCsvHeader();
 
       if (isWebMode()) {
-        downloadFile('filtered_flights_summary.csv', summaryCsv);
+        const webWindow = window as Window & {
+          showSaveFilePicker?: (options?: unknown) => Promise<{ createWritable: () => Promise<{ write: (data: string) => Promise<void>; close: () => Promise<void> }> }>;
+        };
+
+        let writable: { write: (data: string) => Promise<void>; close: () => Promise<void> } | null = null;
+        let chunks: string[] | null = null;
+
+        // Ask destination first when the browser supports native save pickers.
+        if (typeof webWindow.showSaveFilePicker === 'function') {
+          try {
+            const fileHandle = await webWindow.showSaveFilePicker({
+              suggestedName: 'filtered_flights_summary.csv',
+              types: [{
+                description: 'CSV',
+                accept: { 'text/csv': ['.csv'] },
+              }],
+            });
+            writable = await fileHandle.createWritable();
+            await writable.write(`${headerLine}\n`);
+          } catch (err) {
+            const name = (err as { name?: string } | null)?.name;
+            if (name === 'AbortError') {
+              setIsExporting(false);
+              return;
+            }
+            throw err;
+          }
+        } else {
+          // Fallback for browsers without File System Access API.
+          chunks = [headerLine, '\n'];
+        }
+
+        for (let i = 0; i < filteredFlights.length; i++) {
+          const flight = filteredFlights[i];
+          const baseName = flight.displayName || flight.fileName || `flight`;
+          const safeName = sanitizeFileName(`${baseName}_${flight.id}`);
+          setExportProgress({ done: i, total: filteredFlights.length, currentFile: safeName });
+
+          try {
+            const data: FlightDataResponse = await api.getFlightData(flight.id, 999999999);
+            const line = `${buildSummaryCsvRow(flight, data, getDroneDisplayName)}\n`;
+            if (writable) {
+              await writable.write(line);
+            } else {
+              chunks?.push(line);
+            }
+          } catch (err) {
+            console.error(`Failed to fetch flight ${flight.id} for summary:`, err);
+          }
+        }
+
+        if (writable) {
+          await writable.close();
+        } else if (chunks) {
+          const summaryBlob = new Blob(chunks, { type: 'text/csv;charset=utf-8' });
+          downloadBlob('filtered_flights_summary.csv', summaryBlob);
+        }
       } else {
-        const saved = await api.saveTextWithDialog('filtered_flights_summary.csv', summaryCsv, [
-          { name: 'CSV', extensions: ['csv'] },
-        ]);
-        if (!saved) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+        const saveResult = await save({
+          defaultPath: 'filtered_flights_summary.csv',
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        });
+
+        const resolvePath = (value: unknown): string | null => {
+          if (typeof value === 'string') return value;
+          if (
+            value &&
+            typeof value === 'object' &&
+            'path' in value &&
+            typeof (value as { path?: unknown }).path === 'string'
+          ) {
+            return (value as { path: string }).path;
+          }
+          return null;
+        };
+
+        const filePath = resolvePath(saveResult);
+        if (!filePath) {
           setIsExporting(false);
           return;
+        }
+
+        await writeTextFile(filePath, `${headerLine}\n`);
+
+        for (let i = 0; i < filteredFlights.length; i++) {
+          const flight = filteredFlights[i];
+          const baseName = flight.displayName || flight.fileName || `flight`;
+          const safeName = sanitizeFileName(`${baseName}_${flight.id}`);
+          setExportProgress({ done: i, total: filteredFlights.length, currentFile: safeName });
+
+          try {
+            const data: FlightDataResponse = await api.getFlightData(flight.id, 999999999);
+            const line = `${buildSummaryCsvRow(flight, data, getDroneDisplayName)}\n`;
+            await writeTextFile(filePath, line, { append: true });
+          } catch (err) {
+            console.error(`Failed to fetch flight ${flight.id} for summary:`, err);
+          }
         }
       }
 
