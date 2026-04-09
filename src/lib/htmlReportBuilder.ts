@@ -459,7 +459,15 @@ function buildFlightColumns(
   if (fc.batterySerial) {
     const serial = fd.flight.batterySerial;
     const displaySerial = serial ? (fd.getDisplaySerial ? fd.getDisplaySerial(serial) : serial) : '—';
-    equipItems.push({ label: tr('report.batterySN', 'Battery SN'), value: esc(displaySerial) });
+    let batterySerialValue = displaySerial;
+    if (serial && fd.getBatteryDisplayName) {
+      const customName = fd.getBatteryDisplayName(serial)?.trim();
+      // Append only an actual custom label, not the serial/masked fallback.
+      if (customName && customName !== serial && customName !== displaySerial) {
+        batterySerialValue = `${displaySerial} (${customName})`;
+      }
+    }
+    equipItems.push({ label: tr('report.batterySN', 'Battery SN'), value: esc(batterySerialValue) });
   }
   if (equipItems.length > 0) columns.push({ isStacked: false, groups: [{ group: tr('report.equipment', 'Equipment'), items: equipItems }] });
 
