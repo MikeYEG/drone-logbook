@@ -1020,7 +1020,7 @@ export async function backupDatabase(): Promise<boolean> {
     const { writeFile } = await import('@tauri-apps/plugin-fs');
     const saveResult = await save({
       defaultPath: getBackupFilename(),
-      filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+      filters: [{ name: 'Open DroneLog Backup', extensions: ['backup'] }],
     });
     const destPath = resolveDialogPath(saveResult);
     if (!destPath) return false;
@@ -1036,7 +1036,7 @@ export async function backupDatabase(): Promise<boolean> {
   const { save } = await import('@tauri-apps/plugin-dialog');
   const saveResult = await save({
     defaultPath: getBackupFilename(),
-    filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+    filters: [{ name: 'Open DroneLog Backup', extensions: ['backup'] }],
   });
   const destPath = resolveDialogPath(saveResult);
   if (!destPath) return false; // user cancelled
@@ -1073,7 +1073,7 @@ export async function restoreDatabase(file?: File): Promise<string> {
     const { readFile } = await import('@tauri-apps/plugin-fs');
     const openResult = await open({
       multiple: false,
-      filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+      filters: [{ name: 'Open DroneLog Backup', extensions: ['backup'] }],
     });
     const srcPath = resolveDialogPath(openResult);
     if (!srcPath) return '';
@@ -1087,7 +1087,7 @@ export async function restoreDatabase(file?: File): Promise<string> {
   const { open } = await import('@tauri-apps/plugin-dialog');
   const openResult = await open({
     multiple: false,
-    filters: [{ name: 'Drone Logbook Backup', extensions: ['backup'] }],
+    filters: [{ name: 'Open DroneLog Backup', extensions: ['backup'] }],
   });
   const srcPath = resolveDialogPath(openResult);
   if (!srcPath) return ''; // user cancelled

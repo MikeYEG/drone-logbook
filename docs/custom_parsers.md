@@ -1,6 +1,6 @@
 # Custom Parsers Guideline
 
-Open-DroneLog supports plugins for parsing custom and proprietary drone log formats. Instead of writing Rust code and recompiling the application, you can write standalone scripts (in Python, Bash, Node.js, etc.) that convert your logs into the standard **Drone Logbook CSV** format. 
+Open-DroneLog supports plugins for parsing custom and proprietary drone log formats. Instead of writing Rust code and recompiling the application, you can write standalone scripts (in Python, Bash, Node.js, etc.) that convert your logs into the standard **Open DroneLog CSV** format. 
 
 Open-DroneLog will execute your scripts automatically during the import process when it detects a matching file extension.
 
@@ -16,7 +16,7 @@ The same custom parser engine is used by:
 2. **Startup discovery + logging**: At startup, Open-DroneLog reads `parsers.json`, logs each discovered mapping, and logs the final allowed extension list.
 3. **Execution**: During import, Open-DroneLog first tries built-in parsers. If they fail (or are incompatible), it checks custom mappings by file extension and runs the mapped command.
 4. **Arguments**: The app replaces `$INPUT` and `$OUTPUT` in `args` before spawning your command.
-5. **Ingestion**: Your script must write a valid Drone Logbook CSV to `$OUTPUT`. If the process exits `0` and the output file exists, Open-DroneLog imports it.
+5. **Ingestion**: Your script must write a valid Open DroneLog CSV to `$OUTPUT`. If the process exits `0` and the output file exists, Open-DroneLog imports it.
 
 ### Extension matching notes
 - Mapping keys are case-insensitive and normalized.
@@ -65,7 +65,7 @@ If your mapping uses `"ulg"`, files like `flight_001.ulg` are allowed automatica
 
 ## 3. The Target CSV Format
 
-Your script **must** output a CSV file that matches the Drone Logbook CSV specification. 
+Your script **must** output a CSV file that matches the Open DroneLog CSV specification. 
 
 ### Minimal Required Columns
 To successfully trace a flight path and calculate statistics, your CSV must contain a header row with at least these columns (case-insensitive):
@@ -144,7 +144,7 @@ def parse_my_format(input_path, output_path):
     with open(output_path, 'w', newline='') as f:
         writer = csv.writer(f)
         
-        # Write Drone Logbook headers
+        # Write Open DroneLog headers
         writer.writerow(['time_s', 'lat', 'lng', 'alt_m', 'distance_to_home_m', 'battery_percent', 'Metadata'])
         
         # Write first row with Metadata JSON
@@ -256,7 +256,7 @@ If a custom parser is not being used, check logs in this order:
 
 If you see process success but no import, common causes are:
 - Script wrote CSV to the wrong path (not `$OUTPUT`).
-- CSV does not match Drone Logbook format.
+- CSV does not match Open DroneLog format.
 - Command is invalid in current runtime (`python3` not found, wrong executable path, missing script file).
 
 For web mode, extension allowing and parser mapping are also dynamic at startup and exposed via API, so the web file picker/drop and sync flows follow the same extension map from `parsers.json`.

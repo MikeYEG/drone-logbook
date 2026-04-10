@@ -1,6 +1,6 @@
-# Drone Logbook User Manual
+# Open DroneLog User Manual
 
-**A comprehensive guide to using Drone Logbook, your local-first drone flight log analyzer.**
+**A comprehensive guide to using Open DroneLog, your local-first drone flight log analyzer.**
 
 ---
 
@@ -32,7 +32,7 @@
 
 ## Overview
 
-Drone Logbook is a high-performance application for analyzing drone flight logs. It supports DJI flight logs (`.txt` format), Litchi CSV exports, and Airdata CSV exports. All your data is stored locally in a DuckDB database with no cloud uploads, no subscriptions, and complete privacy.
+Open DroneLog is a high-performance application for analyzing drone flight logs. It supports DJI flight logs (`.txt` format), Litchi CSV exports, and Airdata CSV exports. All your data is stored locally in a DuckDB database with no cloud uploads, no subscriptions, and complete privacy.
 
 ### Key Capabilities
 
@@ -57,7 +57,7 @@ Drone Logbook is a high-performance application for analyzing drone flight logs.
 
 ### First Launch
 
-When you first open Drone Logbook, you will see an empty dashboard with the import section expanded. The application automatically detects whether you have existing flights and adjusts the interface accordingly.
+When you first open Open DroneLog, you will see an empty dashboard with the import section expanded. The application automatically detects whether you have existing flights and adjusts the interface accordingly.
 
 ### Importing Your First Flight
 

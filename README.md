@@ -202,14 +202,14 @@ Want to quickly test the tool before committing to a full installation? Try the 
 <img width="320" height="311" alt="image" src="https://github.com/user-attachments/assets/2787ffff-9961-433c-898a-b548c738f1a2" />
 
 > [!IMPORTANT]
-> If you see **"Drone Logbook is damaged and can't be opened"** on macOS, this is a Gatekeeper security warning for unsigned apps, **not a corrupted file**. Apple charges $99/year for developer signing, so we provide these free workarounds instead.
+> If you see **"Open DroneLog is damaged and can't be opened"** on macOS, this is a Gatekeeper security warning for unsigned apps, **not a corrupted file**. Apple charges $99/year for developer signing, so we provide these free workarounds instead.
 
 #### Method 1: Right-Click to Open
 
 This is the simplest method and works for most users:
 
 1. **Locate the app** in your Applications folder (or wherever you placed it after downloading)
-2. **Right-click** (or Control+click) on "Drone Logbook.app"
+2. **Right-click** (or Control+click) on "Open Dronelog.app"
 3. **Select "Open"** from the context menu
 4. **Click "Open"** in the dialog that appears
 

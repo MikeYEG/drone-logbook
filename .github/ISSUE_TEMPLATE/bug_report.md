@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in Drone Logbook
+about: Report a bug in Open DroneLog
 title: "[BUG] "
 labels: bug
 assignees: arpanghosh8453

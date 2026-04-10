@@ -1,6 +1,6 @@
 # API Reference
 
-This document lists all API endpoints available in the Drone Logbook application. The application supports two modes:
+This document lists all API endpoints available in the Open DroneLog application. The application supports two modes:
 
 - **Desktop (Tauri)**: Uses Tauri IPC commands via `@tauri-apps/api`
 - **Web/Docker (Axum)**: Uses REST API endpoints via HTTP

@@ -213,7 +213,7 @@ impl<'a> LogParser<'a> {
 
         // Try built-in CSV parsers first
         if DroneLogbookParser::is_dronelogbook_csv(file_path) {
-            log::info!("Detected Drone Logbook CSV format, using DroneLogbookParser");
+            log::info!("Detected Open DroneLog CSV format, using DroneLogbookParser");
             match DroneLogbookParser::new(self.db).parse(file_path, &file_hash) {
                 Ok(res) => return Ok(res),
                 Err(e) => builtin_err = e,
