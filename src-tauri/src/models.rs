@@ -1,4 +1,4 @@
-//! Data models for the Drone Logbook application.
+//! Data models for the Open DroneLog application.
 //!
 //! These structs are shared between Rust backend and TypeScript frontend
 //! via Tauri's IPC system with serde serialization.
@@ -17,6 +17,7 @@ pub struct FlightMetadata {
     pub drone_serial: Option<String>,
     pub aircraft_name: Option<String>,
     pub battery_serial: Option<String>,
+    pub cycle_count: Option<i32>,
     pub start_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_secs: Option<f64>,
@@ -26,6 +27,10 @@ pub struct FlightMetadata {
     pub home_lat: Option<f64>,
     pub home_lon: Option<f64>,
     pub point_count: i32,
+    pub photo_count: i32,
+    pub video_count: i32,
+    pub rc_serial: Option<String>,
+    pub battery_life: Option<i32>,
 }
 
 /// Flight summary for list display
@@ -40,6 +45,7 @@ pub struct Flight {
     pub drone_serial: Option<String>,
     pub aircraft_name: Option<String>,
     pub battery_serial: Option<String>,
+    pub cycle_count: Option<i32>,
     pub start_time: Option<String>,
     pub duration_secs: Option<f64>,
     pub total_distance: Option<f64>,
@@ -48,9 +54,19 @@ pub struct Flight {
     pub home_lat: Option<f64>,
     pub home_lon: Option<f64>,
     pub point_count: Option<i32>,
+    pub photo_count: Option<i32>,
+    pub video_count: Option<i32>,
+    pub rc_serial: Option<String>,
+    pub battery_life: Option<i32>,
     #[serde(default)]
     pub tags: Vec<FlightTag>,
     pub notes: Option<String>,
+    #[serde(default = "default_flight_color")]
+    pub color: Option<String>,
+}
+
+fn default_flight_color() -> Option<String> {
+    Some("#7dd3fc".to_string())
 }
 
 /// A tag attached to a flight, with a type indicator
@@ -95,6 +111,8 @@ pub struct TelemetryPoint {
     pub battery_voltage: Option<f64>,
     pub battery_current: Option<f64>,
     pub battery_temp: Option<f64>,
+    pub battery_full_capacity: Option<f64>,
+    pub battery_remained_capacity: Option<f64>,
     pub cell_voltages: Option<Vec<f64>>,
 
     // Status
@@ -133,10 +151,16 @@ pub struct TelemetryRecord {
     pub battery_percent: Option<i32>,
     pub battery_voltage: Option<f64>,
     pub battery_temp: Option<f64>,
+    pub battery_current: Option<f64>,
+    pub battery_full_capacity: Option<f64>,
+    pub battery_remained_capacity: Option<f64>,
     pub cell_voltages: Option<Vec<f64>>,
     pub pitch: Option<f64>,
     pub roll: Option<f64>,
     pub yaw: Option<f64>,
+    pub gimbal_pitch: Option<f64>,
+    pub gimbal_roll: Option<f64>,
+    pub gimbal_yaw: Option<f64>,
     pub satellites: Option<i32>,
     pub flight_mode: Option<String>,
     pub rc_signal: Option<i32>,
@@ -155,7 +179,7 @@ pub struct TelemetryRecord {
 #[serde(rename_all = "camelCase")]
 pub struct FlightMessage {
     pub timestamp_ms: i64,
-    pub message_type: String, // "tip" or "warn"
+    pub message_type: String, // "tip", "warn", or "caution"
     pub message: String,
 }
 
@@ -177,6 +201,8 @@ pub struct OverviewStats {
     pub total_distance_m: f64,
     pub total_duration_secs: f64,
     pub total_points: i64,
+    pub total_photos: i64,
+    pub total_videos: i64,
     pub max_altitude_m: f64,
     pub max_distance_from_home_m: f64,
     pub batteries_used: Vec<BatteryUsage>,
@@ -195,6 +221,8 @@ pub struct BatteryUsage {
     pub flight_count: i64,
     /// Total flight duration for this battery in seconds
     pub total_duration_secs: f64,
+    /// Max battery cycle count observed for this battery (from SmartBatteryStatic)
+    pub max_cycle_count: Option<i32>,
 }
 
 /// Drone usage summary
@@ -277,6 +305,12 @@ pub struct TelemetryData {
     pub battery_voltage: Vec<Option<f64>>,
     /// Battery temperature series
     pub battery_temp: Vec<Option<f64>>,
+    /// Battery current series
+    pub battery_current: Vec<Option<f64>>,
+    /// Battery full capacity series (mAh)
+    pub battery_full_capacity: Vec<Option<f64>>,
+    /// Battery remaining capacity series (mAh)
+    pub battery_remained_capacity: Vec<Option<f64>>,
     /// Individual cell voltages series (JSON arrays stored as Vec)
     pub cell_voltages: Vec<Option<Vec<f64>>>,
     /// Number of GPS satellites
@@ -293,6 +327,12 @@ pub struct TelemetryData {
     pub roll: Vec<Option<f64>>,
     /// Yaw/Heading
     pub yaw: Vec<Option<f64>>,
+    /// Gimbal pitch angle
+    pub gimbal_pitch: Vec<Option<f64>>,
+    /// Gimbal roll angle
+    pub gimbal_roll: Vec<Option<f64>>,
+    /// Gimbal yaw/heading
+    pub gimbal_yaw: Vec<Option<f64>>,
     /// RC aileron stick input (normalized -100..+100)
     pub rc_aileron: Vec<Option<f64>>,
     /// RC elevator stick input (normalized -100..+100)
@@ -331,6 +371,9 @@ impl TelemetryData {
         let mut battery = Vec::with_capacity(n);
         let mut battery_voltage = Vec::with_capacity(n);
         let mut battery_temp = Vec::with_capacity(n);
+        let mut battery_current = Vec::with_capacity(n);
+        let mut battery_full_capacity = Vec::with_capacity(n);
+        let mut battery_remained_capacity = Vec::with_capacity(n);
         let mut cell_voltages = Vec::with_capacity(n);
         let mut satellites = Vec::with_capacity(n);
         let mut rc_signal = Vec::with_capacity(n);
@@ -339,6 +382,9 @@ impl TelemetryData {
         let mut pitch = Vec::with_capacity(n);
         let mut roll = Vec::with_capacity(n);
         let mut yaw = Vec::with_capacity(n);
+        let mut gimbal_pitch = Vec::with_capacity(n);
+        let mut gimbal_roll = Vec::with_capacity(n);
+        let mut gimbal_yaw = Vec::with_capacity(n);
         let mut rc_aileron = Vec::with_capacity(n);
         let mut rc_elevator = Vec::with_capacity(n);
         let mut rc_throttle = Vec::with_capacity(n);
@@ -361,6 +407,9 @@ impl TelemetryData {
             battery.push(r.battery_percent);
             battery_voltage.push(r.battery_voltage);
             battery_temp.push(r.battery_temp);
+            battery_current.push(r.battery_current);
+            battery_full_capacity.push(r.battery_full_capacity);
+            battery_remained_capacity.push(r.battery_remained_capacity);
             cell_voltages.push(r.cell_voltages.clone());
             satellites.push(r.satellites);
             rc_signal.push(r.rc_signal);
@@ -369,6 +418,9 @@ impl TelemetryData {
             pitch.push(r.pitch);
             roll.push(r.roll);
             yaw.push(r.yaw);
+            gimbal_pitch.push(r.gimbal_pitch);
+            gimbal_roll.push(r.gimbal_roll);
+            gimbal_yaw.push(r.gimbal_yaw);
             rc_aileron.push(r.rc_aileron);
             rc_elevator.push(r.rc_elevator);
             rc_throttle.push(r.rc_throttle);
@@ -392,6 +444,9 @@ impl TelemetryData {
             battery,
             battery_voltage,
             battery_temp,
+            battery_current,
+            battery_full_capacity,
+            battery_remained_capacity,
             cell_voltages,
             satellites,
             rc_signal,
@@ -400,6 +455,9 @@ impl TelemetryData {
             pitch,
             roll,
             yaw,
+            gimbal_pitch,
+            gimbal_roll,
+            gimbal_yaw,
             rc_aileron,
             rc_elevator,
             rc_throttle,
@@ -418,15 +476,15 @@ impl TelemetryData {
         // Collect valid GPS points
         let valid: Vec<[f64; 3]> = self.latitude.iter()
             .zip(self.longitude.iter())
-            .zip(self.altitude.iter().zip(self.height.iter().zip(self.vps_height.iter())))
-            .filter_map(|((lat, lng), (alt, (h, vps)))| {
+            .zip(self.height.iter().zip(self.vps_height.iter().zip(self.altitude.iter())))
+            .filter_map(|((lat, lng), (h, (vps, alt)))| {
                 let lat_v = (*lat)?;
                 let lng_v = (*lng)?;
                 // Skip 0,0 points
                 if lat_v.abs() < 0.000001 && lng_v.abs() < 0.000001 {
                     return None;
                 }
-                let height_v = alt.or(*h).or(*vps).unwrap_or(0.0);
+                let height_v = h.or(*vps).or(*alt).unwrap_or(0.0);
                 Some([lng_v, lat_v, height_v])
             })
             .collect();
@@ -441,6 +499,34 @@ impl TelemetryData {
             .step_by(stride.max(1))
             .collect()
     }
+}
+
+/// Count photo and video capture events from telemetry points.
+/// Photos are counted as false→true transitions in `is_photo`.
+/// Videos are counted as false→true transitions in `is_video`.
+/// Returns (photo_count, video_count).
+pub fn count_media_events(points: &[TelemetryPoint]) -> (i32, i32) {
+    let mut photo_count = 0i32;
+    let mut video_count = 0i32;
+    let mut was_photo = false;
+    let mut was_video = false;
+
+    for p in points {
+        let is_photo = p.is_photo.unwrap_or(false);
+        let is_video = p.is_video.unwrap_or(false);
+
+        if is_photo && !was_photo {
+            photo_count += 1;
+        }
+        if is_video && !was_video {
+            video_count += 1;
+        }
+
+        was_photo = is_photo;
+        was_video = is_video;
+    }
+
+    (photo_count, video_count)
 }
 
 /// Import result returned to frontend

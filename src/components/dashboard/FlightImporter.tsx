@@ -11,16 +11,208 @@
  * - Blacklist support for deleted files (skipped during sync)
  */
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
-import { isWebMode, pickFiles, computeFileHash, getFlights, getSyncConfig, getSyncFiles, syncSingleFile } from '@/lib/api';
+import { sha256 } from 'js-sha256';
+import {
+  isWebMode,
+  pickFiles,
+  computeFileHash,
+  getFlights,
+  getSyncConfig,
+  getSyncFiles,
+  syncSingleFile,
+  getSyncBlacklist,
+  addToSyncBlacklist,
+  removeFromSyncBlacklist,
+  clearSyncBlacklist,
+  getAllowedLogExtensions,
+  logSyncEvent,
+} from '@/lib/api';
 import { useFlightStore } from '@/stores/flightStore';
 import { ManualEntryModal } from './ManualEntryModal';
+import { useIsMobileRuntime } from '@/hooks/platform/useIsMobileRuntime';
 
-// Storage keys for sync folder, blacklist, and autoscan
+// Storage keys for sync folder and autoscan
 const SYNC_FOLDER_KEY = 'syncFolderPath';
-const BLACKLIST_KEY = 'importBlacklist';
 const AUTOSCAN_KEY = 'autoscanEnabled';
+const MOBILE_SYNC_URI_KEY = 'mobileSyncFolderUri';
+const DEFAULT_ALLOWED_EXTENSIONS = ['txt', 'csv'];
+const REFRESH_INTERVAL = 10;
+const STARTUP_SYNC_GUARD_PREFIX = 'startupSyncDone:';
+
+// Guard startup auto-sync across component remounts within the same app session.
+// Keyed by profile so each profile can auto-sync once per app startup.
+const startupAutoSyncProfilesTriggered = new Set<string>();
+
+function hasStartupSyncTriggered(profileKey: string): boolean {
+  if (startupAutoSyncProfilesTriggered.has(profileKey)) return true;
+  if (typeof sessionStorage === 'undefined') return false;
+  return sessionStorage.getItem(`${STARTUP_SYNC_GUARD_PREFIX}${profileKey}`) === '1';
+}
+
+function markStartupSyncTriggered(profileKey: string): void {
+  startupAutoSyncProfilesTriggered.add(profileKey);
+  if (typeof sessionStorage === 'undefined') return;
+  sessionStorage.setItem(`${STARTUP_SYNC_GUARD_PREFIX}${profileKey}`, '1');
+}
+
+type AndroidFsUri = {
+  uri: string;
+  documentTopTreeUri: string | null;
+};
+
+type AndroidFsEntry = {
+  type: 'Dir' | 'File';
+  name: string;
+  uri: AndroidFsUri;
+  mimeType?: string;
+};
+
+type AndroidFsModule = {
+  AndroidFs: {
+    showOpenDirPicker: (options?: { localOnly?: boolean }) => Promise<AndroidFsUri | null>;
+    persistPickerUriPermission: (uri: AndroidFsUri) => Promise<void>;
+    checkPersistedPickerUriPermission: (uri: AndroidFsUri, state: string) => Promise<boolean>;
+    readDir: (uri: AndroidFsUri, options?: { offset?: number; limit?: number }) => Promise<AndroidFsEntry[]>;
+    readFile: (uri: AndroidFsUri) => Promise<Uint8Array>;
+  };
+  AndroidUriPermissionState: {
+    ReadOrWrite: string;
+  };
+  isAndroid: () => boolean;
+};
+
+function decodeFileUri(pathOrUri: string): string {
+  try {
+    if (pathOrUri.startsWith('file://')) {
+      return decodeURIComponent(new URL(pathOrUri).pathname);
+    }
+  } catch {
+    // Ignore parse errors and return raw value.
+  }
+  return pathOrUri;
+}
+
+export function normalizeSyncFolderPath(pathOrUri: string): string {
+  const raw = decodeFileUri(pathOrUri.trim());
+  if (raw.startsWith('content://')) {
+    return raw;
+  }
+  if (raw.length <= 1) return raw;
+  return raw.replace(/[\\/]+$/, '');
+}
+
+function isSyncFolderReadable(pathOrUri: string | null): boolean {
+  return Boolean(pathOrUri);
+}
+
+function getMobileSyncFolderUri(): AndroidFsUri | null {
+  if (typeof localStorage === 'undefined') return null;
+  const raw = localStorage.getItem(MOBILE_SYNC_URI_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as AndroidFsUri;
+    if (!parsed?.uri || typeof parsed.uri !== 'string') return null;
+    return {
+      uri: parsed.uri,
+      documentTopTreeUri:
+        parsed.documentTopTreeUri === null || typeof parsed.documentTopTreeUri === 'string'
+          ? parsed.documentTopTreeUri
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setMobileSyncFolderUri(uri: AndroidFsUri | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (!uri) {
+    localStorage.removeItem(MOBILE_SYNC_URI_KEY);
+    return;
+  }
+  localStorage.setItem(MOBILE_SYNC_URI_KEY, JSON.stringify(uri));
+}
+
+function joinFolderPath(folderPath: string, fileName: string): string {
+  const trimmed = folderPath.replace(/[\\/]+$/, '');
+  return `${trimmed}/${fileName}`;
+}
+
+function normalizeExtension(ext: string): string {
+  return ext.trim().replace(/^\./, '').toLowerCase();
+}
+
+function hasAllowedExtension(fileName: string, allowed: Set<string>): boolean {
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) return false;
+  return allowed.has(normalizeExtension(fileName.slice(dotIndex + 1)));
+}
+
+async function pickFolderFiles(accept?: string): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    if (accept) input.accept = accept;
+
+    // Prefer folder selection where supported (webkit-based engines on Android).
+    const folderInput = input as HTMLInputElement & {
+      webkitdirectory?: boolean;
+      directory?: boolean;
+    };
+    folderInput.webkitdirectory = true;
+    folderInput.directory = true;
+
+    input.onchange = () => {
+      const files = Array.from(input.files || []);
+      resolve(files);
+    };
+    input.addEventListener('cancel', () => resolve([]));
+    input.click();
+  });
+}
+
+async function loadAndroidFsModule(): Promise<AndroidFsModule | null> {
+  try {
+    const mod = await import('tauri-plugin-android-fs-api');
+    return mod as unknown as AndroidFsModule;
+  } catch {
+    return null;
+  }
+}
+
+async function listFilesFromAndroidUri(
+  androidFs: AndroidFsModule['AndroidFs'],
+  dirUri: AndroidFsUri,
+  allowed: Set<string>,
+): Promise<File[]> {
+  const files: File[] = [];
+
+  const walk = async (uri: AndroidFsUri) => {
+    const entries = await androidFs.readDir(uri);
+    for (const entry of entries) {
+      if (entry.type === 'Dir') {
+        await walk(entry.uri);
+        continue;
+      }
+
+      if (entry.type === 'File' && hasAllowedExtension(entry.name, allowed)) {
+        const content = await androidFs.readFile(entry.uri);
+        const bytes = content instanceof Uint8Array ? content : new Uint8Array(content);
+        const normalizedBytes = new Uint8Array(bytes.byteLength);
+        normalizedBytes.set(bytes);
+        files.push(new File([normalizedBytes], entry.name, { type: entry.mimeType || 'application/octet-stream' }));
+      }
+    }
+  };
+
+  await walk(dirUri);
+  return files;
+}
 
 // Get autoscan enabled setting from localStorage
 export function getAutoscanEnabled(): boolean {
@@ -45,53 +237,56 @@ export function getSyncFolderPath(): string | null {
 export function setSyncFolderPath(path: string | null): void {
   if (typeof localStorage === 'undefined') return;
   if (path) {
-    localStorage.setItem(SYNC_FOLDER_KEY, path);
+    localStorage.setItem(SYNC_FOLDER_KEY, normalizeSyncFolderPath(path));
   } else {
     localStorage.removeItem(SYNC_FOLDER_KEY);
+    localStorage.removeItem(MOBILE_SYNC_URI_KEY);
   }
 }
 
 // Get blacklisted file hashes (used when deleting flights)
-export function getBlacklist(): Set<string> {
-  if (typeof localStorage === 'undefined') return new Set();
+export async function getBlacklist(): Promise<Set<string>> {
   try {
-    const stored = localStorage.getItem(BLACKLIST_KEY);
-    return stored ? new Set(JSON.parse(stored)) : new Set();
+    const hashes = await getSyncBlacklist();
+    return new Set(hashes);
   } catch {
     return new Set();
   }
 }
 
 // Add hash to blacklist (called when deleting a flight)
-export function addToBlacklist(hash: string): void {
-  if (typeof localStorage === 'undefined' || !hash) return;
-  const blacklist = getBlacklist();
-  blacklist.add(hash);
-  localStorage.setItem(BLACKLIST_KEY, JSON.stringify([...blacklist]));
+export async function addToBlacklist(hash: string): Promise<void> {
+  if (!hash) return;
+  try {
+    await addToSyncBlacklist(hash);
+  } catch {
+    // Best-effort: deletion still proceeds even if blacklist write fails.
+  }
 }
 
 // Remove hash from blacklist (when manually importing)
-export function removeFromBlacklist(hash: string): void {
-  if (typeof localStorage === 'undefined' || !hash) return;
-  const blacklist = getBlacklist();
-  blacklist.delete(hash);
-  localStorage.setItem(BLACKLIST_KEY, JSON.stringify([...blacklist]));
+export async function removeFromBlacklist(hash: string): Promise<void> {
+  if (!hash) return;
+  try {
+    await removeFromSyncBlacklist(hash);
+  } catch {
+    // Best-effort: import still succeeds even if blacklist cleanup fails.
+  }
 }
 
 // Clear entire blacklist (e.g., when user wants to reset)
-export function clearBlacklist(): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem(BLACKLIST_KEY);
-}
-
-// Check if a hash is blacklisted
-export function isBlacklisted(hash: string | null | undefined): boolean {
-  if (!hash) return false;
-  return getBlacklist().has(hash);
+export async function clearBlacklist(): Promise<void> {
+  try {
+    await clearSyncBlacklist();
+  } catch {
+    // Best-effort: caller controls UI messaging.
+  }
 }
 
 export function FlightImporter() {
-  const { importLog, isImporting, apiKeyType, loadApiKeyType, isBatchProcessing, setIsBatchProcessing } = useFlightStore();
+  const { t } = useTranslation();
+  const isMobileRuntime = useIsMobileRuntime();
+  const { importLog, isImporting, apiKeyType, loadApiKeyType, isBatchProcessing, setIsBatchProcessing, activeProfile } = useFlightStore();
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
@@ -103,8 +298,30 @@ export function FlightImporter() {
   const [backgroundSyncResult, setBackgroundSyncResult] = useState<string | null>(null);
   const [autoscanEnabled, setAutoscanEnabledState] = useState(() => getAutoscanEnabled());
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
+  const [allowedExtensions, setAllowedExtensions] = useState<string[]>(DEFAULT_ALLOWED_EXTENSIONS);
   const backgroundSyncTriggeredRef = useRef(false);
   const backgroundSyncAbortRef = useRef(false);
+  const cancelRequestedRef = useRef(false);
+  const allowedExtensionSetRef = useRef<Set<string>>(new Set(DEFAULT_ALLOWED_EXTENSIONS.map(normalizeExtension)));
+  const startupBusyStateRef = useRef({
+    isImporting: false,
+    isBatchProcessing: false,
+    isSyncing: false,
+  });
+  const startupTimersRef = useRef<number[]>([]);
+  const mobileSyncFilesRef = useRef<File[]>([]);
+  const allowedExtensionSet = useMemo(
+    () => new Set(allowedExtensions.map(normalizeExtension)),
+    [allowedExtensions]
+  );
+  const allowedExtensionsWithDot = useMemo(
+    () => allowedExtensions.map((ext) => `.${normalizeExtension(ext)}`),
+    [allowedExtensions]
+  );
+  const browseAcceptString = useMemo(
+    () => allowedExtensionsWithDot.join(','),
+    [allowedExtensionsWithDot]
+  );
 
   // Load sync folder path on mount and listen for changes from Dashboard
   useEffect(() => {
@@ -122,11 +339,83 @@ export function FlightImporter() {
     loadApiKeyType();
   }, [loadApiKeyType]);
 
+  // Load dynamic allowed extensions (built-in + parsers.json mappings)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const ext = await getAllowedLogExtensions();
+        if (cancelled || ext.length === 0) return;
+        const normalized = Array.from(new Set(ext.map(normalizeExtension)));
+        if (normalized.length > 0) {
+          setAllowedExtensions(normalized);
+        }
+      } catch (error) {
+        console.warn('Failed to load dynamic allowed log extensions, using defaults:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const logImporterEvent = useCallback((message: string, meta?: Record<string, unknown>) => {
+    void logSyncEvent('info', message, meta).catch(() => {
+      // Best-effort logging only; never block sync/import actions.
+    });
+  }, []);
+
+  const cancelCurrentImporterAction = useCallback(() => {
+    const hadActiveQueue = isImporting || isBatchProcessing || isSyncing || isBackgroundSyncing;
+    if (hadActiveQueue) {
+      logImporterEvent('Import queue cancellation requested by user.', {
+        isImporting,
+        isBatchProcessing,
+        isSyncing,
+        isBackgroundSyncing,
+      });
+    }
+    cancelRequestedRef.current = true;
+    backgroundSyncAbortRef.current = true;
+    setIsBackgroundSyncing(false);
+    setBackgroundSyncResult(null);
+    setIsSyncing(false);
+    setIsBatchProcessing(false);
+    setCurrentFileName(null);
+    setBatchTotal(0);
+    setBatchIndex(0);
+  }, [isBackgroundSyncing, isBatchProcessing, isImporting, isSyncing, logImporterEvent, setIsBatchProcessing]);
+
+  useEffect(() => {
+    const handleCancelRequest = () => {
+      cancelCurrentImporterAction();
+    };
+    window.addEventListener('cancelImporterAction', handleCancelRequest as EventListener);
+    return () => {
+      window.removeEventListener('cancelImporterAction', handleCancelRequest as EventListener);
+    };
+  }, [cancelCurrentImporterAction]);
+
+  useEffect(() => {
+    const busy = isImporting || isBatchProcessing || isSyncing || isBackgroundSyncing;
+    window.dispatchEvent(
+      new CustomEvent('importerBusyStateChanged', {
+        detail: { busy },
+      })
+    );
+  }, [isImporting, isBatchProcessing, isSyncing, isBackgroundSyncing]);
 
   const runCooldown = async (seconds: number) => {
     setCooldownRemaining(seconds);
     for (let remaining = seconds; remaining > 0; remaining -= 1) {
+      if (cancelRequestedRef.current) {
+        setCooldownRemaining(0);
+        return;
+      }
       await sleep(1000);
       setCooldownRemaining(remaining - 1);
     }
@@ -142,6 +431,13 @@ export function FlightImporter() {
    */
   const processBatch = async (items: (string | File)[], isManualImport = true) => {
     if (items.length === 0) return;
+
+    cancelRequestedRef.current = false;
+
+    logImporterEvent('Batch processing started.', {
+      queueSize: items.length,
+      mode: isManualImport ? 'manual-import' : 'sync-import',
+    });
 
     setBatchMessage(null);
     setIsBatchProcessing(true);
@@ -160,37 +456,65 @@ export function FlightImporter() {
       loadFlights().then(() => loadAllTags());
     };
 
-    // Get blacklist for sync mode (check before import to avoid wasted work)
-    const blacklist = !isManualImport ? getBlacklist() : new Set<string>();
-    
-    // Helper to check if file is blacklisted (for sync mode only)
-    // Returns hash if blacklisted, null otherwise
-    const checkBlacklist = async (item: string | File): Promise<string | null> => {
-      if (isManualImport || blacklist.size === 0) return null;
-      
-      // Only works for file paths in Tauri mode
-      if (typeof item !== 'string') return null;
-      
+    // Get existing hashes + blacklist for sync mode, so we can skip duplicates before import.
+    const existingHashes = !isManualImport
+      ? new Set(
+          (await getFlights())
+            .map((flight) => flight.fileHash)
+            .filter((hash): hash is string => Boolean(hash))
+        )
+      : new Set<string>();
+    const blacklist = !isManualImport ? await getBlacklist() : new Set<string>();
+
+    const computeItemHash = async (item: string | File): Promise<string | null> => {
       try {
-        const hash = await computeFileHash(item);
-        return blacklist.has(hash) ? hash : null;
+        if (typeof item === 'string') {
+          return await computeFileHash(item);
+        }
+        const bytes = new Uint8Array(await item.arrayBuffer());
+        return sha256(bytes);
       } catch {
-        // If hash computation fails, proceed with import
+        // If hashing fails, proceed with import and rely on backend duplicate checks.
         return null;
       }
+    };
+
+    // For sync mode: pre-check existing + blacklist before import.
+    const checkSyncSkipReason = async (
+      item: string | File
+    ): Promise<'existing' | 'blacklisted' | null> => {
+      if (isManualImport) return null;
+      if (existingHashes.size === 0 && blacklist.size === 0) return null;
+
+      const hash = await computeItemHash(item);
+      if (!hash) return null;
+      if (existingHashes.has(hash)) return 'existing';
+      if (blacklist.has(hash)) return 'blacklisted';
+      return null;
+    };
+
+    const finalizeCancelledBatch = () => {
+      setIsBatchProcessing(false);
+      setCurrentFileName(null);
+      setBatchTotal(0);
+      setBatchIndex(0);
+      setCooldownRemaining(0);
+      setBatchMessage('Import canceled.');
+      logImporterEvent('Batch processing canceled by user.', {
+        mode: isManualImport ? 'manual-import' : 'sync-import',
+      });
     };
     
     if (hasPersonalKey) {
       // Optimized path: batch import without cooldown
-      // Refresh flight list every 2 files to show progress
+      // Refresh flight list every 10 files to show progress
       let processed = 0;
       let skipped = 0;
       let duplicates = 0;
       let invalidFiles = 0;
       let blacklisted = 0;
-      const REFRESH_INTERVAL = 2;
-
       for (let index = 0; index < items.length; index += 1) {
+        if (cancelRequestedRef.current) break;
         const item = items[index];
         setBatchIndex(index + 1);
         const name =
@@ -201,15 +525,24 @@ export function FlightImporter() {
             : `${item.name.slice(0, 50)}…`;
         setCurrentFileName(name);
 
-        // For sync mode: check blacklist BEFORE importing (much faster than import+delete)
-        const blacklistedHash = await checkBlacklist(item);
-        if (blacklistedHash) {
+        // For sync mode: check existing and blacklist BEFORE importing.
+        const skipReason = await checkSyncSkipReason(item);
+        if (cancelRequestedRef.current) break;
+        if (skipReason === 'existing') {
+          skipped += 1;
+          continue;
+        }
+        if (skipReason === 'blacklisted') {
           blacklisted += 1;
           continue;
         }
 
         // Import without refreshing flight list (skipRefresh = true)
         const result = await importLog(item, true);
+        if (cancelRequestedRef.current) {
+          finalizeCancelledBatch();
+          return;
+        }
         if (!result.success) {
           if (result.message.toLowerCase().includes('already been imported')) {
             skipped += 1;
@@ -223,7 +556,7 @@ export function FlightImporter() {
           processed += 1;
           // For manual import, remove from blacklist (allows re-importing)
           if (isManualImport && result.fileHash) {
-            removeFromBlacklist(result.fileHash);
+            await removeFromBlacklist(result.fileHash);
           }
           // Refresh flight list periodically so user sees progress
           if (processed % REFRESH_INTERVAL === 0) {
@@ -232,9 +565,14 @@ export function FlightImporter() {
         }
       }
 
+      if (cancelRequestedRef.current) {
+        finalizeCancelledBatch();
+        return;
+      }
+
       // Final refresh at the end
       if (processed > 0) {
-        setCurrentFileName('Refreshing flight list...');
+        setCurrentFileName(t('importer.refreshingList'));
         const { loadFlights, loadAllTags } = useFlightStore.getState();
         await loadFlights();
         loadAllTags();
@@ -247,12 +585,12 @@ export function FlightImporter() {
 
       // Build completion message
       const parts: string[] = [];
-      if (processed > 0) parts.push(`${processed} file${processed === 1 ? '' : 's'} processed`);
-      if (skipped > 0) parts.push(`${skipped} skipped (already imported)`);
-      if (duplicates > 0) parts.push(`${duplicates} skipped (duplicate flight)`);
-      if (blacklisted > 0) parts.push(`${blacklisted} skipped (blacklisted)`);
-      if (invalidFiles > 0) parts.push(`${invalidFiles} skipped (incompatible file)`);
-      setBatchMessage(`Import finished. ${parts.join(', ')}.`);
+      if (processed > 0) parts.push(t('importer.filesProcessed', { n: processed }));
+      if (skipped > 0) parts.push(`${skipped} ${t('importer.skippedAlready')}`);
+      if (duplicates > 0) parts.push(`${duplicates} ${t('importer.skippedDuplicate')}`);
+      if (blacklisted > 0) parts.push(`${blacklisted} ${t('importer.skippedBlacklisted')}`);
+      if (invalidFiles > 0) parts.push(`${invalidFiles} ${t('importer.skippedIncompatible')}`);
+      setBatchMessage(`${t('importer.importFinished')} ${parts.join(', ')}.`);
     } else {
       // Standard path with cooldown (default API key)
       // Refresh flight list after each successful import (during cooldown)
@@ -263,6 +601,7 @@ export function FlightImporter() {
       let duplicates = 0;
 
       for (let index = 0; index < items.length; index += 1) {
+        if (cancelRequestedRef.current) break;
         const item = items[index];
         const isLast = index === items.length - 1;
         setBatchIndex(index + 1);
@@ -274,15 +613,24 @@ export function FlightImporter() {
             : `${item.name.slice(0, 50)}…`;
         setCurrentFileName(name);
         
-        // For sync mode: check blacklist BEFORE importing (much faster than import+delete)
-        const blacklistedHash = await checkBlacklist(item);
-        if (blacklistedHash) {
+        // For sync mode: check existing and blacklist BEFORE importing.
+        const skipReason = await checkSyncSkipReason(item);
+        if (cancelRequestedRef.current) break;
+        if (skipReason === 'existing') {
+          skipped += 1;
+          continue;
+        }
+        if (skipReason === 'blacklisted') {
           blacklisted += 1;
           continue;
         }
         
         // Use skipRefresh=true to defer refresh until batch completes
         const result = await importLog(item, true);
+        if (cancelRequestedRef.current) {
+          finalizeCancelledBatch();
+          return;
+        }
         if (!result.success) {
           if (result.message.toLowerCase().includes('already been imported')) {
             skipped += 1;
@@ -300,22 +648,33 @@ export function FlightImporter() {
           processed += 1;
           // For manual import, remove from blacklist (allows re-importing)
           if (isManualImport && result.fileHash) {
-            removeFromBlacklist(result.fileHash);
+            await removeFromBlacklist(result.fileHash);
           }
-          // Refresh flight list in background while cooldown runs
-          // This way user sees new flights appear during the wait
-          refreshFlightListBackground();
+          // Refresh flight list periodically during batch processing.
+          // Keep cadence consistent across runtimes.
+          if (processed % REFRESH_INTERVAL === 0) {
+            refreshFlightListBackground();
+          }
           
           // Only apply cooldown between successful imports (not on last)
           if (!isLast) {
             await runCooldown(5);
+            if (cancelRequestedRef.current) {
+              finalizeCancelledBatch();
+              return;
+            }
           }
         }
       }
 
+      if (cancelRequestedRef.current) {
+        finalizeCancelledBatch();
+        return;
+      }
+
       // Final refresh to ensure everything is up to date
       if (processed > 0) {
-        setCurrentFileName('Refreshing flight list...');
+        setCurrentFileName(t('importer.refreshingList'));
         const { loadFlights, loadAllTags } = useFlightStore.getState();
         await loadFlights();
         loadAllTags();
@@ -325,23 +684,25 @@ export function FlightImporter() {
       setCurrentFileName(null);
       setBatchTotal(0);
       setBatchIndex(0);
+      setCooldownRemaining(0);
       
       // Build completion message
       const parts: string[] = [];
-      if (processed > 0) parts.push(`${processed} file${processed === 1 ? '' : 's'} processed`);
-      if (skipped > 0) parts.push(`${skipped} skipped (already imported)`);
-      if (duplicates > 0) parts.push(`${duplicates} skipped (duplicate flight)`);
-      if (blacklisted > 0) parts.push(`${blacklisted} skipped (blacklisted)`);
-      if (invalidFiles > 0) parts.push(`${invalidFiles} skipped (incompatible file)`);
-      setBatchMessage(`Import finished. ${parts.join(', ')}.`);
+      if (processed > 0) parts.push(t('importer.filesProcessed', { n: processed }));
+      if (skipped > 0) parts.push(`${skipped} ${t('importer.skippedAlready')}`);
+      if (duplicates > 0) parts.push(`${duplicates} ${t('importer.skippedDuplicate')}`);
+      if (blacklisted > 0) parts.push(`${blacklisted} ${t('importer.skippedBlacklisted')}`);
+      if (invalidFiles > 0) parts.push(`${invalidFiles} ${t('importer.skippedIncompatible')}`);
+      setBatchMessage(`${t('importer.importFinished')} ${parts.join(', ')}.`);
     }
   };
 
   // Handle file selection via dialog
   const handleBrowse = async () => {
-    if (isWebMode()) {
-      // Web mode: use HTML file input
-      const files = await pickFiles('.txt,.dat,.log,.csv', true);
+    // Use browser-style File objects on web and mobile runtimes.
+    // On Android this avoids path-only imports from content URIs.
+    if (isWebMode() || isMobileRuntime) {
+      const files = await pickFiles(browseAcceptString, true);
       await processBatch(files);
     } else {
       // Tauri mode: use native dialog
@@ -351,7 +712,7 @@ export function FlightImporter() {
         filters: [
           {
             name: 'Drone Log Files',
-            extensions: ['txt', 'dat', 'log', 'csv'],
+            extensions: allowedExtensions,
           },
         ],
       });
@@ -367,6 +728,83 @@ export function FlightImporter() {
     }
   };
 
+  const loadFilesFromSavedMobileDirectory = useCallback(async (): Promise<boolean> => {
+    const androidFsModule = await loadAndroidFsModule();
+    if (!androidFsModule || !androidFsModule.isAndroid()) return false;
+
+    const savedUri = getMobileSyncFolderUri();
+    if (!savedUri) return false;
+
+    const hasPersistedPermission = await androidFsModule.AndroidFs.checkPersistedPickerUriPermission(
+      savedUri,
+      androidFsModule.AndroidUriPermissionState.ReadOrWrite,
+    );
+    if (!hasPersistedPermission) return false;
+
+    const files = await listFilesFromAndroidUri(
+      androidFsModule.AndroidFs,
+      savedUri,
+      allowedExtensionSetRef.current,
+    );
+    if (files.length === 0) return false;
+
+    mobileSyncFilesRef.current = files;
+    setSyncFolderPath(savedUri.uri);
+    window.dispatchEvent(new CustomEvent('syncFolderChanged'));
+    return true;
+  }, []);
+
+  const selectMobileSyncFolder = useCallback(async (): Promise<boolean> => {
+    const androidFsModule = await loadAndroidFsModule();
+    if (androidFsModule && androidFsModule.isAndroid()) {
+      try {
+        const selectedUri = await androidFsModule.AndroidFs.showOpenDirPicker();
+        if (!selectedUri) return false;
+
+        await androidFsModule.AndroidFs.persistPickerUriPermission(selectedUri);
+
+        const files = await listFilesFromAndroidUri(
+          androidFsModule.AndroidFs,
+          selectedUri,
+          allowedExtensionSetRef.current,
+        );
+        if (files.length === 0) {
+          setBatchMessage(t('importer.noFlightLogs'));
+          return false;
+        }
+
+        setMobileSyncFolderUri(selectedUri);
+        mobileSyncFilesRef.current = files;
+        setSyncFolderPath(selectedUri.uri);
+        window.dispatchEvent(new CustomEvent('syncFolderChanged'));
+        return true;
+      } catch (error) {
+        console.warn('Android SAF folder picker failed, falling back to file selection:', error);
+      }
+    }
+
+    const selectedFiles = await pickFolderFiles(browseAcceptString);
+    const filteredFiles = selectedFiles.filter((file) => hasAllowedExtension(file.name, allowedExtensionSetRef.current));
+
+    if (filteredFiles.length === 0) {
+      if (selectedFiles.length > 0) {
+        setBatchMessage(t('importer.noFlightLogs'));
+      }
+      return false;
+    }
+
+    mobileSyncFilesRef.current = filteredFiles;
+
+    const relativePath = filteredFiles[0].webkitRelativePath || '';
+    const folderName = relativePath.includes('/')
+      ? relativePath.split('/')[0]
+      : 'selected-files';
+
+    setSyncFolderPath(`mobile://${folderName}`);
+    window.dispatchEvent(new CustomEvent('syncFolderChanged'));
+    return true;
+  }, [browseAcceptString, t]);
+
   // Handle drag and drop (web mode via react-dropzone)
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -380,8 +818,7 @@ export function FlightImporter() {
   const { getRootProps, getInputProps, isDragActive: webDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/plain': ['.txt', '.dat', '.log'],
-      'text/csv': ['.csv'],
+      'application/octet-stream': allowedExtensionsWithDot,
     },
     multiple: true,
     noClick: true,
@@ -417,9 +854,7 @@ export function FlightImporter() {
             setTauriDragActive(false);
             const paths = event.payload.paths;
             // Filter to supported extensions
-            const supported = paths.filter((p: string) =>
-              /\.(txt|dat|log|csv)$/i.test(p)
-            );
+            const supported = paths.filter((p: string) => hasAllowedExtension(p, allowedExtensionSet));
             if (supported.length > 0) {
               // Cancel background sync - user action takes priority
               cancelBackgroundSync();
@@ -437,133 +872,137 @@ export function FlightImporter() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [allowedExtensionSet]);
 
-  // Background automatic sync on startup (lazy loaded, non-blocking)
   useEffect(() => {
-    // Only run once
-    if (backgroundSyncTriggeredRef.current) return;
-    
-    // Web mode: check if SYNC_LOGS_PATH is configured on server
+    const handleMobileSyncFolderRequest = async () => {
+      if (!isMobileRuntime || isWebMode()) return;
+      await selectMobileSyncFolder();
+    };
+
+    window.addEventListener('requestMobileSyncFolderSelection', handleMobileSyncFolderRequest as EventListener);
+    return () => {
+      window.removeEventListener('requestMobileSyncFolderSelection', handleMobileSyncFolderRequest as EventListener);
+    };
+  }, [isMobileRuntime, selectMobileSyncFolder]);
+
+  useEffect(() => {
+    if (!isMobileRuntime || isWebMode()) return;
+
+    void loadFilesFromSavedMobileDirectory();
+  }, [isMobileRuntime, loadFilesFromSavedMobileDirectory]);
+
+  useEffect(() => {
+    allowedExtensionSetRef.current = allowedExtensionSet;
+  }, [allowedExtensionSet]);
+
+  useEffect(() => {
+    startupBusyStateRef.current = { isImporting, isBatchProcessing, isSyncing };
+  }, [isImporting, isBatchProcessing, isSyncing]);
+
+  // Background automatic sync on startup (one-shot, lazy loaded, non-blocking)
+  useEffect(() => {
+    const STARTUP_DELAY_MS = 3000;
+    const BUSY_RETRY_DELAY_MS = 3000;
+    const BUSY_RETRY_MAX_ATTEMPTS = 3;
+
+    const trackTimer = (timerId: number) => {
+      startupTimersRef.current.push(timerId);
+      return timerId;
+    };
+
+    const isBusy = () => {
+      const { isImporting: busyImporting, isBatchProcessing: busyBatch, isSyncing: busySync } = startupBusyStateRef.current;
+      return busyImporting || busyBatch || busySync;
+    };
+
+    const scheduleBusyRetry = async (
+      attempt: number,
+      runner: (nextAttempt: number) => Promise<void>,
+    ) => {
+      if (backgroundSyncAbortRef.current) return;
+      if (!isBusy()) {
+        await runner(attempt);
+        return;
+      }
+      if (attempt >= BUSY_RETRY_MAX_ATTEMPTS) {
+        console.debug('Startup auto-sync skipped after max busy retries.');
+        return;
+      }
+      const retryTimer = window.setTimeout(() => {
+        void scheduleBusyRetry(attempt + 1, runner);
+      }, BUSY_RETRY_DELAY_MS);
+      trackTimer(retryTimer);
+    };
+
+    const profileKey = (activeProfile || 'default').trim() || 'default';
+
+    // Only run once per profile per app session, even if importer remounts.
+    if (hasStartupSyncTriggered(profileKey) || backgroundSyncTriggeredRef.current) return;
+
+    // Web mode relies on server-side cron scheduling only.
     if (isWebMode()) {
+      markStartupSyncTriggered(profileKey);
+      backgroundSyncTriggeredRef.current = true;
+      return;
+    }
+
+    markStartupSyncTriggered(profileKey);
+    
+    if (isMobileRuntime && !isWebMode()) {
+      if (!getAutoscanEnabled()) return;
+
       backgroundSyncTriggeredRef.current = true;
       backgroundSyncAbortRef.current = false;
-      
-      // Lazy load: wait 3 seconds after mount to not block initial render
-      const timeoutId = setTimeout(async () => {
-        if (isImporting || isBatchProcessing || isSyncing) return;
-        
-        setIsBackgroundSyncing(true);
-        setBackgroundSyncResult(null);
-        
-        try {
-          // Check if sync is configured on server
-          if (backgroundSyncAbortRef.current) {
-            setIsBackgroundSyncing(false);
-            return;
-          }
-          
-          const config = await getSyncConfig();
-          if (!config.syncPath || !config.autoSync) {
-            // No sync folder configured or scheduled sync not enabled - manual sync only
-            setIsBackgroundSyncing(false);
-            return;
-          }
-          
-          if (backgroundSyncAbortRef.current) {
-            setIsBackgroundSyncing(false);
-            return;
-          }
-          
-          // Get list of files to sync
-          const filesResponse = await getSyncFiles();
-          if (filesResponse.files.length === 0) {
-            setIsBackgroundSyncing(false);
-            return;
-          }
-          
-          // Process files one by one with progress tracking
-          setIsBackgroundSyncing(false); // Switch to batch processing mode
-          setIsBatchProcessing(true);
-          setBatchTotal(filesResponse.files.length);
-          setBatchIndex(0);
-          
-          let processed = 0;
-          let skipped = 0;
-          let errors = 0;
-          
-          for (let i = 0; i < filesResponse.files.length; i++) {
-            if (backgroundSyncAbortRef.current) break;
-            
-            const filename = filesResponse.files[i];
-            setBatchIndex(i + 1);
-            setCurrentFileName(filename.length > 50 ? `${filename.slice(0, 50)}…` : filename);
-            
-            try {
-              const result = await syncSingleFile(filename);
-              if (result.success) {
-                processed++;
-                // Refresh flight list every 2 files to show progress
-                if (processed % 2 === 0) {
-                  const { loadFlights, loadAllTags } = useFlightStore.getState();
-                  loadFlights().then(() => loadAllTags());
-                }
-              } else if (result.message.toLowerCase().includes('already') || result.message.toLowerCase().includes('duplicate')) {
-                skipped++;
-              } else {
-                errors++;
-              }
-            } catch (e) {
-              console.error(`Failed to sync ${filename}:`, e);
-              errors++;
-            }
-          }
-          
-          setIsBatchProcessing(false);
-          setCurrentFileName(null);
-          setBatchTotal(0);
-          setBatchIndex(0);
-          
-          // Final refresh
-          if (processed > 0) {
-            const { loadFlights, loadAllTags } = useFlightStore.getState();
-            await loadFlights();
-            loadAllTags();
-          }
-          
-          // Show result message
-          if (processed > 0 || skipped > 0 || errors > 0) {
-            const parts: string[] = [];
-            if (processed > 0) parts.push(`${processed} imported`);
-            if (skipped > 0) parts.push(`${skipped} skipped`);
-            if (errors > 0) parts.push(`${errors} errors`);
-            setBatchMessage(`Sync complete: ${parts.join(', ')}`);
-          }
-        } catch (e) {
-          console.error('Background sync check failed:', e);
-          setIsBackgroundSyncing(false);
-          setIsBatchProcessing(false);
+
+      const runMobileStartupSync = async () => {
+        if (!getAutoscanEnabled()) return;
+
+        const hasSavedFolder = await loadFilesFromSavedMobileDirectory();
+        if (!hasSavedFolder) return;
+
+        if (backgroundSyncAbortRef.current) return;
+
+        logImporterEvent('Auto-scan on startup started (mobile mode).', {
+          syncFolderPath: getSyncFolderPath(),
+        });
+
+        await processBatchRef.current([...mobileSyncFilesRef.current], false);
+        mobileSyncFilesRef.current = [];
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        void scheduleBusyRetry(0, async () => {
+          await runMobileStartupSync();
+        });
+      }, STARTUP_DELAY_MS);
+      trackTimer(timeoutId);
+
+      return () => {
+        for (const timerId of startupTimersRef.current) {
+          clearTimeout(timerId);
         }
-      }, 3000); // 3 second delay for lazy loading
-      
-      return () => clearTimeout(timeoutId);
+        startupTimersRef.current = [];
+      };
     }
-    
+
     // Desktop mode: only if sync folder is configured and autoscan enabled
-    if (!autoscanEnabled) return;
-    
-    const folderPath = getSyncFolderPath();
-    if (!folderPath) return;
+    if (!getAutoscanEnabled()) return;
     
     // Mark as triggered to prevent re-running
     backgroundSyncTriggeredRef.current = true;
     // Reset abort flag for this run
     backgroundSyncAbortRef.current = false;
-    
-    // Lazy load: wait 3 seconds after mount to not block initial render
-    const timeoutId = setTimeout(async () => {
-      // Don't run if user is already doing something
-      if (isImporting || isBatchProcessing || isSyncing) return;
+
+    const runDesktopStartupSync = async () => {
+      if (!getAutoscanEnabled()) return;
+
+      const folderPath = getSyncFolderPath();
+      if (!folderPath || !isSyncFolderReadable(folderPath)) return;
+
+      logImporterEvent('Auto-scan on startup started (desktop mode).', {
+        folderPath,
+      });
       
       setIsBackgroundSyncing(true);
       setBackgroundSyncResult(null);
@@ -584,14 +1023,13 @@ export function FlightImporter() {
           return;
         }
         
-        // Filter for .txt and .csv files (DJI logs and Litchi exports)
+        // Filter only files with allowed log extensions
         const logFiles = entries
           .filter((entry) => {
             if (!entry.isFile || !entry.name) return false;
-            const name = entry.name.toLowerCase();
-            return name.endsWith('.txt') || name.endsWith('.csv');
+            return hasAllowedExtension(entry.name, allowedExtensionSetRef.current);
           })
-          .map((entry) => `${folderPath}/${entry.name}`);
+          .map((entry) => joinFolderPath(folderPath, entry.name!));
         
         if (logFiles.length === 0) {
           setIsBackgroundSyncing(false);
@@ -601,10 +1039,13 @@ export function FlightImporter() {
         // Get existing file hashes to check for new files
         const existingFlights = await getFlights();
         const existingHashes = new Set(existingFlights.map(f => f.fileHash).filter(Boolean));
-        const blacklist = getBlacklist();
+        const blacklist = await getBlacklist();
         
         // Find truly new files (not already imported, not blacklisted)
         const newFiles: string[] = [];
+        let skippedExisting = 0;
+        let skippedBlacklisted = 0;
+        let hashErrors = 0;
         for (const filePath of logFiles) {
           // Check abort during hash computation loop
           if (backgroundSyncAbortRef.current) {
@@ -613,13 +1054,31 @@ export function FlightImporter() {
           }
           try {
             const hash = await computeFileHash(filePath);
+            if (existingHashes.has(hash)) {
+              skippedExisting += 1;
+              continue;
+            }
+            if (blacklist.has(hash)) {
+              skippedBlacklisted += 1;
+              continue;
+            }
             if (!existingHashes.has(hash) && !blacklist.has(hash)) {
               newFiles.push(filePath);
             }
           } catch {
             // If hash fails, skip silently
+            hashErrors += 1;
           }
         }
+
+        logImporterEvent('Desktop auto-sync prefilter summary.', {
+          profile: activeProfile,
+          candidates: logFiles.length,
+          newFiles: newFiles.length,
+          skippedExisting,
+          skippedBlacklisted,
+          hashErrors,
+        });
         
         // Final abort check before importing
         if (backgroundSyncAbortRef.current) {
@@ -631,7 +1090,7 @@ export function FlightImporter() {
         
         if (newFiles.length > 0) {
           // Show hint about new files found, then auto-import them
-          setBackgroundSyncResult(`Found ${newFiles.length} new file${newFiles.length === 1 ? '' : 's'}. Importing...`);
+          setBackgroundSyncResult(t('importer.foundNewFiles', { n: newFiles.length }));
           
           // Small delay to show the message, then start import
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -651,10 +1110,23 @@ export function FlightImporter() {
         console.error('Background sync check failed:', e);
         setIsBackgroundSyncing(false);
       }
-    }, 3000); // 3 second delay for lazy loading
+    };
+
+    // Lazy load: wait before startup autosync to not block initial render
+    const timeoutId = window.setTimeout(() => {
+      void scheduleBusyRetry(0, async () => {
+        await runDesktopStartupSync();
+      });
+    }, STARTUP_DELAY_MS);
+    trackTimer(timeoutId);
     
-    return () => clearTimeout(timeoutId);
-  }, [autoscanEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      for (const timerId of startupTimersRef.current) {
+        clearTimeout(timerId);
+      }
+      startupTimersRef.current = [];
+    };
+  }, [activeProfile, isMobileRuntime, loadFilesFromSavedMobileDirectory]);
 
   const isDragActive = webDragActive || tauriDragActive;
 
@@ -676,6 +1148,13 @@ export function FlightImporter() {
   const handleSync = async () => {
     // Cancel background sync - user action takes priority
     cancelBackgroundSync();
+    cancelRequestedRef.current = false;
+
+    logImporterEvent('Sync started from importer action.', {
+      mode: isWebMode() ? 'web' : 'desktop',
+      autoscanEnabled,
+      syncFolderPath: getSyncFolderPath(),
+    });
 
     // Web mode: use server-side sync with file-by-file progress
     if (isWebMode()) {
@@ -683,6 +1162,11 @@ export function FlightImporter() {
       setBatchMessage(null);
       
       try {
+        // Ensure API key type is fresh before deciding cooldown behavior.
+        await loadApiKeyType();
+        const currentApiKeyType = useFlightStore.getState().apiKeyType;
+        const hasPersonalKey = currentApiKeyType === 'personal';
+
         // First get the list of files to sync
         const filesResponse = await getSyncFiles();
         
@@ -694,7 +1178,7 @@ export function FlightImporter() {
         
         if (filesResponse.files.length === 0) {
           setIsSyncing(false);
-          setBatchMessage('No new files to import');
+          setBatchMessage(t('importer.noNewFiles'));
           return;
         }
         
@@ -703,12 +1187,18 @@ export function FlightImporter() {
         setIsBatchProcessing(true);
         setBatchTotal(filesResponse.files.length);
         setBatchIndex(0);
+
+        logImporterEvent('Web manual sync prefilter summary.', {
+          profile: activeProfile,
+          candidatesFromServer: filesResponse.files.length,
+        });
         
         let processed = 0;
         let skipped = 0;
         let errors = 0;
-        
         for (let i = 0; i < filesResponse.files.length; i++) {
+          if (cancelRequestedRef.current) break;
+          const isLast = i === filesResponse.files.length - 1;
           const filename = filesResponse.files[i];
           setBatchIndex(i + 1);
           setCurrentFileName(filename.length > 50 ? `${filename.slice(0, 50)}…` : filename);
@@ -717,12 +1207,22 @@ export function FlightImporter() {
             const result = await syncSingleFile(filename);
             if (result.success) {
               processed++;
-              // Refresh flight list every 2 files to show progress
-              if (processed % 2 === 0) {
+              // Refresh flight list every 10 files to show progress
+              if (processed % REFRESH_INTERVAL === 0) {
                 const { loadFlights, loadAllTags } = useFlightStore.getState();
                 loadFlights().then(() => loadAllTags());
               }
-            } else if (result.message.toLowerCase().includes('already') || result.message.toLowerCase().includes('duplicate')) {
+
+              // Match browse import behavior: cooldown only for default/shared key.
+              if (!hasPersonalKey && !isLast) {
+                await runCooldown(5);
+                if (cancelRequestedRef.current) break;
+              }
+            } else if (
+              result.message.toLowerCase().includes('already') ||
+              result.message.toLowerCase().includes('duplicate') ||
+              result.message.toLowerCase().includes('blacklisted')
+            ) {
               skipped++;
             } else {
               errors++;
@@ -731,6 +1231,15 @@ export function FlightImporter() {
             console.error(`Failed to sync ${filename}:`, e);
             errors++;
           }
+        }
+
+        if (cancelRequestedRef.current) {
+          setIsBatchProcessing(false);
+          setCurrentFileName(null);
+          setBatchTotal(0);
+          setBatchIndex(0);
+          setBatchMessage('Sync canceled.');
+          return;
         }
         
         setIsBatchProcessing(false);
@@ -747,13 +1256,19 @@ export function FlightImporter() {
         
         // Show result
         if (processed > 0 || skipped > 0 || errors > 0) {
+          logImporterEvent('Web manual sync execution summary.', {
+            profile: activeProfile,
+            imported: processed,
+            skipped,
+            errors,
+          });
           const parts: string[] = [];
           if (processed > 0) parts.push(`${processed} imported`);
           if (skipped > 0) parts.push(`${skipped} skipped`);
           if (errors > 0) parts.push(`${errors} errors`);
-          setBatchMessage(`Sync complete: ${parts.join(', ')}`);
+          setBatchMessage(t('importer.syncComplete', { parts: parts.join(', ') }));
         } else {
-          setBatchMessage('No files to sync');
+          setBatchMessage(t('importer.noFilesToSync'));
         }
       } catch (e) {
         console.error('Sync failed:', e);
@@ -764,13 +1279,34 @@ export function FlightImporter() {
       return;
     }
 
+    if (isMobileRuntime) {
+      if (mobileSyncFilesRef.current.length === 0) {
+        const restored = await loadFilesFromSavedMobileDirectory();
+        if (!restored) {
+          const selected = await selectMobileSyncFolder();
+          if (!selected || mobileSyncFilesRef.current.length === 0) {
+            setBatchMessage('NO_SYNC_FOLDER');
+            return;
+          }
+        }
+
+        if (mobileSyncFilesRef.current.length === 0) {
+          setBatchMessage('NO_SYNC_FOLDER');
+          return;
+        }
+      }
+
+      await processBatch([...mobileSyncFilesRef.current], false);
+      mobileSyncFilesRef.current = [];
+      return;
+    }
+
     // Desktop mode: use local sync folder
     const folderPath = getSyncFolderPath();
     if (!folderPath) {
       setBatchMessage('NO_SYNC_FOLDER');
       return;
     }
-
     setIsSyncing(true);
     setBatchMessage(null);
 
@@ -778,27 +1314,82 @@ export function FlightImporter() {
       // Read directory contents using Tauri
       const { readDir } = await import('@tauri-apps/plugin-fs');
       const entries = await readDir(folderPath);
+      if (cancelRequestedRef.current) {
+        setIsSyncing(false);
+        return;
+      }
       
-      // Filter for .txt and .csv files (DJI logs and Litchi exports)
+      // Filter only files with allowed log extensions
       const logFiles = entries
         .filter((entry) => {
           if (!entry.isFile || !entry.name) return false;
-          const name = entry.name.toLowerCase();
-          return name.endsWith('.txt') || name.endsWith('.csv');
+          return hasAllowedExtension(entry.name, allowedExtensionSet);
         })
-        .map((entry) => `${folderPath}/${entry.name}`);
+        .map((entry) => joinFolderPath(folderPath, entry.name!));
 
-      if (logFiles.length === 0) {
-        setBatchMessage('No flight log files (.txt, .csv) found in sync folder.');
+      if (cancelRequestedRef.current) {
         setIsSyncing(false);
         return;
       }
 
-      // For sync, we pass isManualImport=false so blacklisted files are checked
-      // The processBatch function will check each file's hash against the blacklist
-      // after import and delete any that match (files user previously deleted)
+      if (logFiles.length === 0) {
+        setBatchMessage(t('importer.noFlightLogs'));
+        setIsSyncing(false);
+        return;
+      }
+
+      // Pre-filter to only truly new files (not already imported and not blacklisted)
+      // before entering batch processing. This mirrors startup autoscan behavior.
+      const existingFlights = await getFlights();
+      const existingHashes = new Set(existingFlights.map((f) => f.fileHash).filter(Boolean));
+      const blacklist = await getBlacklist();
+
+      const newFiles: string[] = [];
+      let skippedExisting = 0;
+      let skippedBlacklisted = 0;
+      let hashErrors = 0;
+      for (const filePath of logFiles) {
+        if (cancelRequestedRef.current) {
+          setIsSyncing(false);
+          return;
+        }
+        try {
+          const hash = await computeFileHash(filePath);
+          if (existingHashes.has(hash)) {
+            skippedExisting += 1;
+            continue;
+          }
+          if (blacklist.has(hash)) {
+            skippedBlacklisted += 1;
+            continue;
+          }
+          if (!existingHashes.has(hash) && !blacklist.has(hash)) {
+            newFiles.push(filePath);
+          }
+        } catch {
+          // If hash computation fails, skip this file for safety.
+          hashErrors += 1;
+        }
+      }
+
+      logImporterEvent('Desktop manual sync prefilter summary.', {
+        profile: activeProfile,
+        candidates: logFiles.length,
+        newFiles: newFiles.length,
+        skippedExisting,
+        skippedBlacklisted,
+        hashErrors,
+      });
+
+      if (newFiles.length === 0) {
+        setBatchMessage(t('importer.noNewFiles'));
+        setIsSyncing(false);
+        return;
+      }
+
+      // For sync, pass isManualImport=false and only new files to batch processing.
       setIsSyncing(false);
-      await processBatch(logFiles, false); // isManualImport = false for sync
+      await processBatch(newFiles, false); // isManualImport = false for sync
     } catch (e) {
       console.error('Sync failed:', e);
       setBatchMessage(`Sync failed: ${e}`);
@@ -813,6 +1404,8 @@ export function FlightImporter() {
     return parts[parts.length - 1] || syncFolderPath;
   };
 
+  const litchiHubBridgeUrl = `https://flylitchi.com/hub-bridge?action=open&folder=${encodeURIComponent(syncFolderPath ?? '')}&sync=true`;
+
   return (
     <div
       {...(isWebMode() ? getRootProps() : {})}
@@ -823,18 +1416,18 @@ export function FlightImporter() {
       {isImporting || isBatchProcessing || isSyncing ? (
         <div className="flex flex-col items-center gap-2">
           <div className="w-6 h-6 border-2 border-drone-primary border-t-transparent rounded-full spinner" />
-          <span className="text-sm text-gray-400 break-all text-center w-full px-2">
+          <span className="text-xs text-gray-400 break-all text-center w-full px-2">
             {cooldownRemaining > 0
-              ? `Cooling down... ${cooldownRemaining}s`
+              ? t('importer.coolingDown', { n: cooldownRemaining })
               : isSyncing
-              ? 'Scanning sync folder...'
+              ? t('importer.scanningSync')
               : currentFileName
-              ? `Importing ${currentFileName}...`
-              : 'Importing...'}
+              ? t('importer.importingName', { name: currentFileName })
+              : t('importer.importingGeneric')}
           </span>
           {batchTotal > 0 && (
             <span className="text-xs text-drone-primary font-medium">
-              {batchIndex} of {batchTotal} file{batchTotal !== 1 ? 's' : ''}
+              {t('importer.filesProgress', { n: batchIndex, total: batchTotal })}
             </span>
           )}
         </div>
@@ -855,54 +1448,52 @@ export function FlightImporter() {
               />
             </svg>
           </div>
-
-          <p className="text-xs text-gray-400 mb-2">
+          <p className="text-xs text-gray-400 mb-3">
             {isDragActive
-              ? 'Drop the file here...'
-              : 'Import a drone flight log'}
+              ? t('importer.dropFileHere')
+              : t('importer.importFlightLog')}
           </p>
-
           <div className="flex gap-2 justify-center">
             <button
               onClick={handleBrowse}
-              className="btn-primary text-sm py-1.5 px-3 force-white flex-1 max-w-[100px]"
+              className="btn-primary text-sm py-1.5 px-5 force-white"
               disabled={isImporting || isBatchProcessing || isSyncing}
             >
-              Browse
+              {t('importer.browse')}
             </button>
-            {/* Show Sync button in desktop mode (always) or web mode (when SYNC_LOGS_PATH is configured) */}
             {(!isWebMode() || webSyncPath) && (
               <button
                 onClick={handleSync}
-                className="btn-primary text-sm py-1.5 px-3 force-white flex-1 max-w-[100px]"
+                className="btn-primary text-sm py-1.5 px-5 force-white"
                 disabled={isImporting || isBatchProcessing || isSyncing}
                 title={isWebMode() 
                   ? (webSyncPath ? `Sync from server: ${webSyncPath}` : 'Sync not configured on server')
+                  : isMobileRuntime
+                  ? 'Select files to sync from your device'
                   : (syncFolderPath ? `Sync from: ${getSyncFolderDisplayName()}` : 'Configure sync folder first')}
               >
-                <div className="flex items-center justify-center gap-1">
+                <div className="flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Sync
+                  {t('importer.sync')}
                 </div>
               </button>
             )}
           </div>
-
-          {/* Manual entry button */}
-          <div className="flex justify-center mt-2">
+          <div className="mt-2 flex justify-center">
             <button
               onClick={() => setIsManualEntryOpen(true)}
-              className="btn-primary text-sm py-1.5 px-3 force-white flex items-center justify-center gap-1"
-              style={{ width: 'calc(200px + 0.5rem)' }}
+              className="btn-primary text-sm py-1.5 px-5 force-white"
               disabled={isImporting || isBatchProcessing || isSyncing}
               title="Add a flight manually without a log file"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Manual Entry
+              <div className="flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                {t('importer.manualEntry')}
+              </div>
             </button>
           </div>
           
@@ -914,7 +1505,7 @@ export function FlightImporter() {
           )}
           {isWebMode() && webSyncPath && (
             <p className="mt-2 text-[10px] text-gray-500 truncate max-w-full" title={webSyncPath}>
-              Sync: {webSyncPath} (auto-sync on load)
+              Sync: {webSyncPath} (auto-sync on cron)
             </p>
           )}
           
@@ -931,7 +1522,7 @@ export function FlightImporter() {
                 }}
                 className="w-3 h-3 rounded border-gray-500 bg-drone-dark text-drone-primary focus:ring-1 focus:ring-drone-primary focus:ring-offset-0 cursor-pointer"
               />
-              <span className="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">Autoscan on startup</span>
+              <span className="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">{t('importer.autoscanOnStartup')}</span>
             </label>
           )}
           
@@ -939,7 +1530,7 @@ export function FlightImporter() {
           {isBackgroundSyncing && (
             <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-gray-500">
               <div className="w-3 h-3 border border-gray-500 border-t-transparent rounded-full animate-spin" />
-              <span>Auto-sync checking for new files...</span>
+              <span>{t('importer.autoSyncChecking')}</span>
             </div>
           )}
           
@@ -955,10 +1546,10 @@ export function FlightImporter() {
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
-                  <span className="text-xs font-medium">No sync folder configured</span>
+                  <span className="text-xs font-medium">{t('importer.noSyncFolder')}</span>
                 </div>
                 <p className="mt-1 text-[10px] text-amber-300">
-                  Click the folder icon in the header above to select a folder for automatic syncing.
+                  {t('importer.clickFolderIcon')}
                 </p>
               </div>
             ) : batchMessage === 'NO_SYNC_FOLDER_WEB' ? (
@@ -967,15 +1558,37 @@ export function FlightImporter() {
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
-                  <span className="text-xs font-medium">Sync not configured on server</span>
+                  <span className="text-xs font-medium">{t('importer.syncNotConfigured')}</span>
                 </div>
                 <p className="mt-1 text-[10px] text-amber-300">
-                  Set SYNC_LOGS_PATH environment variable and mount the volume in docker-compose.yml to enable sync.
+                  {t('importer.setSyncPath')}
                 </p>
               </div>
             ) : (
               <p className="mt-2 text-xs text-gray-400">{batchMessage}</p>
             )
+          )}
+
+          {/* Desktop tip for quick ODL sync via Litchi Hub Bridge */}
+          {!isWebMode() && !isMobileRuntime && (
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+              <svg className="w-3.5 h-3.5 flex-shrink-0 text-amber-400/80" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 3a6 6 0 00-3.6 10.8c.4.3.6.8.6 1.3V16a1 1 0 001 1h4a1 1 0 001-1v-.9c0-.5.2-1 .6-1.3A6 6 0 0012 3zm-2 16h4m-3 2h2" />
+              </svg>
+              <span className="font-medium text-amber-300/90">Tip:</span>
+              <span>
+                Use{' '}
+                <a
+                  href={litchiHubBridgeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amber-300/90 underline underline-offset-2 decoration-amber-300/60 hover:text-amber-200"
+                >
+                  Litchi Hub Bridge
+                </a>{' '}
+                to sync logs automatically.
+              </span>
+            </div>
           )}
         </>
       )}
