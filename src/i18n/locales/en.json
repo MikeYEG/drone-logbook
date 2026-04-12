@@ -160,6 +160,7 @@
     "exportingFlights": "Exporting Flights",
     "progress": "Progress",
     "current": "Current:",
+    "exportFolderAccessDenied": "Access denied to selected export folder: {{error}} Please select a writable folder and try again.",
     "deletingFlights": "Deleting Flights",
     "removingTags": "Removing Tags",
     "addingTags": "Adding Tags",

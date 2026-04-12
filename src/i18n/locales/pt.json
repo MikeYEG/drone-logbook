@@ -159,6 +159,7 @@
     "exportingFlights": "Exportando Voos",
     "progress": "Progresso",
     "current": "Atual:",
+    "exportFolderAccessDenied": "Acesso negado à pasta de exportação selecionada: {{error}} Selecione uma pasta com permissão de escrita e tente novamente.",
     "deletingFlights": "Excluindo Voos",
     "removingTags": "Removendo Tags",
     "addingTags": "Adicionando Tags",

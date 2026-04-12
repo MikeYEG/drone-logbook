@@ -1794,6 +1794,59 @@ export function FlightList({
 
   const buildSummaryCsvHeader = (): string => summaryCsvHeaders().join(',');
 
+  const showExportFolderAccessDenied = (error: unknown) => {
+    const details = error instanceof Error ? error.message : String(error);
+    window.alert(t('flightList.exportFolderAccessDenied', { error: details }));
+  };
+
+  const validateDesktopExportDirectoryWritable = async (dirPath: string) => {
+    const { writeTextFile, readTextFile, remove } = await import('@tauri-apps/plugin-fs');
+    const marker = `open-dronelog-export-write-check-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+    const tempPath = `${dirPath}/${marker}`;
+    const payload = 'open-dronelog-export-write-check';
+
+    await writeTextFile(tempPath, payload);
+    const readBack = await readTextFile(tempPath);
+    await remove(tempPath);
+
+    if (readBack !== payload) {
+      throw new Error('Write verification failed (content mismatch).');
+    }
+  };
+
+  const validateWebExportDirectoryWritable = async (dirHandle: any) => {
+    const marker = `open-dronelog-export-write-check-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+    const payload = 'open-dronelog-export-write-check';
+    const fileHandle = await dirHandle.getFileHandle(marker, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(payload);
+    await writable.close();
+    const file = await fileHandle.getFile();
+    const readBack = await file.text();
+
+    if (readBack !== payload) {
+      throw new Error('Write verification failed (content mismatch).');
+    }
+
+    if (typeof dirHandle.removeEntry !== 'function') {
+      throw new Error('Unable to delete temporary validation file.');
+    }
+    await dirHandle.removeEntry(marker);
+  };
+
+  const validateMobileExportDirectoryWritable = async (androidFs: any, dirUri: any) => {
+    const marker = `open-dronelog-export-write-check-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+    const payload = 'open-dronelog-export-write-check';
+    const fileUri = await androidFs.AndroidFs.createNewFile(dirUri, marker, 'text/plain');
+    await androidFs.AndroidFs.writeTextFile(fileUri, payload);
+    const readBack = await androidFs.AndroidFs.readTextFile(fileUri);
+    await androidFs.AndroidFs.removeFile(fileUri);
+
+    if (readBack !== payload) {
+      throw new Error('Write verification failed (content mismatch).');
+    }
+  };
+
   const handleBulkExport = async (format: string, extension: string) => {
     try {
       setIsExporting(true);
@@ -1801,18 +1854,10 @@ export function FlightList({
 
       if (isWebMode()) {
         const webWindow = window as Window & {
-          showDirectoryPicker?: (options?: unknown) => Promise<{
-            getFileHandle: (name: string, opts?: { create?: boolean }) => Promise<{
-              createWritable: () => Promise<{ write: (data: string) => Promise<void>; close: () => Promise<void> }>;
-            }>;
-          }>;
+          showDirectoryPicker?: (options?: unknown) => Promise<any>;
         };
 
-        let selectedDirHandle: {
-          getFileHandle: (name: string, opts?: { create?: boolean }) => Promise<{
-            createWritable: () => Promise<{ write: (data: string) => Promise<void>; close: () => Promise<void> }>;
-          }>;
-        } | null = null;
+        let selectedDirHandle: any = null;
 
         let useBrowserDownloads = false;
         const confirmDownloadFallback = (): boolean => window.confirm(
@@ -1840,6 +1885,16 @@ export function FlightList({
             return;
           }
           useBrowserDownloads = true;
+        }
+
+        if (!useBrowserDownloads && selectedDirHandle) {
+          try {
+            await validateWebExportDirectoryWritable(selectedDirHandle);
+          } catch (error) {
+            showExportFolderAccessDenied(error);
+            setIsExporting(false);
+            return;
+          }
         }
 
         for (let i = 0; i < filteredFlights.length; i++) {
@@ -1899,6 +1954,14 @@ export function FlightList({
           console.warn('Failed to persist Android folder permission:', err);
         });
 
+        try {
+          await validateMobileExportDirectoryWritable(androidFs, dirUri);
+        } catch (error) {
+          showExportFolderAccessDenied(error);
+          setIsExporting(false);
+          return;
+        }
+
         const mimeTypeByExt = (ext: string): string => {
           if (ext === 'csv') return 'text/csv';
           if (ext === 'json') return 'application/json';
@@ -1936,6 +1999,14 @@ export function FlightList({
       const { open } = await import('@tauri-apps/plugin-dialog');
       dirPath = await open({ directory: true, multiple: false }) as string | null;
       if (!dirPath) {
+        setIsExporting(false);
+        return;
+      }
+
+      try {
+        await validateDesktopExportDirectoryWritable(dirPath);
+      } catch (error) {
+        showExportFolderAccessDenied(error);
         setIsExporting(false);
         return;
       }

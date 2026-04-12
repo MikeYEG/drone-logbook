@@ -164,6 +164,7 @@
     "exportingFlights": "Vluchten exporteren",
     "progress": "Voortgang",
     "current": "Huidig:",
+    "exportFolderAccessDenied": "Toegang geweigerd tot de geselecteerde exportmap: {{error}} Selecteer een beschrijfbare map en probeer het opnieuw.",
     "deletingFlights": "Vluchten verwijderen",
     "removingTags": "Tags verwijderen",
     "addingTags": "Tags toevoegen",

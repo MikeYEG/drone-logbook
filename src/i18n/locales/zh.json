@@ -164,6 +164,7 @@
     "exportingFlights": "正在导出飞行记录",
     "progress": "进度",
     "current": "当前：",
+    "exportFolderAccessDenied": "无法访问所选导出文件夹：{{error}} 请选择可写文件夹后重试。",
     "deletingFlights": "正在删除飞行记录",
     "removingTags": "正在移除标签",
     "addingTags": "正在添加标签",

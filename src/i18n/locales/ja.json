@@ -164,6 +164,7 @@
     "exportingFlights": "フライトをエクスポート中",
     "progress": "進捗",
     "current": "現在:",
+    "exportFolderAccessDenied": "選択したエクスポート先フォルダにアクセスできません: {{error}} 書き込み可能なフォルダを選択して、もう一度お試しください。",
     "deletingFlights": "フライトを削除中",
     "removingTags": "タグを削除中",
     "addingTags": "タグを追加中",

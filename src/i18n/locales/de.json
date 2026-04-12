@@ -164,6 +164,7 @@
     "exportingFlights": "Flüge werden exportiert",
     "progress": "Fortschritt",
     "current": "Aktuell:",
+    "exportFolderAccessDenied": "Zugriff auf den ausgewählten Exportordner verweigert: {{error}} Bitte wählen Sie einen beschreibbaren Ordner und versuchen Sie es erneut.",
     "deletingFlights": "Flüge werden gelöscht",
     "removingTags": "Tags werden entfernt",
     "addingTags": "Tags werden hinzugefügt",

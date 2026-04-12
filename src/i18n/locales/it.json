@@ -164,6 +164,7 @@
     "exportingFlights": "Esportazione Voli",
     "progress": "Progresso",
     "current": "Attuale:",
+    "exportFolderAccessDenied": "Accesso negato alla cartella di esportazione selezionata: {{error}} Seleziona una cartella scrivibile e riprova.",
     "deletingFlights": "Eliminazione Voli",
     "removingTags": "Rimozione Tag",
     "addingTags": "Aggiunta Tag",

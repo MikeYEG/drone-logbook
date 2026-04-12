@@ -160,6 +160,7 @@
     "exportingFlights": "Uçuşları Dışa Aktarma",
     "progress": "İlerleme",
     "current": "Mevcut:",
+    "exportFolderAccessDenied": "Seçilen dışa aktarma klasörüne erişim reddedildi: {{error}} Lütfen yazılabilir bir klasör seçip tekrar deneyin.",
     "deletingFlights": "Uçuşları Silme",
     "removingTags": "Etiketleri Kaldırma",
     "addingTags": "Etiket Ekleme",

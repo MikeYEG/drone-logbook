@@ -164,6 +164,7 @@
     "exportingFlights": "Exportando Vuelos",
     "progress": "Progreso",
     "current": "Actual:",
+    "exportFolderAccessDenied": "Acceso denegado a la carpeta de exportación seleccionada: {{error}} Seleccione una carpeta con permisos de escritura y vuelva a intentarlo.",
     "deletingFlights": "Eliminando Vuelos",
     "removingTags": "Eliminando Etiquetas",
     "addingTags": "Añadiendo Etiquetas",

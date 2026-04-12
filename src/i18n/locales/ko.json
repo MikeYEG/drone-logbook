@@ -164,6 +164,7 @@
     "exportingFlights": "비행 내보내기 중",
     "progress": "진행률",
     "current": "현재:",
+    "exportFolderAccessDenied": "선택한 내보내기 폴더에 접근할 수 없습니다: {{error}} 쓰기 가능한 폴더를 선택한 후 다시 시도해 주세요.",
     "deletingFlights": "비행 삭제 중",
     "removingTags": "태그 제거 중",
     "addingTags": "태그 추가 중",

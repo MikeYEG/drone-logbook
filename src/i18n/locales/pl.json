@@ -164,6 +164,7 @@
     "exportingFlights": "Eksportowanie Lotów",
     "progress": "Postęp",
     "current": "Bieżący:",
+    "exportFolderAccessDenied": "Brak dostępu do wybranego folderu eksportu: {{error}} Wybierz folder z uprawnieniami zapisu i spróbuj ponownie.",
     "deletingFlights": "Usuwanie Lotów",
     "removingTags": "Usuwanie Tagów",
     "addingTags": "Dodawanie Tagów",

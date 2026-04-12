@@ -160,6 +160,7 @@
     "exportingFlights": "Repülések Exportálása",
     "progress": "Előrehaladás",
     "current": "Jelenlegi:",
+    "exportFolderAccessDenied": "A kijelölt exportmappa nem írható: {{error}} Kérjük, válasszon írható mappát, és próbálja újra.",
     "deletingFlights": "Repülések Törlése",
     "removingTags": "Címkék Eltávolítása",
     "addingTags": "Címkék Hozzáadása",
