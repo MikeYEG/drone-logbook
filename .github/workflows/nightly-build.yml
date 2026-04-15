@@ -106,7 +106,7 @@ jobs:
           prerelease: true
           includeRelease: true
           uploadPlainBinary: true
-          assetNamePattern: 'open-dronelog_nightly_[platform]_[arch][ext]'
+          assetNamePattern: 'open-dronelog_nightly_[platform]_[arch][_setup][ext]'
 
   rename-and-checksums:
     needs: build

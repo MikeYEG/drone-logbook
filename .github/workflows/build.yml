@@ -117,7 +117,7 @@ jobs:
           tagName: ${{ needs.resolve-tag.outputs.tag }}
           includeRelease: true
           uploadPlainBinary: true
-          assetNamePattern: 'open-dronelog_[version]_[platform]_[arch][ext]'
+          assetNamePattern: 'open-dronelog_[version]_[platform]_[arch][_setup][ext]'
 
       - name: Build Windows Tauri app (no release upload)
         if: runner.os == 'Windows'
