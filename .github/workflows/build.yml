@@ -116,7 +116,7 @@ jobs:
           args: '${{ matrix.target && format(''--target {0} --verbose'', matrix.target) || ''--verbose'' }}'
           tagName: ${{ needs.resolve-tag.outputs.tag }}
           includeRelease: true
-          uploadPlainBinary: true
+          uploadPlainBinary: false
           assetNamePattern: 'open-dronelog_[version]_[platform]_[arch][_setup][ext]'
 
       - name: Build Windows Tauri app (no release upload)
@@ -291,8 +291,7 @@ jobs:
             --pattern '*.dmg' \
             --pattern '*.exe' \
             --pattern '*.msi' \
-            --pattern '*.nsis.zip' \
-            --pattern 'open-dronelog_*'
+            --pattern '*.nsis.zip'
 
       - name: Generate checksums
         run: |
