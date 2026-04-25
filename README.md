@@ -26,6 +26,9 @@
 > [!IMPORTANT]
 > *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. Airdata or Airdata UAV is a trademark of Airdata UAV, Inc. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., Airdata UAV, Inc., or their affiliates.*
 
+> [!NOTE]
+> This project repository is dynamically mirrored in [Codeberg](https://codeberg.org/arpanghosh8453/open-dronelog) as a backup. An alternative docker image is available at [codeberg.org/arpanghosh8453/open-dronelog](https://codeberg.org/arpanghosh8453/-/packages/container/open-dronelog).
+
 ## Contents
 
 - [Features](#features)
