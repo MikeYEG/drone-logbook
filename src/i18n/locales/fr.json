@@ -294,7 +294,7 @@
     "batteryMaintenance": "Maintenance des batteries",
     "aircraftMaintenance": "Maintenance des aéronefs",
     "flightThreshold": "Seuil de vols",
-    "airtimeThreshold": "Seuil de temps de vol (h)",
+    "airtimeThreshold": "Seuil d'heures",
     "daysThreshold": "Seuil en jours",
     "applyThresholds": "Appliquer les seuils",
     "allBatteries": "Toutes les batteries",

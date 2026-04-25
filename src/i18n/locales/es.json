@@ -294,7 +294,7 @@
     "batteryMaintenance": "Mantenimiento de Batería",
     "aircraftMaintenance": "Mantenimiento de Aeronave",
     "flightThreshold": "Umbral de Vuelos",
-    "airtimeThreshold": "Umbral de Tiempo de Vuelo (hrs)",
+    "airtimeThreshold": "Umbral de horas",
     "daysThreshold": "Umbral de días",
     "applyThresholds": "Aplicar Umbrales",
     "allBatteries": "Todas las Baterías",

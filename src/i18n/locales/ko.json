@@ -294,7 +294,7 @@
     "batteryMaintenance": "배터리 정비",
     "aircraftMaintenance": "기체 정비",
     "flightThreshold": "비행 임계값",
-    "airtimeThreshold": "비행 시간 임계값 (시간)",
+    "airtimeThreshold": "시간 임계값",
     "daysThreshold": "일수 임계값",
     "applyThresholds": "임계값 적용",
     "allBatteries": "전체 배터리",

@@ -294,7 +294,7 @@
     "flightCount_one": "{{count}} flight",
     "flightCount_other": "{{count}} flights",
     "flightThreshold": "Flight Threshold",
-    "airtimeThreshold": "Airtime Threshold (hrs)",
+    "airtimeThreshold": "Hours Threshold",
     "daysThreshold": "Days Threshold",
     "applyThresholds": "Apply Thresholds",
     "allBatteries": "All Batteries",

@@ -287,7 +287,7 @@
     "batteryMaintenance": "Manutenção de Bateria",
     "aircraftMaintenance": "Manutenção de Aeronave",
     "flightThreshold": "Limite de Voos",
-    "airtimeThreshold": "Limite de Tempo de Voo (hrs)",
+    "airtimeThreshold": "Limiar de horas",
     "daysThreshold": "Limiar de dias",
     "applyThresholds": "Aplicar Limites",
     "allBatteries": "Todas as Baterias",

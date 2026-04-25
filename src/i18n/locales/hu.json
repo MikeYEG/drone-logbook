@@ -294,7 +294,7 @@
     "flightCount_one": "{{count}} repülés",
     "flightCount_other": "{{count}} repülés",
     "flightThreshold": "Repülési Küszöbérték",
-    "airtimeThreshold": "Repülési Idő Küszöbérték (óra)",
+    "airtimeThreshold": "Óraküszöb",
     "daysThreshold": "Napok Küszöbértéke",
     "applyThresholds": "Küszöbértékek Alkalmazása",
     "allBatteries": "Összes Akkumulátor",

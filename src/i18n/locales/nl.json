@@ -294,7 +294,7 @@
     "batteryMaintenance": "Batterijonderhoud",
     "aircraftMaintenance": "Luchtvaartuigonderhoud",
     "flightThreshold": "Vluchtdrempel",
-    "airtimeThreshold": "Vliegtijddrempel (uren)",
+    "airtimeThreshold": "Urendrempel",
     "daysThreshold": "Dagendrempel",
     "applyThresholds": "Drempels Toepassen",
     "allBatteries": "Alle Batterijen",

@@ -294,7 +294,7 @@
     "batteryMaintenance": "Batteriewartung",
     "aircraftMaintenance": "Fluggerätewartung",
     "flightThreshold": "Flugschwelle",
-    "airtimeThreshold": "Flugschwelle (Std.)",
+    "airtimeThreshold": "Stunden-Schwelle",
     "daysThreshold": "Tage-Schwellenwert",
     "applyThresholds": "Schwellenwerte anwenden",
     "allBatteries": "Alle Batterien",

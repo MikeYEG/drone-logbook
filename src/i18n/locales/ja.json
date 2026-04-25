@@ -294,7 +294,7 @@
     "batteryMaintenance": "バッテリーメンテナンス",
     "aircraftMaintenance": "機体メンテナンス",
     "flightThreshold": "フライト閾値",
-    "airtimeThreshold": "飛行時間閾値（時間）",
+    "airtimeThreshold": "時間のしきい値",
     "daysThreshold": "日数しきい値",
     "applyThresholds": "閾値を適用",
     "allBatteries": "全バッテリー",

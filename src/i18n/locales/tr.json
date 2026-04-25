@@ -294,7 +294,7 @@
     "flightCount_one": "{{count}} uçuş",
     "flightCount_other": "{{count}} uçuşlar",
     "flightThreshold": "Uçuş Eşiği",
-    "airtimeThreshold": "Yayın Süresi Eşiği (saat)",
+    "airtimeThreshold": "Saat eşiği",
     "daysThreshold": "Gün Eşiği",
     "applyThresholds": "Eşik Değerleri Uygula",
     "allBatteries": "Tüm Bataryalar",

@@ -294,7 +294,7 @@
     "batteryMaintenance": "电池维护",
     "aircraftMaintenance": "飞行器维护",
     "flightThreshold": "飞行阈值",
-    "airtimeThreshold": "飞行时间阈值（小时）",
+    "airtimeThreshold": "小时阈值",
     "daysThreshold": "天数阈值",
     "applyThresholds": "应用阈值",
     "allBatteries": "全部电池",

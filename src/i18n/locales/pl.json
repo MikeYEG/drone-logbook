@@ -292,7 +292,7 @@
     "batteryMaintenance": "Konserwacja Baterii",
     "aircraftMaintenance": "Konserwacja Statku Powietrznego",
     "flightThreshold": "Próg Lotów",
-    "airtimeThreshold": "Próg Czasu Lotu (godz.)",
+    "airtimeThreshold": "Próg godzin",
     "daysThreshold": "Próg dni",
     "applyThresholds": "Zastosuj Progi",
     "allBatteries": "Wszystkie Baterie",
