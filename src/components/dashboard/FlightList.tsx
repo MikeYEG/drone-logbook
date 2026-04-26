@@ -378,7 +378,13 @@ export function FlightList({
   const [isRegeneratingTags, setIsRegeneratingTags] = useState(false);
   // Color picker state
   const [colorPickerFlightId, setColorPickerFlightId] = useState<number | null>(null);
-  const [colorPickerPosition, setColorPickerPosition] = useState<{ x: number; y: number } | undefined>();
+  const [colorPickerPosition, setColorPickerPosition] = useState<{
+    x: number;
+    y: number;
+    boundsLeft?: number;
+    boundsRight?: number;
+    centerHorizontally?: boolean;
+  } | undefined>();
   // Color filter state
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [isColorDropdownOpen, setIsColorDropdownOpen] = useState(false);
@@ -4300,7 +4306,13 @@ export function FlightList({
             type="button"
             onClick={() => {
               setColorPickerFlightId(contextMenu.flightId);
-              setColorPickerPosition({ x: contextMenu.x, y: contextMenu.y });
+              setColorPickerPosition({
+                x: contextMenu.x,
+                y: contextMenu.y,
+                boundsLeft: contextMenu.boundsLeft,
+                boundsRight: contextMenu.boundsRight,
+                centerHorizontally: true,
+              });
               setContextMenu(null);
             }}
             className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-700/50 flex items-center gap-2"

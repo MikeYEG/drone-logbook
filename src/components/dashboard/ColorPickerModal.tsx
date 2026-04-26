@@ -29,7 +29,13 @@ interface ColorPickerModalProps {
   currentColor: string;
   onSelect: (color: string) => void;
   onClose: () => void;
-  position?: { x: number; y: number };
+  position?: {
+    x: number;
+    y: number;
+    boundsLeft?: number;
+    boundsRight?: number;
+    centerHorizontally?: boolean;
+  };
 }
 
 export default function ColorPickerModal({
@@ -97,20 +103,48 @@ export default function ColorPickerModal({
 
   if (!isOpen) return null;
 
-  // Calculate position — opens upward from cursor, staying within viewport
+  // Calculate position — opens upward from cursor, staying within viewport.
+  // For sidebar usage, optionally center horizontally within provided sidebar bounds.
   const style: React.CSSProperties = {};
   if (position) {
     const modalW = 380;
     const modalH = 350;
-    // Open upward: place bottom edge at cursor y
-    const left = Math.max(8, Math.min(position.x, window.innerWidth - modalW - 8));
+    let modalMaxWidth = modalW;
+    let left: number;
+
+    if (
+      position.centerHorizontally &&
+      typeof position.boundsLeft === 'number' &&
+      typeof position.boundsRight === 'number' &&
+      position.boundsRight > position.boundsLeft
+    ) {
+      const horizontalInset = 12;
+      const sidebarWidth = position.boundsRight - position.boundsLeft;
+      const availableWidth = Math.max(0, sidebarWidth - horizontalInset * 2);
+      const effectiveWidth = Math.max(0, Math.min(modalW, availableWidth));
+
+      if (availableWidth > 0) {
+        modalMaxWidth = availableWidth;
+        left = position.boundsLeft + (sidebarWidth - effectiveWidth) / 2;
+      } else {
+        left = Math.max(8, Math.min(position.x, window.innerWidth - modalW - 8));
+      }
+    } else {
+      left = Math.max(8, Math.min(position.x, window.innerWidth - modalW - 8));
+    }
+
+    // Open upward: place bottom edge at trigger y
     const top = Math.max(8, position.y - modalH);
     style.left = left;
     style.top = top;
+    style.maxWidth = modalMaxWidth;
+    style.width = 'calc(100vw - 16px)';
   } else {
     style.left = '50%';
     style.top = '50%';
     style.transform = 'translate(-50%, -50%)';
+    style.width = 'calc(100vw - 16px)';
+    style.maxWidth = 380;
   }
 
   return (
@@ -121,7 +155,7 @@ export default function ColorPickerModal({
       {/* Modal */}
       <div
         ref={modalRef}
-        className="fixed z-[10001] w-[380px] rounded-xl border border-gray-700 bg-drone-surface shadow-2xl"
+        className="fixed z-[10001] rounded-xl border border-gray-700 bg-drone-surface shadow-2xl"
         style={style}
       >
         {/* Header */}
