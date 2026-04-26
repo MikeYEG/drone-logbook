@@ -4,10 +4,13 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { fetchFlightWeather } from '@/lib/weather';
+import { fetchFlightWeather, fetchReverseGeocodeLocation } from '@/lib/weather';
 import type { WeatherData } from '@/lib/weather';
-import type { UnitSystem } from '@/lib/utils';
+import type { SpeedUnit, UnitSystem } from '@/lib/utils';
+import { fmtNum, isImperialSpeedUnit, speedMultiplierFromMs, speedUnitLabel } from '@/lib/utils';
+import { useFlightStore } from '@/stores/flightStore';
 import weatherIcon from '@/assets/weather-icon.svg';
 
 interface WeatherModalProps {
@@ -17,11 +20,17 @@ interface WeatherModalProps {
   lon: number;
   /** ISO-8601 date-time string of flight start */
   startTime: string;
-  unitSystem: UnitSystem;
+  /** Unit system for temperature display */
+  temperatureUnit: UnitSystem;
+  /** Unit system for wind speed / precipitation / pressure display */
+  speedUnit: SpeedUnit;
 }
 
-export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem }: WeatherModalProps) {
+export function WeatherModal({ isOpen, onClose, lat, lon, startTime, temperatureUnit, speedUnit }: WeatherModalProps) {
+  const { t } = useTranslation();
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,11 +39,18 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
     setLoading(true);
     setError(null);
     setWeather(null);
+    setLocationLabel(null);
+    setLocationLoading(true);
 
     fetchFlightWeather(lat, lon, startTime)
       .then(setWeather)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
+
+    fetchReverseGeocodeLocation(lat, lon, useFlightStore.getState().locale, 'detailed')
+      .then(setLocationLabel)
+      .catch(() => setLocationLabel(null))
+      .finally(() => setLocationLoading(false));
   }, [isOpen, lat, lon, startTime]);
 
   // Lock body scroll and hide all nested scrollbars while open
@@ -67,17 +83,17 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center mobile-safe-container">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+      <div className="relative bg-drone-secondary rounded-xl border border-gray-700 shadow-2xl w-full max-w-sm mx-4 overflow-hidden modal-mobile-max">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <img src={weatherIcon} alt="Weather" className="w-5 h-5" />
-            <h2 className="text-lg font-semibold text-white">Flight Weather</h2>
+            <h2 className="text-lg font-semibold text-white">{t('weather.title')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -97,7 +113,7 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
                 <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
               </svg>
-              <p className="mt-3 text-sm text-gray-400">Fetching weather data...</p>
+              <p className="mt-3 text-sm text-gray-400">{t('weather.fetching')}</p>
             </div>
           )}
 
@@ -109,77 +125,97 @@ export function WeatherModal({ isOpen, onClose, lat, lon, startTime, unitSystem 
           )}
 
           {weather && !loading && !error && (() => {
-            const isImperial = unitSystem === 'imperial';
+            const isTempImperial = temperatureUnit === 'imperial';
+            const isSpeedImperial = isImperialSpeedUnit(speedUnit);
+            const locale = useFlightStore.getState().locale;
             const fmtTemp = (c: number) =>
-              isImperial ? `${((c * 9) / 5 + 32).toFixed(1)}\u00B0F` : `${c}\u00B0C`;
+              isTempImperial ? `${fmtNum((c * 9) / 5 + 32, 1, locale)}\u00B0F` : `${fmtNum(c, 1, locale)}\u00B0C`;
             const fmtSpeed = (kmh: number) =>
-              isImperial ? `${(kmh * 0.621371).toFixed(1)} mph` : `${kmh} km/h`;
+              `${fmtNum((kmh / 3.6) * speedMultiplierFromMs(speedUnit), 1, locale)} ${speedUnitLabel(speedUnit)}`;
             const fmtPrecip = (mm: number) =>
-              isImperial ? `${(mm * 0.03937).toFixed(2)} in` : `${mm} mm`;
+              isSpeedImperial ? `${fmtNum(mm * 0.03937, 2, locale)} in` : `${fmtNum(mm, 1, locale)} mm`;
             const fmtPressure = (hPa: number) =>
-              isImperial ? `${(hPa * 0.02953).toFixed(2)} inHg` : `${hPa} hPa`;
+              isSpeedImperial ? `${fmtNum(hPa * 0.02953, 2, locale)} inHg` : `${fmtNum(hPa, 0, locale)} hPa`;
 
             return (
-            <>
-              {/* Condition summary */}
-              <div className="text-center mb-5">
-                <p className="text-3xl font-bold text-white">{fmtTemp(weather.temperature)}</p>
-                <p className="text-sm text-gray-400 mt-1">{weather.conditionLabel}</p>
-              </div>
+              <>
+                {/* Condition summary */}
+                <div className="text-center mb-5">
+                  <p className="text-3xl font-bold text-white">{fmtTemp(weather.temperature)}</p>
+                  <p className="text-sm text-gray-400 mt-1">{weather.conditionLabel}</p>
+                </div>
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <WeatherStat
-                  icon={<ThermometerIcon className="w-5 h-5 text-orange-400" />}
-                  label="Feels Like"
-                  value={fmtTemp(weather.apparentTemperature)}
-                />
-                <WeatherStat
-                  icon={<WindIcon className="w-5 h-5 text-cyan-400" />}
-                  label="Wind Speed"
-                  value={fmtSpeed(weather.windSpeed)}
-                />
-                <WeatherStat
-                  icon={<WindSockIcon className="w-5 h-5 text-teal-400" />}
-                  label="Wind Gusts"
-                  value={fmtSpeed(weather.windGusts)}
-                />
-                <WeatherStat
-                  icon={<DropletIcon className="w-5 h-5 text-blue-400" />}
-                  label="Humidity"
-                  value={`${weather.humidity}%`}
-                />
-                <WeatherStat
-                  icon={<CloudIcon className="w-5 h-5 text-gray-400" />}
-                  label="Cloud Cover"
-                  value={`${weather.cloudCover}%`}
-                />
-                <WeatherStat
-                  icon={<RainIcon className="w-5 h-5 text-indigo-400" />}
-                  label="Precipitation"
-                  value={fmtPrecip(weather.precipitation)}
-                />
-              </div>
+                {/* Reverse-geocoded home-point location */}
+                <div className="mb-4 rounded-lg bg-drone-surface/40 border border-gray-700/50 px-3 py-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <LocationPinIcon className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">{t('weather.location')}</p>
+                      <p className="text-sm text-gray-200 leading-snug break-words">
+                        {locationLoading
+                          ? t('weather.locationFetching')
+                          : (locationLabel ?? `${fmtNum(lat, 4, locale)}, ${fmtNum(lon, 4, locale)}`)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-              {/* Wind direction + pressure row */}
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <WeatherStat
-                  icon={<CompassIcon className="w-5 h-5 text-emerald-400" />}
-                  label="Wind Direction"
-                  value={`${weather.windDirection}\u00B0 ${degToCardinal(weather.windDirection)}`}
-                />
-                <WeatherStat
-                  icon={<GaugeIcon className="w-5 h-5 text-purple-400" />}
-                  label="Pressure"
-                  value={fmtPressure(weather.pressure)}
-                />
-              </div>
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <WeatherStat
+                    icon={<ThermometerIcon className="w-5 h-5 text-orange-400" />}
+                    label={t('weather.feelsLike')}
+                    value={fmtTemp(weather.apparentTemperature)}
+                  />
+                  <WeatherStat
+                    icon={<WindIcon className="w-5 h-5 text-cyan-400" />}
+                    label={t('weather.windSpeed')}
+                    value={fmtSpeed(weather.windSpeed)}
+                  />
+                  <WeatherStat
+                    icon={<WindSockIcon className="w-5 h-5 text-teal-400" />}
+                    label={t('weather.windGusts')}
+                    value={fmtSpeed(weather.windGusts)}
+                  />
+                  <WeatherStat
+                    icon={<DropletIcon className="w-5 h-5 text-blue-400" />}
+                    label={t('weather.humidity')}
+                    value={`${weather.humidity}%`}
+                  />
+                  <WeatherStat
+                    icon={<CloudIcon className="w-5 h-5 text-gray-400" />}
+                    label={t('weather.cloudCover')}
+                    value={`${weather.cloudCover}%`}
+                  />
+                  <WeatherStat
+                    icon={<RainIcon className="w-5 h-5 text-indigo-400" />}
+                    label={t('weather.precipitation')}
+                    value={fmtPrecip(weather.precipitation)}
+                  />
+                </div>
 
-              {/* Footer */}
-              <p className="text-[10px] text-gray-600 text-center mt-4">
-                Data from Open-Meteo based on flight location and time
-              </p>
-            </>
+                {/* Wind direction + pressure row */}
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <WeatherStat
+                    icon={<CompassIcon className="w-5 h-5 text-emerald-400" />}
+                    label={t('weather.windDirection')}
+                    value={`${weather.windDirection}\u00B0 ${degToCardinal(weather.windDirection)}`}
+                  />
+                  <WeatherStat
+                    icon={<GaugeIcon className="w-5 h-5 text-purple-400" />}
+                    label={t('weather.pressure')}
+                    value={fmtPressure(weather.pressure)}
+                  />
+                </div>
+
+                {/* Footer */}
+                <p className="text-[10px] text-gray-600 text-center mt-4">
+                  {t('weather.attribution')}
+                </p>
+                <p className="text-[10px] text-gray-600 text-center mt-1">
+                  {t('weather.locationAttribution')}
+                </p>
+              </>
             );
           })()}
         </div>
@@ -206,7 +242,7 @@ function WeatherStat({ icon, label, value }: { icon: React.ReactNode; label: str
 }
 
 function degToCardinal(deg: number): string {
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
@@ -287,6 +323,15 @@ function GaugeIcon({ className }: { className?: string }) {
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 110-18 9 9 0 010 18z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 12l3.5-3.5" />
       <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function LocationPinIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s6-5.062 6-11a6 6 0 10-12 0c0 5.938 6 11 6 11z" />
+      <circle cx="12" cy="10" r="2" />
     </svg>
   );
 }

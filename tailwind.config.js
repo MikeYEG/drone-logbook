@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Drone Logbook color scheme
+        // Open DroneLog color scheme
         drone: {
           primary: 'rgb(var(--drone-primary) / <alpha-value>)',
           secondary: 'rgb(var(--drone-secondary) / <alpha-value>)',

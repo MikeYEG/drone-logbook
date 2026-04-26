@@ -5,13 +5,71 @@
 
 import { create } from 'zustand';
 import * as api from '@/lib/api';
-import type { Flight, FlightDataResponse, ImportResult, OverviewStats } from '@/types';
-import { normalizeSerial } from '@/lib/utils';
+import type { Flight, FlightDataResponse, FlightMessage, ImportResult, OverviewStats } from '@/types';
+import {
+  normalizeSerial,
+  LEGACY_DATE_LOCALE_MAP,
+  type UnitPreferences,
+  type UnitSystem,
+  type SpeedUnit,
+  DEFAULT_UNIT_PREFS,
+  normalizeSpeedUnit,
+} from '@/lib/utils';
+import i18n from '@/i18n';
+
+/**
+ * Scan battery telemetry and generate warning/caution messages
+ * when battery level first crosses 20% and 10% thresholds.
+ */
+function generateBatteryMessages(flightData: FlightDataResponse): FlightMessage[] {
+  const { telemetry } = flightData;
+  if (!telemetry?.battery || !telemetry?.time || telemetry.battery.length === 0) return [];
+
+  const msgs: FlightMessage[] = [];
+  let warned20 = false;
+  let warned10 = false;
+
+  for (let i = 0; i < telemetry.battery.length; i++) {
+    const batt = telemetry.battery[i];
+    if (batt == null) continue;
+
+    if (!warned20 && batt <= 20 && batt > 10) {
+      warned20 = true;
+      msgs.push({
+        timestampMs: Math.round(telemetry.time[i] * 1000),
+        messageType: 'warn',
+        message: `Battery low: ${batt}%`,
+      });
+    }
+    if (!warned10 && batt <= 10) {
+      warned20 = true; // skip 20% if we hit 10% first
+      warned10 = true;
+      msgs.push({
+        timestampMs: Math.round(telemetry.time[i] * 1000),
+        messageType: 'caution',
+        message: `Battery critical: ${batt}%`,
+      });
+    }
+    if (warned20 && warned10) break;
+  }
+  return msgs;
+}
+
+/** Append battery warnings into flight data messages (sorted by timestamp). */
+function injectBatteryMessages(flightData: FlightDataResponse): FlightDataResponse {
+  const battMsgs = generateBatteryMessages(flightData);
+  if (battMsgs.length === 0) return flightData;
+
+  const existing = flightData.messages ?? [];
+  const merged = [...existing, ...battMsgs].sort((a, b) => a.timestampMs - b.timestampMs);
+  return { ...flightData, messages: merged };
+}
 
 interface FlightState {
   // State
   flights: Flight[];
   isFlightsInitialized: boolean;  // true after first loadFlights completes
+  needsAuth: boolean;  // true when loadFlights fails due to auth (locked profile)
   selectedFlightId: number | null;
   currentFlightData: FlightDataResponse | null;
   overviewStats: OverviewStats | null;
@@ -23,13 +81,13 @@ interface FlightState {
   isRemovingAutoTags: boolean;
   regenerationProgress: { processed: number; total: number } | null;
   error: string | null;
-  unitSystem: 'metric' | 'imperial';
+  unitPrefs: UnitPreferences;
   themeMode: 'system' | 'dark' | 'light';
   donationAcknowledged: boolean;
   supporterBadgeActive: boolean;
   allTags: string[];
   smartTagsEnabled: boolean;
-  
+
   // API key type for cooldown bypass (personal keys skip cooldown)
   apiKeyType: 'none' | 'default' | 'personal';
 
@@ -50,6 +108,7 @@ interface FlightState {
   deleteFlight: (flightId: number) => Promise<void>;
   updateFlightName: (flightId: number, displayName: string) => Promise<void>;
   updateFlightNotes: (flightId: number, notes: string | null) => Promise<void>;
+  updateFlightColor: (flightId: number, color: string) => Promise<void>;
   addTag: (flightId: number, tag: string) => Promise<void>;
   removeTag: (flightId: number, tag: string) => Promise<void>;
   loadAllTags: () => Promise<void>;
@@ -57,10 +116,19 @@ interface FlightState {
   loadSmartTagsEnabled: () => Promise<void>;
   regenerateSmartTags: () => Promise<string>;
   removeAllAutoTags: () => Promise<string>;
-  setUnitSystem: (unitSystem: 'metric' | 'imperial') => void;
+  locale: string;
+  setLocale: (locale: string) => void;
+  dateLocale: string;
+  setDateLocale: (dateLocale: string) => void;
+  appLanguage: string;
+  setAppLanguage: (lang: string) => void;
+  timeFormat: '12h' | '24h';
+  setTimeFormat: (format: '12h' | '24h') => void;
+  setUnitPref: (key: keyof UnitPreferences, value: UnitSystem | SpeedUnit) => void;
   setThemeMode: (themeMode: 'system' | 'dark' | 'light') => void;
   setDonationAcknowledged: (value: boolean) => void;
   setSupporterBadge: (active: boolean) => void;
+  loadSupporterStatus: () => Promise<void>;
   checkForUpdates: () => Promise<void>;
   clearSelection: () => void;
   clearError: () => void;
@@ -118,22 +186,38 @@ interface FlightState {
 
   // Maintenance tracking state
   maintenanceThresholds: {
-    battery: { flights: number; airtime: number };  // airtime in hours
-    aircraft: { flights: number; airtime: number }; // airtime in hours
+    battery: { flights: number; airtime: number; days: number };  // airtime in hours, days = overdue threshold
+    aircraft: { flights: number; airtime: number; days: number }; // airtime in hours, days = overdue threshold
   };
   maintenanceLastReset: {
     battery: Record<string, string>;  // batterySerial -> ISO timestamp
     aircraft: Record<string, string>; // droneSerial -> ISO timestamp
   };
-  setMaintenanceThreshold: (type: 'battery' | 'aircraft', field: 'flights' | 'airtime', value: number) => void;
+  setMaintenanceThreshold: (type: 'battery' | 'aircraft', field: 'flights' | 'airtime' | 'days', value: number) => void;
   performMaintenance: (type: 'battery' | 'aircraft', serial: string, date?: Date) => void;
   getMaintenanceLastReset: (type: 'battery' | 'aircraft', serial: string) => string | null;
+
+  // Telemetry chart color overrides (fieldId -> hex color)
+  telemetryColors: Record<string, string>;
+  setTelemetryColor: (fieldId: string, color: string) => void;
+  resetTelemetryColor: (fieldId: string) => void;
+  resetAllTelemetryColors: () => void;
+
+  // Profile management
+  activeProfile: string;
+  profiles: string[];
+  profilePasswords: Record<string, boolean>; // name -> hasPassword
+  loadProfiles: () => Promise<void>;
+  switchProfile: (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => Promise<void>;
+  deleteProfile: (name: string, opts?: { password?: string; masterPassword?: string }) => Promise<void>;
+  logout: () => void;
 }
 
 export const useFlightStore = create<FlightState>((set, get) => ({
   // Initial state
   flights: [],
   isFlightsInitialized: false,
+  needsAuth: false,
   selectedFlightId: null,
   currentFlightData: null,
   overviewStats: null,
@@ -145,10 +229,57 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   isRemovingAutoTags: false,
   regenerationProgress: null,
   error: null,
-  unitSystem:
+  locale:
     (typeof localStorage !== 'undefined' &&
-      (localStorage.getItem('unitSystem') as 'metric' | 'imperial')) ||
-    'metric',
+      localStorage.getItem('locale')) ||
+    'en-GB',
+  dateLocale: (() => {
+    if (typeof localStorage === 'undefined') return 'DD/MM/YYYY';
+    const stored = localStorage.getItem('dateLocale') || 'en-GB';
+    const migrated = LEGACY_DATE_LOCALE_MAP[stored] || stored;
+    if (migrated !== stored) localStorage.setItem('dateLocale', migrated);
+    return migrated;
+  })(),
+  appLanguage:
+    (typeof localStorage !== 'undefined' &&
+      localStorage.getItem('appLanguage')) ||
+    'en',
+  timeFormat: (() => {
+    if (typeof localStorage === 'undefined') return '12h';
+    const stored = localStorage.getItem('timeFormat');
+    return stored === '12h' || stored === '24h' ? stored : '12h';
+  })() as '12h' | '24h',
+  unitPrefs: (() => {
+    if (typeof localStorage === 'undefined') return { ...DEFAULT_UNIT_PREFS };
+    // Try new granular key first
+    const stored = localStorage.getItem('unitPrefs');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return {
+          ...DEFAULT_UNIT_PREFS,
+          ...parsed,
+          speed: normalizeSpeedUnit(parsed?.speed),
+        };
+      } catch {
+        /* fall through */
+      }
+    }
+    // Migrate from legacy unitSystem key
+    const legacy = localStorage.getItem('unitSystem') as 'metric' | 'imperial' | null;
+    if (legacy) {
+      const migrated: UnitPreferences = {
+        distance: legacy,
+        speed: legacy === 'imperial' ? 'mph' : 'kmh',
+        altitude: legacy,
+        temperature: legacy,
+      };
+      localStorage.setItem('unitPrefs', JSON.stringify(migrated));
+      localStorage.removeItem('unitSystem');
+      return migrated;
+    }
+    return { ...DEFAULT_UNIT_PREFS };
+  })(),
   themeMode: (() => {
     if (typeof localStorage === 'undefined') return 'system';
     const stored = localStorage.getItem('themeMode');
@@ -156,14 +287,8 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       ? stored
       : 'system';
   })(),
-  donationAcknowledged:
-    typeof localStorage !== 'undefined'
-      ? localStorage.getItem('donationAcknowledged') === 'true'
-      : false,
-  supporterBadgeActive:
-    typeof localStorage !== 'undefined'
-      ? localStorage.getItem('supporterBadgeActive') === 'true'
-      : false,
+  donationAcknowledged: false,
+  supporterBadgeActive: false,
   _flightDataCache: new Map(),
   allTags: [],
   smartTagsEnabled: true,
@@ -193,6 +318,38 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       ? localStorage.getItem('hideSerialNumbers') === 'true'
       : false,
 
+  // Telemetry chart color overrides
+  telemetryColors: (() => {
+    if (typeof localStorage === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem('telemetryColors');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  })(),
+  setTelemetryColor: (fieldId: string, color: string) => {
+    const updated = { ...get().telemetryColors, [fieldId]: color };
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('telemetryColors', JSON.stringify(updated));
+    }
+    set({ telemetryColors: updated });
+  },
+  resetTelemetryColor: (fieldId: string) => {
+    const updated = { ...get().telemetryColors };
+    delete updated[fieldId];
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('telemetryColors', JSON.stringify(updated));
+    }
+    set({ telemetryColors: updated });
+  },
+  resetAllTelemetryColors: () => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('telemetryColors');
+    }
+    set({ telemetryColors: {} });
+  },
+
   // Map-Chart sync state (session only, default off)
   mapSyncEnabled: false,
   mapReplayProgress: 0,
@@ -213,12 +370,18 @@ export const useFlightStore = create<FlightState>((set, get) => ({
 
   // Maintenance tracking state
   maintenanceThresholds: (() => {
-    if (typeof localStorage === 'undefined') return { battery: { flights: 100, airtime: 50 }, aircraft: { flights: 100, airtime: 50 } };
+    const defaults = { battery: { flights: 100, airtime: 50, days: 120 }, aircraft: { flights: 100, airtime: 50, days: 120 } };
+    if (typeof localStorage === 'undefined') return defaults;
     try {
       const stored = localStorage.getItem('maintenanceThresholds');
-      return stored ? JSON.parse(stored) : { battery: { flights: 100, airtime: 50 }, aircraft: { flights: 100, airtime: 50 } };
+      if (!stored) return defaults;
+      const parsed = JSON.parse(stored);
+      // Migrate: add days field if missing from older stored data
+      if (parsed.battery && parsed.battery.days === undefined) parsed.battery.days = 120;
+      if (parsed.aircraft && parsed.aircraft.days === undefined) parsed.aircraft.days = 120;
+      return parsed;
     } catch {
-      return { battery: { flights: 100, airtime: 50 }, aircraft: { flights: 100, airtime: 50 } };
+      return defaults;
     }
   })(),
   maintenanceLastReset: (() => {
@@ -230,6 +393,12 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       return { battery: {}, aircraft: {} };
     }
   })(),
+
+  // Profile management
+  activeProfile: api.getProfileKey('activeProfile') || 'default',
+  profiles: ['default'],
+  profilePasswords: {},
+
   setMaintenanceThreshold: (type, field, value) => {
     const thresholds = { ...get().maintenanceThresholds };
     thresholds[type] = { ...thresholds[type], [field]: value };
@@ -256,14 +425,14 @@ export const useFlightStore = create<FlightState>((set, get) => ({
 
   // Load all flights from database
   loadFlights: async () => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, needsAuth: false });
     try {
       const flights = await api.getFlights();
-      set({ flights, isLoading: false, isFlightsInitialized: true });
+      set({ flights, isLoading: false, isFlightsInitialized: true, needsAuth: false });
 
       // Load all tags in background
       get().loadAllTags();
-      
+
       // Load equipment names from server (for cross-device sync)
       get().loadEquipmentNames();
 
@@ -289,9 +458,12 @@ export const useFlightStore = create<FlightState>((set, get) => ({
         }
       }
     } catch (err) {
-      set({ 
-        isLoading: false, 
-        error: `Failed to load flights: ${err}` 
+      const errMsg = String(err);
+      const isAuthError = /password.protected|Session expired|re-authenticate|UNAUTHORIZED|Profile is locked/i.test(errMsg);
+      set({
+        isLoading: false,
+        needsAuth: isAuthError,
+        error: isAuthError ? null : `Failed to load flights: ${err}`
       });
     }
   },
@@ -331,7 +503,8 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       return;
     }
     try {
-      const flightData = await api.getFlightData(flightId, 5000);
+      const rawFlightData = await api.getFlightData(flightId, 5000);
+      const flightData = injectBatteryMessages(rawFlightData);
 
       // Store in cache (limit cache size to 10 entries)
       const cache = new Map(get()._flightDataCache);
@@ -350,11 +523,11 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('lastSelectedFlightId');
       }
-      set({ 
-        isLoading: false, 
+      set({
+        isLoading: false,
         selectedFlightId: null,
         currentFlightData: null,
-        error: `Failed to load flight data: ${err}` 
+        error: `Failed to load flight data: ${err}`
       });
     }
   },
@@ -365,7 +538,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     set({ isImporting: true, error: null });
     try {
       const result = await api.importLog(fileOrPath);
-      
+
       if (result.success && result.flightId && !skipRefresh) {
         // Reload flights and select the new one (only for single imports)
         await get().loadFlights();
@@ -373,7 +546,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
         // Refresh all tags since import may have added new smart tags
         get().loadAllTags();
       }
-      
+
       set({ isImporting: false });
       return result;
     } catch (err) {
@@ -442,18 +615,18 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   deleteFlight: async (flightId: number) => {
     try {
       await api.deleteFlight(flightId);
-      
+
       // Remove from cache
       const cache = new Map(get()._flightDataCache);
       cache.delete(flightId);
-      
+
       // Clear selection if deleted flight was selected
       if (get().selectedFlightId === flightId) {
         set({ selectedFlightId: null, currentFlightData: null, _flightDataCache: cache });
       } else {
         set({ _flightDataCache: cache });
       }
-      
+
       // Reload flights
       await get().loadFlights();
     } catch (err) {
@@ -524,6 +697,39 @@ export const useFlightStore = create<FlightState>((set, get) => ({
       }
     } catch (err) {
       set({ error: `Failed to update flight notes: ${err}` });
+    }
+  },
+
+  // Update flight color
+  updateFlightColor: async (flightId: number, color: string) => {
+    try {
+      await api.updateFlightColor(flightId, color);
+
+      // Update local list
+      const flights = get().flights.map((flight) =>
+        flight.id === flightId
+          ? { ...flight, color }
+          : flight
+      );
+      set({ flights });
+
+      // If selected, update current flight data too
+      const current = get().currentFlightData;
+      if (current && current.flight.id === flightId) {
+        const updated = {
+          ...current,
+          flight: { ...current.flight, color },
+        };
+        // Update cache too
+        const cache = new Map(get()._flightDataCache);
+        cache.set(flightId, updated);
+        set({
+          currentFlightData: updated,
+          _flightDataCache: cache,
+        });
+      }
+    } catch (err) {
+      set({ error: `Failed to update flight color: ${err}` });
     }
   },
 
@@ -616,7 +822,7 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     set({ isRegenerating: true, regenerationProgress: { processed: 0, total }, error: null });
     let errors = 0;
     const start = Date.now();
-    
+
     // Get enabled tag types from localStorage
     const enabledTagTypes = api.getEnabledSmartTagTypes();
 
@@ -667,35 +873,90 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     }
   },
 
-  setUnitSystem: (unitSystem) => {
+  setLocale: (locale) => {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('unitSystem', unitSystem);
+      localStorage.setItem('locale', locale);
     }
-    set({ unitSystem });
+    set({ locale });
+  },
+
+  setDateLocale: (dateLocale) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('dateLocale', dateLocale);
+    }
+    set({ dateLocale });
+  },
+
+  setAppLanguage: (lang) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('appLanguage', lang);
+    }
+    i18n.changeLanguage(lang);
+    set({ appLanguage: lang });
+  },
+
+  setTimeFormat: (format) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('timeFormat', format);
+    }
+    set({ timeFormat: format });
+  },
+
+  setUnitPref: (key, value) => {
+    const updated = {
+      ...get().unitPrefs,
+      [key]: key === 'speed' ? normalizeSpeedUnit(value) : value,
+    } as UnitPreferences;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('unitPrefs', JSON.stringify(updated));
+    }
+    set({ unitPrefs: updated });
   },
 
   setThemeMode: (themeMode) => {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('themeMode', themeMode);
     }
+    // Apply body class synchronously for instant visual feedback
+    if (typeof document !== 'undefined') {
+      const prefersDark =
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : true;
+      const resolved = themeMode === 'system' ? (prefersDark ? 'dark' : 'light') : themeMode;
+      document.body.classList.remove('theme-dark', 'theme-light');
+      document.body.classList.add(resolved === 'dark' ? 'theme-dark' : 'theme-light');
+    }
     set({ themeMode });
   },
 
   setDonationAcknowledged: (value) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('donationAcknowledged', String(value));
-    }
     set({ donationAcknowledged: value });
+    // Persist to backend (fire-and-forget)
+    api.setDonationAcknowledgedApi(value).catch((err) =>
+      console.warn('Failed to persist donation acknowledged state:', err),
+    );
   },
 
   setSupporterBadge: (active) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('supporterBadgeActive', String(active));
-    }
     set({ supporterBadgeActive: active });
-    // Activating badge also acknowledges donation
     if (active) {
+      // Activating badge also acknowledges donation
       get().setDonationAcknowledged(true);
+    }
+    // Note: activation is done via verifySupporterCode; removal via removeSupporterBadge.
+    // This setter is kept for local state updates after the API call succeeds.
+  },
+
+  loadSupporterStatus: async () => {
+    try {
+      const [badgeActive, donationAck] = await Promise.all([
+        api.getSupporterStatus(),
+        api.getDonationAcknowledged(),
+      ]);
+      set({ supporterBadgeActive: badgeActive, donationAcknowledged: donationAck });
+    } catch (err) {
+      console.warn('Failed to load supporter status from backend:', err);
     }
   },
 
@@ -704,22 +965,22 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     const map = { ...get().batteryNameMap };
     const trimmedName = displayName.trim();
     const shouldDelete = trimmedName === '' || trimmedName === normalizedSerial;
-    
+
     if (shouldDelete) {
       // Reset to original serial name
       delete map[normalizedSerial];
     } else {
       map[normalizedSerial] = trimmedName;
     }
-    
+
     // Optimistically update local state first
     set({ batteryNameMap: map });
-    
+
     // Cache in localStorage for quick retrieval on page load
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('batteryNameMap', JSON.stringify(map));
     }
-    
+
     // Persist to server for cross-device sync
     try {
       await api.setEquipmentName(normalizedSerial, 'battery', shouldDelete ? '' : trimmedName);
@@ -740,22 +1001,22 @@ export const useFlightStore = create<FlightState>((set, get) => ({
     const map = { ...get().droneNameMap };
     const trimmedName = displayName.trim();
     const shouldDelete = trimmedName === '';
-    
+
     if (shouldDelete) {
       // Reset to original name
       delete map[normalizedSerial];
     } else {
       map[normalizedSerial] = trimmedName;
     }
-    
+
     // Optimistically update local state first
     set({ droneNameMap: map });
-    
+
     // Cache in localStorage for quick retrieval on page load
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('droneNameMap', JSON.stringify(map));
     }
-    
+
     // Persist to server for cross-device sync
     try {
       await api.setEquipmentName(normalizedSerial, 'aircraft', shouldDelete ? '' : trimmedName);
@@ -772,14 +1033,14 @@ export const useFlightStore = create<FlightState>((set, get) => ({
   loadEquipmentNames: async () => {
     try {
       const response = await api.getEquipmentNames();
-      
+
       // Merge server data with local state (server wins for conflicts)
       const batteryNameMap = { ...response.battery_names };
       const droneNameMap = { ...response.aircraft_names };
-      
+
       // Update state
       set({ batteryNameMap, droneNameMap });
-      
+
       // Update localStorage cache
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('batteryNameMap', JSON.stringify(batteryNameMap));
@@ -863,4 +1124,132 @@ export const useFlightStore = create<FlightState>((set, get) => ({
 
   // Clear flight data cache (forces refresh when viewing flights after bulk operations)
   clearFlightDataCache: () => set({ _flightDataCache: new Map() }),
+
+  // Profile management actions
+  loadProfiles: async () => {
+    try {
+      const profileInfos = await api.listProfiles();
+      const profiles = profileInfos.map(p => p.name);
+      const profilePasswords: Record<string, boolean> = {};
+      for (const p of profileInfos) {
+        profilePasswords[p.name] = p.hasPassword;
+      }
+      // Use the client-side active profile from localStorage (persists across
+      // tab/browser closes), falling back to the server-default on first visit.
+      // sessionStorage is checked first for per-tab isolation.
+      // In Tauri desktop mode, always trust the backend (handles auto-logout on close).
+      let active: string;
+      if (api.isWebMode()) {
+        active = api.getProfileKey('activeProfile') || '';
+        if (!active || !profiles.includes(active)) {
+          active = await api.getActiveProfile();
+          api.setProfileKey('activeProfile', active);
+        }
+      } else {
+        active = await api.getActiveProfile();
+        api.setProfileKey('activeProfile', active);
+      }
+      set({ profiles, activeProfile: active, profilePasswords });
+
+      // Tauri desktop: check if the backend is locked (requires re-auth)
+      if (!api.isWebMode()) {
+        try {
+          const locked = await api.isAppLocked();
+          if (locked) {
+            set({ needsAuth: true, isFlightsInitialized: false });
+          }
+        } catch { /* ignore */ }
+      }
+    } catch (err) {
+      console.warn('Failed to load profiles:', err);
+    }
+  },
+
+  switchProfile: async (name: string, opts?: { create?: boolean; password?: string; newPassword?: string; masterPassword?: string }) => {
+    const currentProfile = get().activeProfile;
+    // Skip early return if a password is provided (re-authenticating the same profile)
+    if (currentProfile === name && !opts?.password) return;
+
+    // ── Save current profile's localStorage settings ──
+    const perProfileKeys = [
+      'unitPrefs', 'themeMode', 'appLanguage', 'locale', 'dateLocale',
+      'timeFormat', 'hideSerialNumbers', 'batteryNameMap', 'droneNameMap',
+      'maintenanceThresholds', 'maintenanceLastReset',
+      'lastSelectedFlightId', 'sidebarWidth', 'chartFieldSelections',
+      'syncFolderPath', 'htmlReportPilotName', 'htmlReportDocTitle',
+      'enabledSmartTagTypes', 'telemetryColors',
+    ];
+    if (typeof localStorage !== 'undefined') {
+      const snapshot: Record<string, string> = {};
+      for (const key of perProfileKeys) {
+        const val = localStorage.getItem(key);
+        if (val !== null) snapshot[key] = val;
+      }
+      localStorage.setItem(`profileSettings:${currentProfile}`, JSON.stringify(snapshot));
+    }
+
+    // ── Switch database on the backend ──
+    const result = await api.switchProfile({
+      name,
+      create: opts?.create,
+      password: opts?.password,
+      new_password: opts?.newPassword,
+      master_password: opts?.masterPassword,
+    });
+
+    // ── Store session token if provided (web mode, protected profile) ──
+    if (result.session) {
+      api.setProfileKey('profileSession', result.session);
+    } else {
+      api.removeProfileKey('profileSession');
+    }
+
+    // ── Load target profile's settings ──
+    if (typeof localStorage !== 'undefined') {
+      // Clear per-profile keys first
+      for (const key of perProfileKeys) {
+        localStorage.removeItem(key);
+      }
+      // Restore from saved snapshot (if exists)
+      const savedSnapshot = localStorage.getItem(`profileSettings:${name}`);
+      if (savedSnapshot) {
+        try {
+          const restored: Record<string, string> = JSON.parse(savedSnapshot);
+          for (const [key, val] of Object.entries(restored)) {
+            localStorage.setItem(key, val);
+          }
+        } catch {
+          // ignore corrupt snapshot
+        }
+      }
+      api.setProfileKey('activeProfile', name);
+    }
+
+    // Reload the page so all state re-initializes from localStorage
+    window.location.reload();
+  },
+
+  deleteProfile: async (name: string, opts?: { password?: string; masterPassword?: string }) => {
+    await api.deleteProfile({
+      name,
+      password: opts?.password,
+      master_password: opts?.masterPassword,
+    });
+    // Remove session if this was the deleted profile
+    api.removeProfileKey('profileSession');
+    // Refresh the profile list
+    await get().loadProfiles();
+  },
+
+  logout: () => {
+    // Clear session token (web mode)
+    api.removeProfileKey('profileSession');
+    // Reset initialised flag + trigger auth overlay
+    set({ needsAuth: true, isFlightsInitialized: false });
+  },
 }));
+
+// Register automatic logout when the server returns 401 (expired / invalid token).
+api.onSessionExpired(() => {
+  useFlightStore.getState().logout();
+});

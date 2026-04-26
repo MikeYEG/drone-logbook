@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Drone Logbook
+about: Suggest an idea for Open DroneLog
 title: "[FEATURE] "
 labels: enhancement
 assignees: arpanghosh8453

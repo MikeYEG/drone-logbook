@@ -1,11 +1,22 @@
 {
   "$schema": "https://schemas.tauri.app/config/2/capability",
   "identifier": "default",
-  "description": "Default capability for the Drone Logbook application",
+  "description": "Default capability for the Open DroneLog application",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "shell:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://*" },
+        { "url": "mailto:*" },
+        { "url": "tel:*" }
+      ]
+    },
+    "android-fs:default",
+    "android-fs:allow-write-text-file",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
