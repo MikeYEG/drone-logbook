@@ -525,3 +525,75 @@ export function buildKml(data: FlightDataResponse): string {
   </Document>
 </kml>`;
 }
+
+/**
+ * Build KML export string from flight data using relative height telemetry
+ */
+export function buildKmlRelative(data: FlightDataResponse): string {
+  const { flight, telemetry } = data;
+  const flightName = escapeXml(flight.displayName || flight.fileName || 'Flight');
+
+  // Handle manual entries with no telemetry - create placemark at home location
+  if (!telemetry.time || telemetry.time.length === 0) {
+    if (flight.homeLat != null && flight.homeLon != null) {
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${flightName}</name>
+    <Placemark>
+      <name>${flightName}</name>
+      <Point>
+        <coordinates>${flight.homeLon},${flight.homeLat},${flight.maxAltitude ?? 0}</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>`;
+    }
+    // No location data at all
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${flightName}</name>
+  </Document>
+</kml>`;
+  }
+
+  const lats = telemetry.latitude ?? [];
+  const lngs = telemetry.longitude ?? [];
+  const heights = telemetry.height ?? [];
+  const vpsHeights = telemetry.vpsHeight ?? [];
+
+  const coordinates = lats
+    .map((lat, i) => {
+      const lng = lngs[i];
+      if (lat == null || lng == null) return '';
+      // Skip 0,0 points
+      if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return '';
+      // Use relative height telemetry with fallback to VPS height
+      const ele = heights[i] ?? vpsHeights[i] ?? 0;
+      return `${lng},${lat},${ele}`;
+    })
+    .filter(Boolean)
+    .join(' ');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${flightName}</name>
+    <Style id="flightPath">
+      <LineStyle>
+        <color>ff0080ff</color>
+        <width>3</width>
+      </LineStyle>
+    </Style>
+    <Placemark>
+      <name>${flightName}</name>
+      <styleUrl>#flightPath</styleUrl>
+      <LineString>
+        <altitudeMode>relativeToGround</altitudeMode>
+        <coordinates>${coordinates}</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+}

@@ -6,7 +6,7 @@
 import type { FlightDataResponse } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { isWebMode, downloadFile, getFlightData, saveTextWithDialog } from '@/lib/api';
-import { buildCsv, buildJson, buildGpx, buildKml } from '@/lib/exportUtils';
+import { buildCsv, buildJson, buildGpx, buildKml, buildKmlRelative } from '@/lib/exportUtils';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { WeatherModal } from './WeatherModal';
 import weatherIcon from '@/assets/weather-icon.svg';
@@ -105,6 +105,7 @@ export function FlightStats({ data }: FlightStatsProps) {
       { id: 'json', label: 'flightList.json', extension: 'json' },
       { id: 'gpx', label: 'flightList.gpx', extension: 'gpx' },
       { id: 'kml', label: 'flightList.kml', extension: 'kml' },
+      { id: 'kml_relative', label: 'flightList.kmlRelative', extension: 'kml' },
     ],
     []
   );
@@ -135,6 +136,9 @@ export function FlightStats({ data }: FlightStatsProps) {
           break;
         case 'kml':
           content = buildKml(fullData);
+          break;
+        case 'kml_relative':
+          content = buildKmlRelative(fullData);
           break;
         default:
           return;

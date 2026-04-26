@@ -14,7 +14,7 @@ import {
 import { createPortal } from 'react-dom';
 import * as api from '@/lib/api';
 import { isWebMode, downloadFile, downloadBlob } from '@/lib/api';
-import { buildCsv, buildJson, buildGpx, buildKml } from '@/lib/exportUtils';
+import { buildCsv, buildJson, buildGpx, buildKml, buildKmlRelative } from '@/lib/exportUtils';
 import { useFlightStore } from '@/stores/flightStore';
 import { formatDuration, formatDateTime, formatDistance, formatAltitude, normalizeSerial, formatDateDisplay } from '@/lib/utils';
 import { type DateRange } from 'react-day-picker';
@@ -1912,6 +1912,7 @@ export function FlightList({
             else if (format === 'json') content = buildJson(data, unitPrefs);
             else if (format === 'gpx') content = buildGpx(data);
             else if (format === 'kml') content = buildKml(data);
+            else if (format === 'kml_relative') content = buildKmlRelative(data);
 
             if (!useBrowserDownloads && selectedDirHandle) {
               try {
@@ -1983,6 +1984,7 @@ export function FlightList({
             else if (format === 'json') content = buildJson(data, unitPrefs);
             else if (format === 'gpx') content = buildGpx(data);
             else if (format === 'kml') content = buildKml(data);
+            else if (format === 'kml_relative') content = buildKmlRelative(data);
 
             const fileUri = await androidFs.AndroidFs.createNewFile(dirUri, `${safeName}.${extension}`, mimeTypeByExt(extension));
             await androidFs.AndroidFs.writeTextFile(fileUri, content);
@@ -2025,6 +2027,7 @@ export function FlightList({
           else if (format === 'json') content = buildJson(data, unitPrefs);
           else if (format === 'gpx') content = buildGpx(data);
           else if (format === 'kml') content = buildKml(data);
+          else if (format === 'kml_relative') content = buildKmlRelative(data);
 
           const { writeTextFile } = await import('@tauri-apps/plugin-fs');
           await writeTextFile(`${dirPath}/${safeName}.${extension}`, content);
@@ -2404,7 +2407,7 @@ export function FlightList({
   };
 
   // Handle single flight export from context menu
-  const handleContextExport = async (flightId: number, format: 'csv' | 'json' | 'gpx' | 'kml') => {
+  const handleContextExport = async (flightId: number, format: 'csv' | 'json' | 'gpx' | 'kml' | 'kml_relative') => {
     setContextMenu(null);
     setContextExportSubmenuOpen(false);
 
@@ -2416,23 +2419,25 @@ export function FlightList({
       if (!data) return;
 
       let content = '';
-      let extension = format;
+      const extension = format === 'kml_relative' ? 'kml' : format;
 
       if (format === 'csv') content = buildCsv(data, unitPrefs);
       else if (format === 'json') content = buildJson(data, unitPrefs);
       else if (format === 'gpx') content = buildGpx(data);
       else if (format === 'kml') content = buildKml(data);
+      else if (format === 'kml_relative') content = buildKmlRelative(data);
 
       if (!content) return;
 
       const baseName = sanitizeFileName(flight.displayName || flight.fileName || 'flight');
-      const filename = `${baseName}.${extension}`;
+      const filenameBase = format === 'kml_relative' ? `${baseName}_relative` : baseName;
+      const filename = `${filenameBase}.${extension}`;
 
       if (isWebMode()) {
         downloadFile(filename, content);
       } else {
         const saved = await api.saveTextWithDialog(filename, content, [
-          { name: format.toUpperCase(), extensions: [extension] },
+          { name: extension.toUpperCase(), extensions: [extension] },
         ]);
         if (!saved) return;
       }
@@ -3797,6 +3802,7 @@ export function FlightList({
                           { id: 'json', label: t('flightList.json'), ext: 'json', disabled: false },
                           { id: 'gpx', label: t('flightList.gpx'), ext: 'gpx', disabled: false },
                           { id: 'kml', label: t('flightList.kml'), ext: 'kml', disabled: false },
+                          { id: 'kml_relative', label: t('flightList.kmlRelative'), ext: 'kml', disabled: false },
                           { id: 'summary', label: t('flightList.summaryCSV'), ext: 'csv', disabled: filteredFlights.length <= 1 },
                           {
                             id: 'html_report',
@@ -3854,6 +3860,7 @@ export function FlightList({
                           { id: 'json', label: t('flightList.json'), ext: 'json', disabled: false },
                           { id: 'gpx', label: t('flightList.gpx'), ext: 'gpx', disabled: false },
                           { id: 'kml', label: t('flightList.kml'), ext: 'kml', disabled: false },
+                          { id: 'kml_relative', label: t('flightList.kmlRelative'), ext: 'kml', disabled: false },
                           { id: 'summary', label: t('flightList.summaryCSV'), ext: 'csv', disabled: filteredFlights.length <= 1 },
                           {
                             id: 'html_report',
@@ -4383,6 +4390,13 @@ export function FlightList({
                   className="w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gray-700/50"
                 >
                   {t('flightList.kml')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleContextExport(contextMenu.flightId, 'kml_relative')}
+                  className="w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gray-700/50"
+                >
+                  {t('flightList.kmlRelative')}
                 </button>
               </div>
             )}
