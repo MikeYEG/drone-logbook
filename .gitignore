@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+.githooks/
 
 # Build outputs
 dist/
@@ -45,6 +46,14 @@ coverage/
 # Tauri
 src-tauri/target/
 src-tauri/WixTools/
+src-tauri/gen/
 
 # Generated types
 src-tauri/bindings/
+
+# Android signing artifacts
+*.jks
+*.keystore
+*.jks.b64
+opendronelog-upload.jks
+opendronelog-upload.jks.b64
